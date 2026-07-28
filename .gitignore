@@ -1,0 +1,12 @@
+.DS_Store
+node_modules/
+dist/
+build/
+.turbo/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
