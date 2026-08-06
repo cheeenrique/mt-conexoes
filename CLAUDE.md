@@ -1,151 +1,175 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guia para o Claude Code neste repositório.
 
-## Estado atual do repositório
+## Estado atual
 
-**Só existe `docs/`. Não há código, `package.json`, lockfile, CI nem migrations.** O projeto está na fase de especificação — as decisões de stack e de domínio estão fechadas (ver `docs/README.md` → "Decisões travadas") e o próximo passo é a Fase 0 do roadmap (`docs/16-roadmap-mvp.md`).
+**Só existe `docs/`.** Não há código, `package.json`, lockfile, CI nem migrations. Não invente comandos de build/lint/test nem alegue ter rodado algum.
 
-Consequências práticas:
+A especificação está fechada. O próximo passo é a Etapa 0 de [`docs/projeto/tecnico/07-plano-de-entrega.md`](docs/projeto/tecnico/07-plano-de-entrega.md).
 
-- Não existem comandos de build/lint/test para rodar. Não invente scripts nem alegue que rodou algum.
-- Ao criar o código, o scaffolding é **pnpm workspaces + Turborepo**, com os apps/packages exatos de `docs/03-arquitetura-e-adrs.md#monorepo`. Não improvisar outra estrutura.
-- Mudança de decisão de arquitetura = **novo ADR** em `docs/03-arquitetura-e-adrs.md` que supersede o anterior. Nunca editar ADR existente.
+Idioma: **pt-BR** em docs, UI e mensagem de erro ao usuário final. Código, identificadores e commits em inglês.
 
-O idioma do repositório é **pt-BR** (docs, mensagens de erro ao usuário final, UI). Código, identificadores e commits em inglês.
+⚠️ O repositório começou como especificação de um SaaS multi-tenant (NestJS, monorepo, RLS, RBAC, ledger de partidas dobradas, ts-rest). **Foi descartada.** Continua recuperável em `git show 3fc471e --stat`, e serve só como referência de domínio — nunca de implementação.
+
+## Regras de código
+
+[`.claude/rules/`](.claude/rules/00-index.md) tem as regras de **como escrever o código** — camadas, Server Components e Actions, transações, banco, frontend, reuso, testes e o checklist de PR. Ler antes de escrever código: este arquivo cobre o **domínio**, aquelas cobrem a **forma**.
 
 ---
 
 ## O produto em uma frase
 
-SaaS multi-tenant de gestão de assinaturas, cobrança recorrente e automação de cobrança por WhatsApp/e-mail para PMEs brasileiras (100–2.000 assinantes). Três pilares, nesta ordem: régua de cobrança automática, conciliação automática de pagamento, visibilidade de receita/margem.
+Sistema web single-tenant que substitui a planilha de um revendedor de assinatura digital — guarda a base com as credenciais de acesso, gera as cobranças de cada ciclo, cobra sozinho no WhatsApp e mostra o lucro por cliente — **mais um site de captação** que traz assinante novo por busca orgânica.
 
-**BYO credentials** (ADR-009): o tenant usa a conta *dele* nos gateways e canais. Não intermediamos dinheiro nem mensagem.
+Um cliente, R$ 5.000 fechado, 10 semanas, código-fonte entregue.
 
 ---
 
-## Arquitetura — o que exige ler vários docs para entender
+## Duas aplicações
 
-### `api` e `worker` são o mesmo codebase NestJS
+| App | O que é | Stack | Doc |
+|---|---|---|---|
+| **Painel** | O sistema de gestão. Autenticado, um usuário | Next.js App Router + Prisma + Cloud Run | `tecnico/01` a `07` |
+| **Site** | Captação por busca orgânica. Público, estático | Astro + Cloudflare Pages | `tecnico/08` |
 
-Dois entrypoints (`apps/api/src/main.ts` HTTP, `apps/api/src/worker.ts` jobs), um deployable cada. A razão: a regra de negócio que a automação executa é *literalmente a mesma* que a UI executa. **Nunca duplicar cálculo financeiro entre os dois.**
+⚠️ **Repositórios, domínios e contas de hospedagem separados.** SEO neste nicho é espaço adversarial — deindexação por DMCA acontece sem que se tenha feito nada errado. Domínio de captação penalizado não pode derrubar o painel do cliente. Sem DNS em comum.
 
-### `packages/core` é puro
+A única ligação é o formulário do site chamando `POST /api/leads` do painel. **Endpoint fora do ar faz o formulário cair para o WhatsApp**, nunca para uma tela de erro.
 
-Não importa Prisma, NestJS nem HTTP. Cálculo de multa, juros, proração, próximo vencimento, alocação de pagamento, máquina de estados de assinatura e avaliação de condições da régua vivem aqui, como funções puras testáveis em milissegundos. Se uma regra financeira precisa de I/O para ser testada, está no lugar errado.
+## Stack do painel
 
-### Contrato antes de implementação
+| Camada | Escolha |
+|---|---|
+| App | Next.js App Router — Server Components para ler, Server Actions para escrever, Route Handlers para cron |
+| Banco | PostgreSQL (Neon) + Prisma |
+| Hospedagem | Google Cloud Run, `southamerica-east1` |
+| Agendamento | Cloud Scheduler → Route Handler autenticado por OIDC |
+| UI | Tailwind + shadcn/ui · react-hook-form + Zod |
 
-`packages/contracts` (ts-rest + Zod) é a fonte única. Backend implementa, frontend consome, TypeScript reclama se divergirem. Sem codegen. Rotas HTTP reais — guards, interceptors e decorators do NestJS funcionam normalmente (essa foi a razão de escolher ts-rest sobre tRPC, ADR-005).
+**Não existe aqui:** monorepo, Turborepo, NestJS, ts-rest, Graphile Worker, Redis, RLS, multi-tenancy, RBAC, ledger de partidas dobradas.
 
-Webhooks recebidos ficam **fora** do contrato ts-rest (payload é de terceiro), em controllers `@Public()` dedicados.
+### Camadas
 
-### Isolamento de tenant é em duas camadas
+```
+app/       ──> features/  ──> core/, lib/
+features/  ──> core/, lib/
+core/      ──> nada (nem Prisma, nem Next, nem I/O, nem new Date())
+lib/       ──> Prisma, env
+```
 
-1. **Prisma extension** (`packages/db/src/tenant-client.ts`) injeta `tenantId` em toda operação — caminho normal.
-2. **RLS no Postgres** — rede de segurança para SQL cru, TypedSQL e scripts. `FORCE ROW LEVEL SECURITY` obrigatório; a aplicação conecta com role **sem `BYPASSRLS`**; migrations usam role separado.
-
-`set_config('app.tenant_id', ..., true)` é **local à transação** — obrigatório com pooler em modo transaction.
-
-O contexto vem do JWT, nunca da URL (ADR-006). Um `User` pertence a N tenants via `Membership`; trocar de tenant emite novo par de tokens.
-
-### Outbox + Graphile Worker: nenhum efeito colateral se perde
-
-Toda mudança de estado relevante acontece **dentro de uma transação** que também grava o `OutboxEvent`. Jobs são enfileirados na mesma transação via `graphile_worker.add_job` (helper `enqueue(tx, ...)` em `packages/db/src/queue.ts`). Fila roda no próprio Postgres — sem Redis (ADR-003).
-
-Entrega é **at-least-once**: todo handler precisa ser idempotente, e ordem não é garantida.
-
-### O ledger é a espinha dorsal
-
-Partidas dobradas. **Saldo é sempre derivado (`SUM`), nunca armazenado.** Não existe `UPDATE ... SET balance = balance + x` em lugar nenhum. Job diário `ledger:verify` soma débitos e créditos por transação e alerta divergência — é o detector de fumaça do sistema.
-
-Custo (`COGS`/`AP`) entra no mesmo ledger, com `customerId`+`subscriptionId`+`supplierId` em cada lançamento — é o que garante que a visão por cliente e a agregada saiam da mesma fonte e fechem.
-
-### Pré-pago e pós-pago no mesmo motor
-
-`Charge`, `Payment` e `LedgerEntry` são idênticos nos dois. O que muda é o **efeito da confirmação do pagamento**: pré-pago concede `AccessPeriod` (empilhável, com constraint `EXCLUDE` contra sobreposição), pós-pago apenas quita a dívida. Não construir dois subsistemas.
+- **`core/` é puro.** Cálculo de vencimento, âncora de fim de mês, arredondamento, desconto, margem e avaliação da régua vivem lá, testáveis em milissegundos. Se uma regra financeira precisa de I/O para ser testada, está no lugar errado.
+- **Server Action não contém regra.** Valida com Zod, chama o service, revalida o cache.
+- **Uma feature não importa de outra feature.**
+- **Nenhum componente cliente recebe `BigInt`.** Converte para string na borda do servidor.
 
 ---
 
 ## Regras duras (violá-las é bug, não preferência)
 
-Blocos marcados com ⚠️ nos docs são **requisitos de segurança** — não podem ser cortados por prazo. Os que mais afetam código do dia a dia:
-
 **Dinheiro**
-- `BigInt` em centavos, sufixo `...Cents`, sempre. Nunca float, nem em variável temporária. Percentuais são `Decimal`.
-- Arredondamento *round half up*, em centavos, uma única vez, no fim do cálculo. Nunca `Math.round` sobre float.
-- Documento emitido é imutável. Correção é documento novo (crédito, desconto, estorno), nunca edição do original.
-- Cobrança com pagamento alocado não pode ser cancelada — estornar antes, senão o ledger desbalanceia.
-- Multa/juros calculam sobre o **principal**, nunca sobre o total com encargos. Recálculo é idempotente (recomputa do zero, ajusta o delta).
+- `BigInt` em centavos, sufixo `...Cents`, sempre. Nunca `float`, **nem em variável temporária**. Percentual é `Decimal`.
+- Arredondamento *round half up*, em centavos, uma única vez, no fim do cálculo.
+- `Charge.costCents` é congelado na emissão e **nunca** recalculado. Relatório de julho não muda porque o fornecedor subiu o preço em agosto.
+- ❌ Nenhuma coluna de saldo. Total é sempre `SUM`.
+- Cobrança com pagamento registrado não é cancelada nem editada. Correção é registro novo.
 
-**Idempotência** — cada uma tem mecanismo próprio, use o certo:
+**Data e fuso**
+- Banco em UTC; vencimento e corte de relatório são conceitos **locais** (`Settings.timezone`).
+- Vencimento é `23:59:59` local.
+- Âncora de fim de mês é preservada: 31 vira 28 em fevereiro e **volta** a 31. Nunca sobrescrever a âncora com o dia efetivo.
+- Corte de relatório sai de `monthBoundsUtc(...)`, nunca de `date_trunc('month', ...)` em UTC.
+
+**Idempotência** — cada situação tem o seu mecanismo:
 
 | Situação | Mecanismo |
 |---|---|
-| Geração de cobrança | `UNIQUE(subscriptionId, competenceMonth)` |
-| Passo da régua | `UNIQUE(chargeId, stepId)` em `DunningExecution` |
-| Webhook recebido | `UNIQUE(providerCode, externalId)` em `WebhookEvent` |
-| Escrita da API | Header `Idempotency-Key` → tabela `IdempotencyKey` (TTL 24h) |
-| Job agendado | `jobKey` do Graphile Worker |
+| Geração de cobrança | `UNIQUE(subscriptionId, periodStart)` |
+| Passo da régua | `UNIQUE(chargeId, stepId)` em `dunning_executions` |
+| Uma mensagem por cliente por dia | Índice único parcial em `messages (customerId, scheduledDate)` |
+| Canal padrão único | Índice único parcial em `channel_configs (isDefault)` |
 
-**Providers** — o sistema consulta `capabilities`. **Nunca** `if (provider === 'mercadopago')`. Se uma feature precisa de galho por provider fora do módulo de integração, o modelo de capabilities está incompleto.
+**Régua — travas**
+- **T5** opt-out é global por customer, em todos os canais. Conferido na avaliação **e** no despacho.
+- **T6** quiet hours 08:00–20:00 no fuso do negócio. Fora da janela, reagenda; não descarta.
+- **T7** um customer recebe no máximo uma mensagem de cobrança por dia, consolidada.
+- **T8** kill switch com efeito imediato; mensagem parada há mais de 24h vira `CANCELLED` com motivo `stale`.
+- A régua é entregue em `REVIEW` — calcula tudo, não envia nada, até o operador ativar na frente de uma lista.
 
-**Permissões** — sempre `@RequirePermission('recurso:acao')`. **Nunca** `if (user.role === 'ADMIN')` espalhado pelo código. Papel é preset de permissões; a checagem é sobre a permissão.
-
-**Régua — travas T1–T8** (`docs/09-regua-de-cobranca.md`). São o que separa "sistema útil" de "número de WhatsApp banido no primeiro dia". As mais estruturais: régua entra em modo `REVIEW` automático após qualquer importação (T1); opt-out é global por customer em todos os canais (T5); quiet hours 08:00–20:00 no fuso do tenant (T6); um customer recebe no máximo uma mensagem de cobrança por dia, consolidada (T7); kill switch com efeito imediato (T8).
-
-**Fuso** — datas em UTC no banco, mas vencimento e cortes de relatório são conceitos **locais do tenant**. Relatório "de julho" que inclui 31/07 21h UTC é bug de confiança. Vencimento é sempre `23:59:59` local. Âncora de fim de mês é preservada (dia 31 vira 28 em fevereiro e volta a 31 depois — nunca sobrescrever a âncora).
+**Providers de WhatsApp**
+- Três adapters: `META_CLOUD`, `EVOLUTION`, `SALVY`. O sistema consulta `capabilities`.
+- ❌ `if (provider === 'evolution')` fora de `features/messaging/channels`. Se apareceu, o modelo de capabilities está incompleto — corrige o modelo.
+- Meta Cloud API só entrega **template aprovado** fora da janela de 24h. Passo sem `metaTemplateName` num canal que exige template vira `SKIPPED`, não uma mensagem que não chega.
 
 **Segurança**
-- `$queryRawUnsafe` proibido. Só TypedSQL ou `$queryRaw` parametrizado.
-- Webhook: verificar assinatura **antes** de qualquer processamento; responder 200 em < 1s (processamento pesado vai para a fila); rejeitar timestamp > 5 min; nunca confiar em valor do payload sem conferir contra o estado local.
-- 404 para "não existe" **e** para "pertence a outro tenant" — nunca revelar a diferença.
-- Credencial de integração nunca volta para o front, nem em log/Sentry/erro. Envelope encryption (DEK por tenant, KEK em KMS/env).
-- Campo personalizado tipo `SECRET`: mascarado, permissão dedicada para revelar, todo acesso auditado, fora de export/log/mensagem.
+- Senha de acesso do assinante: AES-256-GCM, mascarada na tela, revelação **auditada** em `credential_reveals`, fora de log, Sentry, export e mensagem. O DTO padrão não inclui o campo.
+- Credencial de canal nunca volta para o front, nem mascarada.
+- Endpoint de cron sem token OIDC devolve 401. Não existe versão "por enquanto sem auth".
+- `$queryRawUnsafe` proibido. Só `$queryRaw` parametrizado ou TypedSQL.
 - CSV export: escapar célula iniciada por `=`, `+`, `-`, `@`.
 - LGPD: direito de eliminação é **anonimização de verdade**, não `deletedAt`. Registros financeiros preservados.
+- Sem `console.log` em código de produção. Log é JSON com ids, nunca objetos inteiros.
 
-**Suite de isolamento entre tenants** — para cada endpoint autenticado, dois tenants, verificar que A não lê/escreve/deleta recurso de B. Falha aqui bloqueia deploy.
+**Testes** — TDD obrigatório, vermelho antes de verde:
+- `src/core/**` — vencimento, âncora, ciclo, desconto, arredondamento, margem
+- Travas T5–T8
+- Idempotência de cada job
+- Criptografia de credencial (ida e volta, e falha explícita com chave errada)
+
+Integração roda contra **Postgres real**. Índice parcial e `CHECK` não existem em SQLite — testar sem eles é testar outro sistema. Relógio injetado por parâmetro, nunca mockado globalmente.
+
+Fora dessas áreas: teste junto ou depois, sem cerimônia.
 
 ---
 
-## Convenções de nomenclatura
+## Convenções
 
 | Contexto | Convenção | Exemplo |
 |---|---|---|
-| Eventos | `entidade.acao` no passado | `charge.paid`, `subscription.suspended` |
-| Jobs | `dominio:acao` | `dunning:evaluate`, `message:send` |
-| Permissões | `recurso:acao` | `charges:write` |
-| Tabelas | `snake_case` plural | `ledger_entries` |
-| Modelos Prisma | `PascalCase` singular | `LedgerEntry` |
-| Rotas | plural, kebab-case, máx. 2 níveis | `/customers/:id/subscriptions` |
-| Dinheiro | sufixo `Cents`, tipo `BigInt` | `amountCents` |
+| Jobs / rotas de cron | `dominio-acao` | `dunning-evaluate` |
+| Tabelas | `snake_case` plural | `dunning_executions` |
+| Modelos Prisma | `PascalCase` singular | `DunningExecution` |
+| Dinheiro | sufixo `Cents`, tipo `BigInt` | `principalCents` |
 | Datas | sufixo `At`, UTC | `dueAt`, `paidAt` |
 | IDs | `uuid` v7 | — |
+| Rotas da UI | pt-BR, plural | `/clientes/:id`, `/cobrancas` |
 
-O glossário (`docs/02-glossario.md`) é linguagem ubíqua: vale em código, banco, API e conversa. Conceito com outro nome em qualquer lugar é bug de nomenclatura. Em particular: **`Customer` é o assinante final** (cliente do nosso cliente) — nunca chamar de "usuário"; `User` é quem acessa o painel. `Plan` é o pacote comercial do tenant, não o plano do nosso SaaS.
+**Vocabulário** — `Customer` é o assinante final do cliente. `User` é quem acessa o painel (existe **um**). `Plan` é o pacote comercial. `Supplier` é o fornecedor do crédito revendido. `Charge` é a cobrança de um ciclo; `Payment` é o dinheiro que entrou. Conceito com outro nome em qualquer lugar é bug de nomenclatura.
+
+## Orçamento de tamanho
+
+| Artefato | Limite |
+|---|---|
+| Server Action | 30 linhas |
+| Service (arquivo) | 250 linhas |
+| Função em `core/` | 40 linhas |
+| Componente React | 150 linhas |
+| `page.tsx` | 100 linhas |
+
+Estourar é sinal de split por responsabilidade, nunca de subir o limite.
 
 ---
 
 ## Onde procurar o quê
 
-`docs/README.md` tem o índice completo. Atalhos para as decisões que mais mordem:
+Índice em [`docs/projeto/README.md`](docs/projeto/README.md).
 
-- Schema Prisma completo + **SQL manual que as migrations precisam ter** (RLS, `EXCLUDE`, índices parciais, particionamento) → `05-modelo-de-dados.md`
-- Transações canônicas do ledger, alocação FIFO de pagamento, cálculo de multa/juros, conciliação → `07-financeiro-ledger.md`
-- Catálogo de eventos, handlers do MVP, crontab dos jobs, rate limiting sem Redis → `08-eventos-e-jobs.md`
-- Máquina de estados de `Subscription`, cálculo de vencimento, proração, trial, cancelamento → `06-assinaturas-ciclo-de-vida.md`
-- Formato de erro, paginação por cursor, idempotência, rate limit, webhooks → `14-api-contratos.md`
-- Pipeline de importação de planilha em 9 fases e suas armadilhas → `13-importacao-planilha.md`
-- Custo, margem, `Supplier`, campos personalizados `SECRET` → `17-custos-margem-e-fornecedores.md`
-- Ordem de construção e critérios de pronto por fase → `16-roadmap-mvp.md`
+- Stack, pastas, camadas, cron, auth → `docs/projeto/tecnico/01-arquitetura.md`
+- Schema Prisma + **SQL manual das migrations** → `docs/projeto/tecnico/02-modelo-de-dados.md`
+- Âncora de fim de mês, ciclos, fuso, casos de teste → `docs/projeto/tecnico/03-datas-e-ciclos.md`
+- `BigInt`, arredondamento, lucro, margem em risco, queries → `docs/projeto/tecnico/04-dinheiro-e-margem.md`
+- Criptografia, auth, logs, LGPD, backup → `docs/projeto/tecnico/05-credenciais-e-seguranca.md`
+- Motor da régua, travas, os 3 adapters → `docs/projeto/tecnico/06-regua-e-canais.md`
+- Etapas, critérios de pronto, riscos → `docs/projeto/tecnico/07-plano-de-entrega.md`
+- Site: Astro, arquitetura de conteúdo, SEO técnico, conversão, CWV → `docs/projeto/tecnico/08-site.md`
+- Escopo contratado e o que é R$ 150/h → `docs/projeto/comercial/02-precificacao.md`
 
-Marcadores nos docs: ⚠️ = requisito de segurança, não cortável. 🔮 = fora do MVP, registrado para não perder o raciocínio — **não implementar sem pedido explícito**.
+Marcadores nos docs: ⚠️ = requisito de segurança, não cortável. 🔮 = fora do escopo, **não implementar sem pedido explícito**.
 
 ---
 
-## Prioridades ao escrever código aqui
+## Prioridade de esforço
 
-O doc 16 fecha assim, e vale como regra de decisão: *"nenhum cliente vai escolher ou abandonar este produto por causa da ORM, do framework de front ou da camada de transporte. O que decide o resultado é: a conciliação funcionar, a régua não mandar cobrança duplicada, e o saldo bater."*
+**Financeiro > régua > importação > resto.**
 
-Na dúvida sobre onde gastar esforço ou rigor: financeiro > régua > importação > resto.
+Nenhum cliente abandona o sistema por causa da ORM ou do framework. O que decide é o saldo bater, a régua não mandar cobrança duplicada, e a margem estar certa.
