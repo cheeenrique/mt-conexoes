@@ -295,6 +295,8 @@ Mensagem pode ser da régua automática (`DUNNING`) ou disparo manual assistido 
 
 ### Régua
 
+> Resumo abaixo. Detalhe completo de estados, transições, editor de passo campo a campo e travas está em [`03-handoff-regua.md`](./03-handoff-regua.md) — cole os dois juntos no Claude Design.
+
 Editor de passos no eixo do vencimento, mesma linguagem da linha de vencimento do início:
 
 ```

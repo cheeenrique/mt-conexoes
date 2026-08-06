@@ -36,6 +36,7 @@ São **duas aplicações separadas**, com domínios e hospedagens distintos. A �
 | 00 | [Marca](./design/00-marca.md) | Logo, paleta, tipografia, forma, movimento. Fonte da verdade |
 | 01 | [Handoff do site](./design/01-handoff-site.md) | Direção visual, estrutura de página, conversão, escrita |
 | 02 | [Handoff do painel](./design/02-handoff-painel.md) | Telas, densidade, estados, interação, escrita |
+| 03 | [Handoff da régua](./design/03-handoff-regua.md) | Estados, transições, editor de passo, travas — detalhe que não cabe no handoff geral |
 
 ### Técnico
 
