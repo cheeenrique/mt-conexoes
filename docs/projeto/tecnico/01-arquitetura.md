@@ -40,7 +40,7 @@ Estas continuam sendo regra dura, e violá-las é bug:
 - Nenhuma coluna de saldo. Total é sempre `SUM`.
 - Cobrança com pagamento registrado não é cancelada nem editada — correção é registro novo.
 - Usuário e senha de acesso do assinante são criptografados, mascarados e ficam fora de log, export e mensagem.
-- Vencimento é `23:59:59` no fuso local; âncora de fim de mês preservada.
+- Vencimento é `23:59:59` no fuso local; próximo vencimento sempre calculado a partir da data do pagamento total, com clamp de fim de mês.
 - Todo job é idempotente. Rodar duas vezes produz o mesmo resultado.
 - Régua respeita quiet hours, dedupe diário, opt-out e kill switch.
 
@@ -62,7 +62,7 @@ src/
       configuracoes/
     api/
       cron/
-        charges-generate/route.ts
+        charges-mark-overdue/route.ts
         dunning-evaluate/route.ts
         messages-dispatch/route.ts
   features/
@@ -153,9 +153,11 @@ Cloud Scheduler chama Route Handlers com token OIDC. O handler valida o token; s
 
 | Job | Frequência | O que faz |
 |---|---|---|
-| `charges-generate` | diário 03:00 | Emite as cobranças que vencem nos próximos 10 dias e marca as vencidas como `OVERDUE` |
+| `charges-mark-overdue` | diário 03:00 | Marca `OPEN` com `dueAt < agora` como `OVERDUE`. Não gera cobrança — cobrança nasce na criação da assinatura e no pagamento total, não por job. |
 | `dunning-evaluate` | diário 07:00 | Avalia a régua e cria as linhas `PENDING` em `messages` |
 | `messages-dispatch` | a cada 15 min, 08:00–20:00 | Envia as `PENDING` respeitando as travas; falha vira retry na próxima passada |
+
+⚠️ **Não existe mais job de geração de cobrança.** No modelo anterior (âncora fixa de calendário) um job diário antecipava a emissão. Hoje o vencimento do próximo ciclo só existe depois que o cliente paga o atual — ver [`03-datas-e-ciclos.md`](./03-datas-e-ciclos.md) — então a emissão é evento (transação de criação de assinatura / transação de registro de pagamento), não cron.
 
 Todos idempotentes por constraint — detalhe em [`06-regua-e-canais.md`](./06-regua-e-canais.md).
 

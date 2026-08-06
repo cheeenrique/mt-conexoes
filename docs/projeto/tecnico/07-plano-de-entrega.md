@@ -16,7 +16,7 @@ Não é etapa de entrega, é o que sustenta as outras. Antes de qualquer tela:
 - [ ] Deploy no Cloud Run funcionando ponta a ponta, com o banco de dev
 - [ ] Logs em JSON, `/api/health`
 
-**Critério de pronto:** aplicação no ar, login funcionando, `pnpm test` verde, e o cálculo de vencimento com âncora de fim de mês passando todos os casos de [`03-datas-e-ciclos.md`](./03-datas-e-ciclos.md).
+**Critério de pronto:** aplicação no ar, login funcionando, `pnpm test` verde, e o cálculo de vencimento por data de pagamento (com clamp de fim de mês) passando todos os casos de [`03-datas-e-ciclos.md`](./03-datas-e-ciclos.md).
 
 ⚠️ Nada de tela antes do `core/` testado. Cálculo financeiro descoberto errado na semana 6 custa dez vezes mais que na semana 1.
 
@@ -28,7 +28,7 @@ Não é etapa de entrega, é o que sustenta as outras. Antes de qualquer tela:
 - [ ] CRUD de `Supplier` com custo padrão
 - [ ] CRUD de `Plan` com preço e custo sugeridos
 - [ ] CRUD de `Customer`
-- [ ] CRUD de `Subscription`: plano, fornecedor, preço, custo, ciclo, âncora de vencimento, desconto recorrente
+- [ ] CRUD de `Subscription`: plano, fornecedor, preço, custo, ciclo, desconto recorrente. Vencimento não é campo do formulário — nasce calculado (`startedAt + ciclo` na criação, `dataPagamento + ciclo` a cada renovação)
 - [ ] Credencial de acesso: usuário em claro, senha criptografada, mascarada, com revelar auditado
 - [ ] Margem calculada e exibida na hora, no formulário
 - [ ] Lista de clientes com busca por nome, telefone e usuário de acesso
@@ -45,7 +45,7 @@ O que ele precisa fazer, e que dá errado se for ignorado:
 
 - **Normalizar telefone para E.164.** A planilha tem `(11) 99999-8888`, `11999998888`, `+5511999998888` e `9999-8888` sem DDD. O último não dá para salvar — vira linha recusada, com o motivo.
 - **Consolidar duplicata por telefone.** `Customer.phone` é único, e é o que sustenta o opt-out e a dedupe diária. Duas linhas com o mesmo telefone viram um cliente com duas assinaturas.
-- **Derivar a âncora do vencimento**, não copiar o dia da última cobrança. Cliente que venceu 28/02 pode ter âncora 28, 29, 30 ou 31 — perguntar, não adivinhar.
+- **Gravar o último pagamento de cada assinatura**, não um dia fixo. O vencimento da primeira cobrança pós-importação sai de `nextDueDate(últimoPagamentoConhecido, cycle, tz)` — se a planilha não tem data de pagamento confiável pra alguma linha, essa linha entra no relatório de recusa, não se chuta uma data.
 - **Recusar em vez de chutar.** Linha com valor ilegível, ciclo ambíguo ou data impossível sai no relatório de recusa. Dado errado importado em silêncio é pior que linha faltando.
 - **Relatório ao fim:** quantas entraram, quantas foram recusadas e por quê, soma dos valores para conferir contra a planilha.
 
@@ -55,8 +55,8 @@ O que ele precisa fazer, e que dá errado se for ignorado:
 
 ## Etapa 2 — Cobrança (até a semana 3)
 
-- [ ] Geração automática de cobrança — job `charges-generate`, idempotente
-- [ ] Job de marcação de atraso
+- [ ] Emissão de cobrança na criação da assinatura e no pagamento total (não é job — é evento na transação), idempotente
+- [ ] Job `charges-mark-overdue` de marcação de atraso
 - [ ] Painel de vencimentos: vencem hoje, próximos dias, em atraso, recebido no mês
 - [ ] Lista de cobranças com filtro por status, cliente, fornecedor e período
 - [ ] Registro manual de pagamento, total e parcial
@@ -64,7 +64,7 @@ O que ele precisa fazer, e que dá errado se for ignorado:
 - [ ] Histórico de cobranças e pagamentos na ficha do cliente
 - [ ] Cloud Scheduler configurado com autenticação OIDC
 
-**Critério de pronto:** criar assinatura, gerar cobrança, registrar pagamento parcial e depois total, e o status e os totais baterem em todos os casos. Rodar o job três vezes seguidas não duplica nada.
+**Critério de pronto:** criar assinatura gera a primeira cobrança, registrar pagamento parcial e depois total gera a próxima com o vencimento certo, e o status e os totais baterem em todos os casos. Registrar o mesmo pagamento duas vezes (dupla submissão) não duplica cobrança nem pagamento.
 
 ---
 
@@ -134,7 +134,7 @@ TDD, vermelho antes de verde:
 
 | Área | Por quê |
 |---|---|
-| `src/core/**` | Vencimento, âncora, ciclo, desconto, arredondamento, margem |
+| `src/core/**` | Vencimento por data de pagamento (clamp de fim de mês), ciclo, desconto, arredondamento, margem |
 | Travas T5–T8 | É o que separa sistema útil de número banido |
 | Idempotência de cada job | Rodar duas vezes tem que dar o mesmo resultado |
 | Criptografia de credencial | Ida e volta, e falha explícita com chave errada |

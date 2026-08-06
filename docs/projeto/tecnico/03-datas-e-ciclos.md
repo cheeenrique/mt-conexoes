@@ -2,43 +2,67 @@
 
 > Vive em `src/core/dates.ts` e `src/core/billing-cycle.ts`. Puro, sem I/O, sem `new Date()` interno.
 > **TDD obrigatório.** É a fonte histórica de bug nº 1 deste domínio.
+> Confirmado com o dono do produto em 2026-08-06 — spec de origem em `docs/superpowers/specs/2026-08-06-vencimento-por-pagamento-design.md`.
 
 ## Princípios
 
 1. **Banco em UTC. Conceito em local.** Vencimento, corte de relatório e "hoje" são conceitos no fuso do negócio (`Settings.timezone`, padrão `America/Sao_Paulo`). O banco guarda UTC; a conversão acontece na borda.
 2. **Vencimento é `23:59:59.999` local.** Cobrança que vence dia 10 está em dia até o fim do dia 10 no fuso do cliente.
-3. **A âncora nunca é sobrescrita.** `dueDayAnchor = 31` continua 31 depois de passar por fevereiro.
+3. **Vencimento do próximo ciclo é sempre derivado da data em que o pagamento do ciclo atual foi quitado.** Não existe dia fixo gravado na assinatura — o "dia" usado no cálculo é o dia do pagamento, e ele muda o ciclo inteiro pra frente quando o cliente atrasa.
 4. **`new Date()` não existe dentro de `core/`.** O instante atual entra por parâmetro. Sem isso, o teste passa hoje e quebra dia 31.
 
 Biblioteca: `date-fns` v4 + `@date-fns/tz`. Nada de aritmética manual sobre milissegundos.
 
 ---
 
-## Âncora de fim de mês
+## Vencimento por data de pagamento
 
-O problema: cliente com vencimento dia 31. Fevereiro não tem 31.
+O modelo é: **vencimento(ciclo N+1) = dataPagamentoTotal(ciclo N) + duração(cycle)**, mesmo dia do mês de N meses à frente.
 
-A resposta errada, e comum, é gravar 28 de volta na assinatura. Aí o cliente passa a vencer dia 28 para sempre, e ninguém percebe até ele reclamar meses depois.
+Cliente que paga em dia todo mês vence sempre no mesmo dia — na prática se comporta como uma âncora fixa. Cliente que atrasa "anda" o ciclo inteiro pra frente: pagou o ciclo de janeiro só em 05/02, o ciclo de fevereiro vence 05/03, não no dia em que venceria se ele tivesse pagado em dia.
 
-A resposta certa é **guardar a âncora e derivar o dia efetivo a cada ciclo**:
+```
+Assinatura criada 01/01, mensal.
+
+Cobrança 1   dueAt 01/02   paga em dia, 01/02        → cobrança 2 dueAt 01/03
+Cobrança 2   dueAt 01/03   paga atrasada, 05/03      → cobrança 3 dueAt 05/04
+Cobrança 3   dueAt 05/04   paga em dia, 05/04        → cobrança 4 dueAt 05/05
+```
+
+**Pagamento parcial não move nada.** Só pagamento que quita o valor total da cobrança (`Charge.status` resolve para `PAID`) dispara o cálculo da próxima. Enquanto a cobrança estiver `PARTIALLY_PAID`, não existe cobrança seguinte.
+
+**Primeira cobrança** (sem pagamento anterior): `dueAt = startedAt + duração(cycle)`, mesma lógica de clamp de fim de mês abaixo.
+
+⚠️ Isso substitui o modelo anterior de âncora fixa por assinatura (`dueDayAnchor`). Se algum código, doc ou mock ainda referenciar esse campo, é resíduo do design anterior — corrigir, não seguir.
+
+---
+
+## Clamp de fim de mês
+
+O problema: cliente pagou dia 31. Fevereiro não tem 31.
+
+A resposta errada, e comum, é gravar 28 como se fosse o novo "dia de vencimento" permanente. Aí o cliente que pagasse em março de novo dia 31 veria o sistema vencer dia 28 pra sempre.
+
+A resposta certa é **usar o dia do pagamento a cada ciclo e aplicar o clamp de novo, do zero, a cada cálculo**:
 
 ```ts
-/** Dia efetivo do vencimento naquele mês, respeitando a âncora. */
-export function resolveDueDay(anchor: number, year: number, month: number): number {
-  return Math.min(anchor, daysInMonth(year, month));
+/** Dia efetivo do vencimento naquele mês, respeitando o dia desejado. */
+export function resolveDueDay(desiredDay: number, year: number, month: number): number {
+  return Math.min(desiredDay, daysInMonth(year, month));
 }
 ```
 
-| Âncora | Mês | Dia efetivo |
+| Dia do pagamento | Mês alvo | Dia efetivo do próximo vencimento |
 |---|---|---|
-| 31 | janeiro | 31 |
 | 31 | fevereiro (comum) | 28 |
 | 31 | fevereiro (bissexto) | 29 |
 | 31 | abril | 30 |
-| 31 | março | **31** — voltou |
+| 31 (pagando de novo em março, após passar por fevereiro) | março | **31** — volta |
 | 30 | fevereiro | 28 |
 | 29 | fevereiro (comum) | 28 |
 | 15 | qualquer | 15 |
+
+O clamp nunca "gruda" — ele é recalculado do dia real do pagamento a cada ciclo, nunca a partir do resultado do clamp anterior.
 
 ---
 
@@ -53,18 +77,30 @@ const CYCLE_MONTHS: Record<BillingCycle, number> = {
 };
 ```
 
-O avanço é sempre **em meses**, nunca em dias. Trimestral não é "mais 90 dias" — é "mesmo dia, três meses à frente", com a âncora reaplicada.
+O avanço é sempre **em meses**, nunca em dias. Trimestral não é "mais 90 dias" — é "mesmo dia do pagamento, três meses à frente", com o clamp de fim de mês reaplicado.
 
 ```ts
+/** Vencimento do próximo ciclo, a partir de quando o ciclo atual foi pago. */
 export function nextDueDate(params: {
-  currentDue: Date;      // vencimento atual, em UTC
-  anchor: number;        // 1..31
+  paidAt: Date;          // quando o pagamento total foi registrado, em UTC
   cycle: BillingCycle;
   timezone: string;
 }): Date {
-  const local = toLocal(params.currentDue, params.timezone);
+  const local = toLocal(params.paidAt, params.timezone);
   const target = addMonths(startOfMonth(local), CYCLE_MONTHS[params.cycle]);
-  const day = resolveDueDay(params.anchor, target.getFullYear(), target.getMonth());
+  const day = resolveDueDay(local.getDate(), target.getFullYear(), target.getMonth());
+  return endOfLocalDay(target.getFullYear(), target.getMonth(), day, params.timezone);
+}
+
+/** Vencimento da primeira cobrança, sem pagamento anterior. Mesma lógica, a partir do início da assinatura. */
+export function firstDueDate(params: {
+  startedAt: Date;
+  cycle: BillingCycle;
+  timezone: string;
+}): Date {
+  const local = toLocal(params.startedAt, params.timezone);
+  const target = addMonths(startOfMonth(local), CYCLE_MONTHS[params.cycle]);
+  const day = resolveDueDay(local.getDate(), target.getFullYear(), target.getMonth());
   return endOfLocalDay(target.getFullYear(), target.getMonth(), day, params.timezone);
 }
 
@@ -76,33 +112,37 @@ export function endOfLocalDay(y: number, m: number, d: number, tz: string): Date
 
 ## Período coberto
 
-O modelo é **pré-pago**: o cliente paga para ter acesso no ciclo seguinte.
+O modelo continua **pré-pago**: o cliente paga para ter acesso no ciclo seguinte.
 
 ```
-periodStart = data local do vencimento desta cobrança
-periodEnd   = dia anterior ao próximo vencimento
+periodStart = dueAt da cobrança anterior (ou startedAt, na primeira)
+periodEnd   = dia anterior ao dueAt da cobrança que está sendo criada agora
 ```
 
-Cliente com âncora 10, mensal:
+Cliente que pagou a cobrança de janeiro (`dueAt` 01/02) em dia:
 
 ```
-Cobrança de agosto   dueAt 10/08 23:59:59   período 10/08 → 09/09
-Cobrança de setembro dueAt 10/09 23:59:59   período 10/09 → 09/10
+Cobrança de fevereiro   dueAt 01/02 23:59:59   período 01/02 → 28/02 (dueAt da próxima é 01/03)
 ```
 
-`periodStart` é a **chave de idempotência** da geração (`@@unique([subscriptionId, periodStart])`). O job rodando cinco vezes no mesmo dia gera uma cobrança.
+Cliente que atrasa muda o período coberto do próximo ciclo também — ele é sempre `[dueAt anterior, novo dueAt)`, então um atraso "estica" o período coberto pelo próximo ciclo pra frente junto com o vencimento.
+
+`periodStart` continua sendo a **chave de idempotência** da criação de cobrança (`@@unique([subscriptionId, periodStart])`), reforçada pelo índice único que garante no máximo uma cobrança aberta por assinatura — ver [`02-modelo-de-dados.md`](./02-modelo-de-dados.md).
 
 ---
 
-## Geração de cobrança
+## Emissão de cobrança — dois gatilhos, nunca job de calendário
 
-```ts
-export const CHARGE_LEAD_DAYS = 10;
-```
+Não existe mais job diário que "gera cobrança 10 dias antes do vencimento" — esse modelo dependia de vencimento conhecido de antemão, e aqui o vencimento do próximo ciclo só existe depois que o atual é pago.
 
-O job `charges-generate` roda diariamente e emite as cobranças cujo vencimento cai nos próximos 10 dias, para assinaturas `ACTIVE`.
+Cobrança nasce em exatamente dois momentos, sempre dentro da transação de quem dispara:
 
-Dez dias porque o primeiro passo da régua padrão é D-5 e ele precisa de uma cobrança existente para se ancorar. Gerar com muita antecedência polui a lista de "em aberto" e faz o operador desconfiar do número.
+1. **Criação da assinatura** — `Charge.dueAt = firstDueDate(startedAt, cycle, tz)`, `periodStart = startedAt`.
+2. **Pagamento total registrado** — quando o pagamento quita o valor da cobrança (`Charge.status` vira `PAID`), a mesma transação cria a próxima `Charge` com `dueAt = nextDueDate(paidAt, cycle, tz)`, `periodStart = dueAt da cobrança que acabou de ser paga`.
+
+Pagamento parcial não passa por nenhum dos dois — só atualiza `Charge.status` para `PARTIALLY_PAID`.
+
+Cliente que nunca paga a cobrança atual **não gera cobrança nova**. Fica `OVERDUE` indefinidamente até ser quitada — é o comportamento esperado, consistente com "no máximo uma cobrança aberta por assinatura".
 
 ### Valor da cobrança
 
@@ -148,7 +188,7 @@ Se o fornecedor aumentar o preço em setembro, o relatório de agosto não pode 
 
 ## Marcação de atraso
 
-Job diário: cobranças `OPEN` com `dueAt < agora` viram `OVERDUE`.
+Job diário (`charges-mark-overdue`, 03:00 local) — a única responsabilidade de calendário que sobra: cobranças `OPEN` com `dueAt < agora` viram `OVERDUE`.
 
 A comparação é contra o instante atual em UTC, e funciona porque `dueAt` já foi gravado como fim do dia local. Cobrança que vence 10/08 no Brasil só fica atrasada às 03:00 UTC do dia 11.
 
@@ -170,38 +210,41 @@ export function monthBoundsUtc(year: number, month: number, tz: string): { from:
 
 Escritos **antes** da implementação, vermelho antes de verde.
 
-### Âncora
+### Clamp de fim de mês (contra `paidAt`, não mais contra um campo fixo)
 
-- [ ] Âncora 31, janeiro → 31/01
-- [ ] Âncora 31, fevereiro comum → 28/02
-- [ ] Âncora 31, fevereiro bissexto (2028) → 29/02
-- [ ] Âncora 31, abril → 30/04
-- [ ] Âncora 31, de fevereiro para março → **volta para 31/03**
-- [ ] Âncora 30, fevereiro → 28/02, e de volta para 30 em março
-- [ ] Âncora 29, fevereiro comum → 28/02
-- [ ] Âncora 1 e âncora 15 → nunca mudam
+- [ ] Pagou 31/01 → próximo vencimento 28/02 (comum)
+- [ ] Pagou 31/01 → próximo vencimento 29/02 (bissexto, 2028)
+- [ ] Pagou 31/01, ciclo trimestral → próximo vencimento 30/04
+- [ ] Pagou 28/02, depois pagou de novo 28/03 → mantém dia 28 (não "sobe" sozinho pra 31)
+- [ ] Pagou dia 31 em janeiro, depois pagou de novo dia 31 em março → **volta a vencer 31**
+- [ ] Pagou dia 1 e dia 15 → nunca mudam, qualquer mês
 
 ### Ciclos
 
-- [ ] Mensal de 31/01 → 28/02 → 31/03
-- [ ] Trimestral de 31/01 → 30/04 → 31/07 → 31/10
-- [ ] Semestral de 31/08 → 28/02 → 31/08
-- [ ] Anual de 29/02/2028 → 28/02/2029
-- [ ] Anual atravessando virada de ano: 15/12/2026 → 15/12/2027
+- [ ] Mensal: pagou 31/01 → vence 28/02; pagou 28/02 → vence 28/03 (não 31/03)
+- [ ] Trimestral: pagou 31/01 → vence 30/04 → pagou 30/04 → vence 31/07 (mês de 31 dias, volta a subir)
+- [ ] Semestral: pagou 31/08 → vence 28/02 → pagou 28/02 → vence 31/08 (volta)
+- [ ] Anual: pagou 29/02/2028 → vence 28/02/2029
+- [ ] Anual atravessando virada de ano: pagou 15/12/2026 → vence 15/12/2027
 
 ### Fuso
 
-- [ ] `dueAt` de 10/08 em `America/Sao_Paulo` grava `2026-08-11T02:59:59.999Z`
+- [ ] `dueAt` calculado a partir de pagamento em 10/08 em `America/Sao_Paulo` grava `2026-08-11T02:59:59.999Z` pro mês seguinte
 - [ ] Cobrança que vence 10/08 não está `OVERDUE` às 23:00 local do dia 10
 - [ ] Cobrança que vence 10/08 está `OVERDUE` às 00:01 local do dia 11
 - [ ] `monthBoundsUtc` de agosto não inclui pagamento de 31/07 22:00 local
 - [ ] `monthBoundsUtc` de agosto inclui pagamento de 31/08 22:00 local
 
-### Idempotência
+### Encadeamento por pagamento e idempotência
 
-- [ ] `charges-generate` rodando três vezes no mesmo dia gera uma cobrança por assinatura
-- [ ] `charges-generate` com assinatura `SUSPENDED` não gera nada
-- [ ] Assinatura criada hoje com vencimento hoje gera cobrança na primeira execução
+- [ ] Assinatura criada 01/01, mensal, sem pagamento ainda → primeira cobrança vence 01/02
+- [ ] Pagamento total registrado → cria a próxima cobrança com `dueAt = nextDueDate(paidAt, ...)`
+- [ ] Pagamento parcial → **não** cria cobrança nova; `Charge` permanece `PARTIALLY_PAID`
+- [ ] Segundo pagamento que completa o saldo da mesma cobrança gera a próxima, usando o `paidAt` do pagamento que completou
+- [ ] `registerPayment` chamado duas vezes pro mesmo pagamento (dupla submissão) não cria duas cobranças seguintes
+- [ ] Índice único `subscriptions_single_open_charge` rejeita uma segunda `Charge` `OPEN`/`OVERDUE`/`PARTIALLY_PAID` pra mesma assinatura
+- [ ] Assinatura nunca paga permanece com uma única `Charge` `OVERDUE`, nenhuma cobrança nova é criada
+- [ ] Assinatura `SUSPENDED` não gera cobrança nova mesmo que o gatilho de criação seja disparado
 
 ### Valores
 

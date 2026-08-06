@@ -58,7 +58,7 @@ core/      ──> nada (nem Prisma, nem Next, nem I/O, nem new Date())
 lib/       ──> Prisma, env
 ```
 
-- **`core/` é puro.** Cálculo de vencimento, âncora de fim de mês, arredondamento, desconto, margem e avaliação da régua vivem lá, testáveis em milissegundos. Se uma regra financeira precisa de I/O para ser testada, está no lugar errado.
+- **`core/` é puro.** Cálculo de vencimento a partir da data de pagamento (com clamp de fim de mês), arredondamento, desconto, margem e avaliação da régua vivem lá, testáveis em milissegundos. Se uma regra financeira precisa de I/O para ser testada, está no lugar errado.
 - **Server Action não contém regra.** Valida com Zod, chama o service, revalida o cache.
 - **Uma feature não importa de outra feature.**
 - **Nenhum componente cliente recebe `BigInt`.** Converte para string na borda do servidor.
@@ -77,14 +77,15 @@ lib/       ──> Prisma, env
 **Data e fuso**
 - Banco em UTC; vencimento e corte de relatório são conceitos **locais** (`Settings.timezone`).
 - Vencimento é `23:59:59` local.
-- Âncora de fim de mês é preservada: 31 vira 28 em fevereiro e **volta** a 31. Nunca sobrescrever a âncora com o dia efetivo.
+- **Vencimento do próximo ciclo = data do pagamento total do ciclo atual + duração do ciclo**, mesmo dia do mês seguinte. Não existe mais dia fixo por assinatura — o "dia" é sempre o dia em que o cliente pagou. Pagou 05/02 → próxima cobrança vence 05/03, não importa quando a cobrança de fevereiro venceu.
+- Fim de mês continua com clamp: pagou 31/01 → vence 28/02 (ou 29 em bissexto) → **volta** a vencer 31/03. Cobrança nova só nasce em dois momentos: criação da assinatura (`startedAt + ciclo`) e pagamento total registrado. Pagamento parcial não gera cobrança nova.
 - Corte de relatório sai de `monthBoundsUtc(...)`, nunca de `date_trunc('month', ...)` em UTC.
 
 **Idempotência** — cada situação tem o seu mecanismo:
 
 | Situação | Mecanismo |
 |---|---|
-| Geração de cobrança | `UNIQUE(subscriptionId, periodStart)` |
+| Geração de cobrança | `UNIQUE(subscriptionId, periodStart)` + índice único parcial: no máximo uma `Charge` `OPEN`/`OVERDUE`/`PARTIALLY_PAID` por assinatura |
 | Passo da régua | `UNIQUE(chargeId, stepId)` em `dunning_executions` |
 | Uma mensagem por cliente por dia | Índice único parcial em `messages (customerId, scheduledDate)` |
 | Canal padrão único | Índice único parcial em `channel_configs (isDefault)` |
@@ -111,7 +112,7 @@ lib/       ──> Prisma, env
 - Sem `console.log` em código de produção. Log é JSON com ids, nunca objetos inteiros.
 
 **Testes** — TDD obrigatório, vermelho antes de verde:
-- `src/core/**` — vencimento, âncora, ciclo, desconto, arredondamento, margem
+- `src/core/**` — vencimento por data de pagamento (com clamp de fim de mês), ciclo, desconto, arredondamento, margem
 - Travas T5–T8
 - Idempotência de cada job
 - Criptografia de credencial (ida e volta, e falha explícita com chave errada)

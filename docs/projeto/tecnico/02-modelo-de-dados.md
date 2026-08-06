@@ -147,8 +147,7 @@ model Subscription {
   costCents          BigInt              @default(0)   // o que custa por ciclo
   cycle              BillingCycle        @default(MONTHLY)
 
-  dueDayAnchor       Int                               // 1..31 — âncora, ver doc 03
-  nextDueAt          DateTime                          // 23:59:59 local, em UTC
+  nextDueAt          DateTime                          // 23:59:59 local, em UTC — cache do vencimento da cobrança em aberto
   startedAt          DateTime            @default(now())
 
   discountType       DiscountType?
@@ -185,7 +184,7 @@ model Subscription {
 Notas:
 
 - `supplierId` é **copiado do plano na criação** e passa a ser a fonte da verdade. O operador migra um cliente de fornecedor sem trocar o plano dele.
-- `dueDayAnchor` é a âncora, não o dia efetivo. Cliente com âncora 31 vence dia 28 em fevereiro e volta para 31 em março. ⚠️ **Nunca sobrescrever a âncora com o dia efetivo** — ver [`03-datas-e-ciclos.md`](./03-datas-e-ciclos.md).
+- **Não existe mais dia fixo de vencimento por assinatura.** O vencimento da próxima cobrança é sempre `dataDoPagamentoTotal + duração do ciclo`, com o mesmo clamp de fim de mês de antes (pagou 31/01 → vence 28/02 → volta a 31/03) — só que o "dia" usado no clamp é o dia em que o cliente pagou, não um campo gravado na assinatura. Ver [`03-datas-e-ciclos.md`](./03-datas-e-ciclos.md).
 - `nextDueAt` é cache do próximo vencimento, para a query do painel não recalcular a base inteira. Recalculado a cada emissão de cobrança.
 
 ---
@@ -252,6 +251,7 @@ Regras duras:
 - **Cobrança com pagamento registrado não é cancelada nem editada.** O `service` recusa; a UI nem oferece.
 - `Charge.status` é derivado da soma dos pagamentos e **gravado** — é estado, não saldo. O total pago continua sendo `SUM(payments.amountCents)`, calculado na query.
 - `periodStart` é a chave de idempotência. Ciclo trimestral que começa em 01/03 gera exatamente uma cobrança, quantas vezes o job rodar.
+- **No máximo uma `Charge` `OPEN`/`OVERDUE`/`PARTIALLY_PAID` por `subscriptionId`.** Cobrança nasce em dois pontos de entrada — criação da assinatura e pagamento total registrado — e só o índice único parcial abaixo garante que os dois não gerem duas cobranças abertas se disparados em paralelo ou em dupla submissão.
 
 ⚠️ Multa e juros por atraso **não estão no escopo B**. Se entrarem, são colunas novas (`lateFeeCents`, `interestCents`) e recálculo idempotente sobre o principal — nunca sobre o total com encargos.
 
@@ -384,6 +384,10 @@ ALTER TABLE subscriptions ADD CONSTRAINT subs_anchor_range         CHECK (due_da
 
 -- Apenas um canal padrão
 CREATE UNIQUE INDEX channel_configs_single_default ON channel_configs (is_default) WHERE is_default;
+
+-- No máximo uma cobrança aberta por assinatura — vencimento só existe depois do pagamento anterior
+CREATE UNIQUE INDEX subscriptions_single_open_charge ON charges (subscription_id)
+  WHERE status IN ('OPEN', 'OVERDUE', 'PARTIALLY_PAID');
 ```
 
 ---
