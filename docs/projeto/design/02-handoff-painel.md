@@ -1,7 +1,8 @@
 # 02 — Handoff de design · Painel MT Conexões
 
 > Cole isto no Claude Design. Documento autocontido.
-> Spec técnica em [`../tecnico/`](../tecnico/) · marca completa em [`00-marca.md`](./00-marca.md).
+> Spec técnica completa em [`../tecnico/`](../tecnico/) · marca completa em [`00-marca.md`](./00-marca.md).
+> Este handoff cobre visual **e** regra de negócio. Toda tela nova ou variação de estado que não estiver aqui, conferir a spec técnica antes de inventar — não adivinhar.
 
 ## O que é
 
@@ -32,7 +33,7 @@ Mesma marca do site, temperatura diferente. O site precisa convencer; o painel p
 
 --ok:         #4ADE80;   /* pago, ativo, entregue */
 --warn:       #FBBF24;   /* vence hoje, atenção */
---bad:        #F87171;   /* falhou, cancelado */
+--bad:        #F87171;   /* falhou, cancelado, margem negativa */
 ```
 
 ⚠️ **Texto sobre `--flame` é `--ink`, nunca branco.** Branco dá 3,6:1 e reprova AA.
@@ -60,6 +61,97 @@ Raio 4px em input e badge, 10px em card e botão. Borda 1px `--line` — sem som
 
 ---
 
+## Vocabulário e regras de negócio que toda tela precisa respeitar
+
+Isto não é enfeite — é o que evita a tela inventar um comportamento que o servidor vai recusar, ou pior, que o servidor aceita e produz o número errado.
+
+### Vocabulário fixo
+
+Nomear na UI exatamente assim, nunca pelo termo técnico interno:
+
+| Termo na tela | É | Nunca chamar de |
+|---|---|---|
+| **Cliente** | O assinante final (`Customer`) — quem recebe a cobrança | "usuário", "tenant" |
+| **Plano** | Pacote comercial (`Plan`) — nome, ciclo, preço/custo **sugeridos** | — |
+| **Assinatura** | O vínculo real cliente↔plano (`Subscription`) — preço e custo que valem de verdade vivem aqui, não no plano | — |
+| **Fornecedor** | Quem vende o crédito revendido (`Supplier`) | "Supplier", "provider" |
+| **Cobrança** | Um ciclo faturado (`Charge`) | "fatura", "boleto" (não emite boleto) |
+| **Pagamento** | Dinheiro que entrou (`Payment`) | — |
+| **Canal de WhatsApp** | Um dos três adapters configurados | "provider de mensageria" |
+| **Régua** | A sequência de passos de cobrança automática (`DunningRule`) | "dunning", "cadência" |
+
+### Dinheiro — sempre `R$ 0,00`, nunca dado bruto
+
+Todo valor chega pronto do servidor já formatado ou como string em centavos — nunca como `number` fracionário. Se um mock ou protótipo usar `1234.56` como tipo de dado monetário, está simulando um bug real do sistema (`float` para dinheiro é proibido até em variável temporária). Ver [`../tecnico/04-dinheiro-e-margem.md`](../tecnico/04-dinheiro-e-margem.md).
+
+### Preço e custo são por **assinatura**, não por plano
+
+`Plan.priceCents`/`Plan.costCents` são só sugestão preenchida no formulário de criação. O valor que vale — o que o cliente paga e o que custa de verdade — mora em `Subscription.priceCents`/`Subscription.costCents`, negociado por cliente.
+
+Consequência para a tela: **editar um plano nunca muda o que uma assinatura existente cobra.** Reajuste é ação na própria assinatura (ou reajuste em lote disparado a partir do fornecedor — ver alerta abaixo). Ver [`../tecnico/02-modelo-de-dados.md`](../tecnico/02-modelo-de-dados.md).
+
+### Histórico é imutável — reajuste nunca é retroativo
+
+`Charge.principalCents` e `Charge.costCents` são congelados no momento em que a cobrança é emitida. Reajustar preço ou custo de uma assinatura muda a **próxima** cobrança gerada; as cobranças já emitidas mantêm o valor antigo, e o relatório do mês passado não muda. Toda tela que mostra histórico (ficha do cliente, relatórios, timeline) está mostrando o valor congelado daquele ciclo, não o valor atual da assinatura.
+
+Isso também vale para cobrança já paga: **não é editável nem cancelável**. Se a tela mostra um botão de editar ou cancelar numa cobrança `PAID`, é erro — o servidor vai recusar de qualquer forma, mas a tela não deve oferecer o que vai ser recusado.
+
+### Faturado × Recebido — duas leituras de receita, nomear qual é qual
+
+| Termo | Definição | Onde aparece |
+|---|---|---|
+| **Faturado** | Cobranças emitidas no período, pagas ou não | Painel de lucro/margem — casa a receita com o custo na mesma competência |
+| **Recebido** | Pagamentos com data de pagamento no período | Fluxo de caixa |
+
+⚠️ Custo é reconhecido **na emissão**, não no pagamento. Cliente inadimplente aparece como prejuízo — é a realidade: o crédito foi comprado do fornecedor e não foi pago pelo cliente. **Margem em risco** = custo já reconhecido de cobranças ainda em aberto — é o número que mais importa pra quem paga o fornecedor antes de receber do cliente.
+
+⚠️ Rotular como **"lucro bruto"**, nunca "lucro" puro — não há módulo de despesa fixa (hospedagem, chip, contador). Ver [`../tecnico/04-dinheiro-e-margem.md`](../tecnico/04-dinheiro-e-margem.md).
+
+### Data — sempre no fuso do negócio, nunca UTC cru nem fuso do navegador
+
+Vencimento é `23:59:59` local. "Hoje", "atraso" e corte de relatório de mês são conceitos locais. Uma cobrança que vence 10/08 só fica atrasada depois da meia-noite local do dia 10 — não confundir com o instante UTC gravado no banco. Ver [`../tecnico/03-datas-e-ciclos.md`](../tecnico/03-datas-e-ciclos.md).
+
+### Situação de cobrança — os únicos valores possíveis
+
+`OPEN`, `OVERDUE`, `PARTIALLY_PAID`, `PAID`, `CANCELLED`. "Vence hoje" **não é um status novo** — é uma cobrança `OPEN` cujo vencimento é a data de hoje; a tela deriva isso, não inventa um sexto estado no banco.
+
+### Régua — estados e travas que a tela precisa expor, não esconder
+
+- Estado da régua: `DRAFT` (rascunho) → `REVIEW` (calcula tudo, não envia nada) → `ACTIVE` → `PAUSED`. **A régua é entregue em `REVIEW`.** Ativar exige o operador ver a lista real de quem receberia — não só um número.
+- Ativar a partir de `REVIEW` tem três caminhos: **enviar todas**, **ignorar retroativos e ativar** (pré-selecionado — marca cobranças anteriores como `OVERDUE` sem agendar nada), **manter em revisão**.
+- Kill switch (`Settings.sendingPaused`) para tudo, na hora. Mensagem parada mais de 24h vira `CANCELLED` com motivo "atrasada" quando o envio é retomado — não dispara tudo de uma vez.
+- Opt-out (cliente pediu pra sair) bloqueia envio em **todos** os canais, sempre.
+- Quiet hours (padrão 08h–20h local): fora da janela, a mensagem **reagenda**, nunca é descartada.
+- Um cliente recebe no máximo uma mensagem de cobrança por dia — mesmo com três cobranças vencidas, uma mensagem consolidada com o total.
+- Ação manual acima de 100 mensagens exige o operador **digitar o número** pra confirmar, não um "tem certeza?".
+- Ver [`../tecnico/06-regua-e-canais.md`](../tecnico/06-regua-e-canais.md) para o detalhe de cada trava (T5–T8).
+
+### Canal de WhatsApp — cada provider tem limite diferente, a tela não pode fingir que são iguais
+
+Três canais possíveis (`META_CLOUD`, `EVOLUTION`, `SALVY`), um ativo por vez via "canal padrão". Diferenças que aparecem na tela:
+
+- **Meta Cloud** só entrega **template pré-aprovado** fora de uma conversa iniciada pelo cliente — que é sempre o caso da régua. Passo sem template aprovado configurado não sai como texto livre; ele fica `SKIPPED` e a tela da régua mostra o aviso.
+- **Evolution** roda num servidor do próprio cliente (VPS dele, fora do controle do sistema) e viola os Termos do WhatsApp — a tela de configuração desse canal mostra o aviso e registra o aceite.
+- Nenhum canal falha em silêncio: erro do provider aparece sanitizado (sem token) e a mensagem que não pôde sair mostra o motivo na timeline, nunca some sem explicação.
+- Credencial de canal **nunca** volta pra tela, nem mascarada — mostra só "configurado em DD/MM" e um botão de substituir.
+
+### Credencial de acesso do assinante — a senha que o cliente usa pra assistir
+
+Diferente de credencial de canal: essa é mostrável, mas **auditada**. Mascarada por padrão (`••••••••`); revelar grava quem viu e quando **antes** de mostrar o valor, e o valor some da tela ao fechar o diálogo. Nunca aparece em log, export ou mensagem de template.
+
+### Alertas de margem — o motivo de cada um
+
+| Alerta | Dispara quando |
+|---|---|
+| Margem negativa | Preço da assinatura ficou ≤ custo da assinatura |
+| Margem abaixo do limite | Margem da assinatura abaixo do percentual configurado em Ajustes (padrão 30%) |
+| Custo do fornecedor subiu | Editar o custo padrão do fornecedor mostra quantas assinaturas caem abaixo do limite e oferece reajuste em lote |
+| Cliente bom em atraso | Cliente com faturado acumulado acima da média tem cobrança vencida agora |
+
+⚠️ Reajuste em lote muda o preço/custo da **assinatura** dali pra frente. Não toca em cobrança já emitida — ver "Histórico é imutável" acima.
+
+---
+
 ## Elemento de assinatura — a linha de vencimento
 
 O dashboard **não** abre com quatro cards de estatística. É a resposta template, e não é o que ele pergunta ao abrir.
@@ -82,6 +174,7 @@ A tela abre com uma faixa horizontal ancorada em hoje, mostrando onde as cobran�
 - Cada coluna é clicável e filtra a lista abaixo. A faixa **é** a navegação, não enfeite.
 - Colunas de atraso em `--flame`, hoje em `--warn`, a vencer em `--paper-dim`.
 - Contagem e valor em mono.
+- "+N" é cobrança `OVERDUE` há N dias; "-N" é `OPEN` com N dias até o vencimento. Nenhum desses é um status próprio — são derivados de `dueAt` contra hoje, no fuso local.
 - Formalmente ecoa a faixa de programação do site — mesma família visual, conteúdo diferente. Sem repetir.
 
 Abaixo dela, a lista filtrada. Os totais do mês ficam **depois**, não antes: ele confere lucro uma vez por semana e cobra todo dia.
@@ -102,6 +195,8 @@ Abaixo dela, a lista filtrada. Os totais do mês ficam **depois**, não antes: e
 │ Leads     │                                              │
 │ Relatórios│                                              │
 │ ───────── │                                              │
+│ Fornecedores                                             │
+│ Planos    │                                              │
 │ Ajustes   │                                              │
 │           │                                              │
 │ [⏸ Pausar]│  ← kill switch, sempre visível               │
@@ -130,13 +225,25 @@ Painel de lucro no topo — é o que ele mais gosta de ver:
 │ Fornecedor: Tubarão               ● ATIVO      │
 ├────────────────────────────────────────────────┤
 │ Faturado   Recebido    Custo   Lucro   Margem  │
-│ R$2.640    R$2.580    R$680   R$1.960    74%   │
+│ R$2.640    R$2.580    R$680   R$1.960    74%  │
 └────────────────────────────────────────────────┘
 ```
 
 Tudo em mono. Margem em `--ok` acima do limite, `--warn` abaixo, `--bad` se negativa.
 
+Esses números são **soma sobre o histórico de cobranças do cliente** ("Faturado", "Custo" = `SUM(charge.principalCents - discountCents)` e `SUM(charge.costCents)` de cada cobrança já emitida, cada uma com o valor congelado do próprio ciclo). Não é "preço atual × número de ciclos" — um cliente que teve reajuste no meio do caminho mostra a mistura real de valores antigos e novos.
+
 Abas: **Assinaturas · Cobranças · Mensagens**.
+
+### Assinatura (dentro da ficha do cliente)
+
+Mostra plano, ciclo (mensal/trimestral/semestral/anual), preço atual, custo atual, dia de vencimento e fornecedor.
+
+⚠️ **Editar preço ou custo aqui é uma ação forward-only.** O formulário não permite "aplicar retroativo" — essa opção não existe no sistema. O texto de apoio deixa isso explícito: *"O novo valor vale a partir da próxima cobrança gerada. Cobranças já emitidas não mudam."*
+
+Trocar de plano copia o novo ciclo e as sugestões de preço/custo pro formulário, mas o operador confirma — não substitui em silêncio o preço negociado.
+
+⚠️ **Dia de vencimento não é um campo editável — é sempre calculado.** Vale a regra: vencimento do próximo ciclo = data em que o cliente pagou o ciclo atual + duração do ciclo (mesmo dia do mês seguinte, com o mesmo clamp de fim de mês: pagou 31/01 → mostra vencimento 28/02, e isso é esperado, não bug). A tela nunca oferece um campo pra digitar ou alterar o dia de vencimento diretamente — só mostra o resultado. Cliente que atrasa e paga em outro dia muda o dia de vencimento de todos os ciclos seguintes; a ficha não avisa isso como erro, é o comportamento correto.
 
 ### Credencial de acesso
 
@@ -156,19 +263,20 @@ Senha      ••••••••   [ Revelar ]
 
 ### Cobranças
 
-Tabela: cliente · valor · vencimento · situação · dias de atraso. Situação como badge:
+Tabela: cliente · valor · vencimento · situação · dias de atraso. Situação como badge — os únicos cinco valores possíveis, direto do banco (mais "vence hoje", derivado):
 
 | Situação | Cor |
 |---|---|
 | Em aberto | `--paper-dim`, borda `--line` |
 | Vence hoje | `--warn` |
 | Em atraso | `--flame` |
+| Parcialmente paga | `--warn`, com valor restante |
 | Paga | `--ok` |
 | Cancelada | `--paper-dim`, texto riscado |
 
 Ação principal na linha: **Registrar pagamento**. Diálogo com valor pré-preenchido pelo saldo, data padrão hoje, forma padrão Pix. Três campos, submit desabilitado durante o envio.
 
-⚠️ Cobrança com pagamento registrado **não mostra** a opção de cancelar. A regra é do servidor; a interface não oferece o que vai ser recusado.
+⚠️ Cobrança com pagamento registrado **não mostra** a opção de cancelar nem de editar valor. A regra é do servidor; a interface não oferece o que vai ser recusado.
 
 ### Mensagens
 
@@ -181,7 +289,9 @@ Lista com situação, e a timeline dentro da ficha do cliente:
 11/08  ✓ Pago      R$ 60,00 via Pix       registro manual
 ```
 
-Marcadores: `✓` em `--ok`, `⊘` em `--paper-dim`, `✕` em `--bad`. Falha mostra o motivo em texto, não em código. É a resposta para "por que meu cliente recebeu essa mensagem?".
+Marcadores: `✓` em `--ok`, `⊘` em `--paper-dim`, `✕` em `--bad`. Falha mostra o motivo em texto, não em código (`opted_out`, `pagamento confirmado`, `template não aprovado` — nunca o enum cru). É a resposta para "por que meu cliente recebeu essa mensagem?" — a pergunta de suporte mais comum do domínio.
+
+Mensagem pode ser da régua automática (`DUNNING`) ou disparo manual assistido (`MANUAL` — o operador filtra clientes e dispara em lote fora da régua, mesma trava de confirmação acima de 100). A tela distingue as duas origens.
 
 ### Régua
 
@@ -203,6 +313,38 @@ Estado da régua no topo, como faixa:
 
 ⚠️ A tela de revisão mostra **a lista real** de quem receberia, não só o número. Ativar sem ver a lista é como se manda cobrança para quem já pagou.
 
+#### Cadastro — como a régua nasce e é editada
+
+**Nível 1 — lista de réguas.** Pode existir mais de uma régua cadastrada (`DunningRule`), mas só **uma** é a padrão (`isDefault`) — é ela que o motor de avaliação usa todo dia. Tela de lista: nome · estado (badge da tabela acima) · "padrão" (marcador, só uma linha tem) · quantos passos. Ação principal: **Nova régua**. Ação por linha: **Tornar padrão** (só aparece se não for a padrão atual, pede confirmação porque troca qual régua roda amanhã de manhã).
+
+**Nível 2 — editor de uma régua.** Abre no eixo `D-5 ── D-2 ── D0 ── D+1 ── D+3 ── D+5` (mock acima). Cada marca no eixo é um passo já cadastrado; espaço vazio no eixo é onde **Adicionar passo** entra. Régua nasce em `RASCUNHO`, sem nenhum passo — o operador monta do zero ou parte da régua padrão pré-carregada (D-5/D-2/D0/D+1/D+3/D+5 da tabela do topo desta seção).
+
+**Nível 3 — formulário de um passo** (dialog ou painel lateral, abre ao clicar "Adicionar passo" ou num passo existente no eixo):
+
+| Campo | Tipo | Regra |
+|---|---|---|
+| Deslocamento | número + antes/depois do vencimento | Vira `offsetDays` negativo (antes) ou positivo (depois). Não pode repetir um deslocamento já usado nessa régua — **um passo por dia do eixo** (`@@unique([ruleId, offsetDays])`). Tentar salvar um segundo D-5 é erro de validação, não sobrescreve o existente. |
+| Ação | select: **Enviar mensagem** / **Suspender assinatura** / **Avisar o dono** | Define quais campos abaixo aparecem. |
+| Texto da mensagem | textarea, só quando ação = Enviar mensagem | Variáveis em português digitadas como `{{cliente.primeiro_nome}}` — lista completa em [`../tecnico/06-regua-e-canais.md`](../tecnico/06-regua-e-canais.md). Editor mostra a lista de variáveis disponíveis ao lado (chips clicáveis que inserem no cursor), não deixa o operador adivinhar a sintaxe. |
+| Template aprovado (Meta) | campo extra, só quando ação = Enviar mensagem **e** o canal padrão ativo é Meta Cloud | Nome do template já aprovado na Meta + mapeamento das variáveis posicionais. Sem isso preenchido, esse passo não sai como mensagem quando o canal ativo é Meta — vira `SKIPPED` no motor (ver "Canais" acima). A tela avisa isso no próprio formulário do passo, não só depois de ativar. |
+| Passo ativo | toggle | Passo desligado fica visível no eixo (esmaecido) mas o motor pula ele — forma de desativar um degrau sem apagar o texto já escrito. |
+
+Botão salvar do passo só habilita depois que toda variável usada no texto existe na lista conhecida — variável digitada errada (`{{cliente.primerio_nome}}`) bloqueia o salvar com a linha e o erro apontados, não deixa passar pra falhar no envio. `{{assinatura.senha}}` nunca é uma opção oferecida nem aceita — não existe na lista de variáveis, ponto.
+
+**Reordenar/remover passo**: arrastar no eixo ou excluir pelo formulário do passo. Excluir pede confirmação só se o passo já tiver `DunningExecution` associada (já rodou pra alguma cobrança) — passo nunca executado remove direto.
+
+⚠️ Passo com ação "Suspender assinatura" **não corta o acesso técnico** (streaming continua funcionando) — só muda a situação da assinatura no painel e avisa o operador. O texto da tela não pode sugerir que a suspensão é automática no serviço.
+
+**Salvar a régua inteira** não muda o estado (`RASCUNHO` continua `RASCUNHO`) — mudar de estado é ação separada e explícita: botão **Enviar para revisão** leva a `RASCUNHO → EM REVISÃO`; as três opções da faixa de revisão (enviar todas / ignorar retroativos e ativar / manter em revisão) levam a `ATIVA` ou de volta pra fila.
+
+### Canais
+
+Um card por provider (Meta Cloud, Evolution, Salvy). Cada card mostra: situação (configurado/não configurado, último teste de conexão ok/falhou), qual é o canal padrão (só um por vez), e nunca a credencial em si.
+
+⚠️ Canal padrão inativo ou falhando **não** faz failover automático pra outro canal — a tela mostra a falha, não troca de canal sozinha. Falha visível é melhor que mensagem saindo por um número que o cliente não esperava.
+
+Card do Evolution mostra o aviso de que roda em servidor do próprio cliente e viola os Termos do WhatsApp, com registro de aceite obrigatório antes de ativar.
+
 ### Kill switch
 
 Botão fixo no rodapé da sidebar. Estado normal: fantasma, borda `--line`, texto `--paper-dim`, rótulo **"Pausar envios"**.
@@ -213,14 +355,32 @@ Não fica em Ajustes. Quando ele precisa disso, precisa agora.
 
 ### Leads
 
-Entram pelo formulário do site. Tabela: nome · WhatsApp · plano de interesse · origem · quando. Ação principal: **Converter em cliente**, que abre o cadastro pré-preenchido.
+Entram pelo formulário do site. Tabela: nome · WhatsApp · plano de interesse · origem · quando · situação (`Novo`, `Contatado`, `Convertido`, `Descartado`). Ação principal: **Converter em cliente**, que abre o cadastro pré-preenchido.
+
+⚠️ Telefone repetido **não** é bloqueado nem escondido aqui — a mesma pessoa pode preencher o formulário duas vezes, e recusar o segundo envio esconde um lead real. Se a tela quer sinalizar duplicidade, é indicação visual, não bloqueio.
+
+### Fornecedores
+
+Tabela: nome · custo padrão por ciclo · quantas assinaturas ativas · margem média. Editar o custo padrão do fornecedor **não** muda assinatura nenhuma sozinho — dispara o alerta "custo subiu" com a lista de assinaturas que caem abaixo do limite de margem e a opção de reajuste em lote (que edita `priceCents`/`costCents` das assinaturas afetadas, forward-only, mesma regra de "Histórico é imutável").
+
+### Planos
+
+Tabela: nome · ciclo · preço sugerido · custo sugerido · fornecedor · assinaturas ativas. Formulário simples — nome, ciclo, fornecedor, preço e custo sugeridos.
+
+⚠️ Rótulo do campo de preço/custo aqui é literalmente **"sugerido"** ou "valor padrão do plano" — nunca "preço", sem qualificador, porque o valor que vale de verdade está na assinatura, não aqui. Editar um plano existente não abre um fluxo de "aplicar a todos os clientes" — esse fluxo não existe pra plano, só pra fornecedor (acima).
+
+### Configurações
+
+Campos: nome do negócio, fuso horário (padrão `America/Sao_Paulo`), chave Pix e nome do titular (usada nos templates de cobrança), horário de silêncio da régua (início/fim, padrão 08h–20h), percentual de alerta de margem (padrão 30%), troca de senha do usuário.
+
+Kill switch **não** mora aqui — fica fixo na sidebar (ver acima). Esta tela é configuração de baixa frequência, não controle de emergência.
 
 ---
 
 ## Regras de interação
 
 - **Ação destrutiva pede confirmação** — cancelar cobrança, desconectar canal, anonimizar cliente. Diálogo nomeia o que será afetado, não "Tem certeza?".
-- **Ação em massa acima de 100 mensagens exige digitar o número.** Trava de produto: "Digite 247 para confirmar."
+- **Ação em massa acima de 100 mensagens exige digitar o número.** Trava de produto: "Digite 247 para confirmar." Vale tanto pra ativação da régua quanto pra disparo manual assistido.
 - **Toda lista trata carregando, erro e vazio.** Vazio aponta para a ação: "Nenhum cliente ainda — [Cadastrar o primeiro]". "Nenhum registro encontrado" não é estado vazio, é beco sem saída.
 - **Carregando é skeleton na forma do conteúdo**, não spinner de tela cheia.
 - Erro nomeia o que aconteceu e o que fazer, na voz da interface. Sem pedido de desculpa, sem vago.
