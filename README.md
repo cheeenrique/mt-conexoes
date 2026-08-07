@@ -33,7 +33,8 @@ Sem monorepo, sem NestJS, sem RLS/multi-tenancy/RBAC — descartado, recuperáve
 cp .env.example .env.local
 docker compose up -d db
 pnpm install
-pnpm dlx prisma migrate deploy
+pnpm db:migrate
+pnpm db:seed
 pnpm dev
 ```
 
@@ -46,12 +47,7 @@ pnpm test:integration  # suíte de integração — precisa do banco (docker com
 
 ⚠️ O `docker-compose.yml` mapeia o Postgres no host na porta **5442** (não 5432) — colisão com outro projeto local forçou esse remapeamento. `DATABASE_URL` em `.env.example`/`.env.local` já aponta para `localhost:5442`. Dentro da rede docker o container continua respondendo na 5432 padrão.
 
-⚠️ O Prisma CLI (`prisma migrate deploy`, `prisma generate`, `prisma studio`) **não** lê `.env.local` sozinho — só `.env`. Next.js e o setup dos testes de integração já leem `.env.local`, mas pra rodar comando Prisma direto no terminal, exporte a variável antes:
-
-```bash
-export DATABASE_URL=$(grep DATABASE_URL .env.local | cut -d '=' -f2- | tr -d '"')
-pnpm dlx prisma migrate deploy
-```
+⚠️ O Prisma CLI não lê `.env.local` sozinho — só `.env`. `pnpm db:migrate` e `pnpm db:seed` já carregam `.env.local` por conta própria; use esses scripts em vez de chamar `prisma`/`tsx` direto no terminal.
 
 ## Documentação
 
