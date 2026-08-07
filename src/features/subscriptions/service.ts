@@ -61,17 +61,19 @@ export async function createSubscription(customerId: string, input: Subscription
       nextDueAt,
       ...toBaseData(input, settings.timezone),
     },
+    omit: { accessPasswordEnc: true },
   });
 }
 
 export async function updateSubscription(id: string, input: SubscriptionInput) {
-  const existing = await db.subscription.findUnique({ where: { id } });
+  const existing = await db.subscription.findUnique({ where: { id }, omit: { accessPasswordEnc: true } });
   if (!existing) throw new SubscriptionNotFoundError();
 
   const settings = await getSettings();
   return db.subscription.update({
     where: { id },
     data: toBaseData(input, settings.timezone),
+    omit: { accessPasswordEnc: true },
   });
 }
 
