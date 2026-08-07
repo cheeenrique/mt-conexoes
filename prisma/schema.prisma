@@ -28,3 +28,53 @@ model LoginAttempt {
   @@index([ip, createdAt])
   @@map("login_attempts")
 }
+
+enum BillingCycle {
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+model Settings {
+  id                 String   @id @default("singleton")
+  businessName       String
+  timezone           String   @default("America/Sao_Paulo")
+  quietHourStart     Int      @default(8)
+  quietHourEnd       Int      @default(20)
+  sendingPaused      Boolean  @default(false)
+  pixKey             String?
+  pixHolderName      String?
+  marginAlertPercent Decimal  @default(30) @db.Decimal(5, 2)
+  updatedAt          DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model Supplier {
+  id            String   @id @default(uuid(7))
+  name          String   @unique
+  unitCostCents BigInt   @default(0)
+  notes         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  plans         Plan[]
+
+  @@map("suppliers")
+}
+
+model Plan {
+  id         String       @id @default(uuid(7))
+  name       String       @unique
+  priceCents BigInt       @default(0)
+  costCents  BigInt       @default(0)
+  cycle      BillingCycle @default(MONTHLY)
+  supplierId String?
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+
+  supplier   Supplier?    @relation(fields: [supplierId], references: [id])
+
+  @@map("plans")
+}

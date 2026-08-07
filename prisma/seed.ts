@@ -45,6 +45,13 @@ async function main() {
     } else if (usedFallbackPassword) {
       console.log(`[seed] SEED_USER_PASSWORD não definida — senha gerada: ${password}`);
     }
+
+    const settings = await db.settings.upsert({
+      where: { id: 'singleton' },
+      update: {},
+      create: { id: 'singleton', businessName: 'MT Conexões' },
+    });
+    console.log(`[seed] settings pronto: ${settings.businessName}`);
   } finally {
     await db.$disconnect();
   }
