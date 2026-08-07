@@ -2,10 +2,16 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { verifySession } from '@/lib/auth';
 
 const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PREFIXES = ['/api/cron'];
+
+function matchesPath(pathname: string, path: string): boolean {
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
 
 export async function middleware(req: NextRequest) {
-  if (PUBLIC_PATHS.some((p) => req.nextUrl.pathname.startsWith(p))) return NextResponse.next();
-  if (req.nextUrl.pathname.startsWith('/api/cron')) return NextResponse.next();
+  const { pathname } = req.nextUrl;
+  if (PUBLIC_PATHS.some((p) => matchesPath(pathname, p))) return NextResponse.next();
+  if (PUBLIC_PREFIXES.some((p) => matchesPath(pathname, p))) return NextResponse.next();
 
   const token = req.cookies.get('mtconexoes_session')?.value;
   const payload = token ? await verifySession(token) : null;

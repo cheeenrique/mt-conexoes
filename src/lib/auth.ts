@@ -10,8 +10,14 @@ interface SessionPayload {
   sessionVersion: number;
 }
 
+const MIN_SECRET_LENGTH = 32;
+
 function getSecret(): Uint8Array {
-  return new TextEncoder().encode(requireEnv('SESSION_SECRET'));
+  const secret = requireEnv('SESSION_SECRET');
+  if (secret.length < MIN_SECRET_LENGTH) {
+    throw new Error(`SESSION_SECRET precisa ter pelo menos ${MIN_SECRET_LENGTH} caracteres`);
+  }
+  return new TextEncoder().encode(secret);
 }
 
 export async function signSession(payload: SessionPayload): Promise<string> {
@@ -24,7 +30,7 @@ export async function signSession(payload: SessionPayload): Promise<string> {
 
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'] });
     if (typeof payload.userId !== 'string' || typeof payload.sessionVersion !== 'number') return null;
     return { userId: payload.userId, sessionVersion: payload.sessionVersion };
   } catch {

@@ -2,38 +2,46 @@
 
 import { headers } from 'next/headers';
 import { changePasswordSchema, loginSchema } from './schema';
-import { changePassword, login } from './service';
+import { changePassword, login, requireSession } from './service';
 import { setSessionCookie } from '@/lib/auth';
+import { getClientIp } from '@/lib/net';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 
 type AuthResult = { ok: true } | { error: { code: string; message: string } };
 
 export async function loginAction(input: unknown): Promise<AuthResult> {
-  const data = loginSchema.parse(input);
-  const ip = (await headers()).get('x-forwarded-for') ?? 'unknown';
-
   try {
-    const token = await login({ ...data, ip });
+    const parsed = loginSchema.safeParse(input);
+    if (!parsed.success) return { error: { code: 'VALIDATION', message: 'Dados inválidos.' } };
+
+    const ip = getClientIp((await headers()).get('x-forwarded-for'));
+    const token = await login({ ...parsed.data, ip });
     await setSessionCookie(token);
     return { ok: true as const };
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
-    logger.error({ route: 'auth.login', error: String(err) });
+    logger.error({ route: 'auth.login', error: String(err), stack: err instanceof Error ? err.stack : undefined });
     return { error: { code: 'UNEXPECTED', message: 'Não foi possível entrar. Tente de novo.' } };
   }
 }
 
 export async function changePasswordAction(input: unknown): Promise<AuthResult> {
-  const data = changePasswordSchema.parse(input);
-
   try {
-    const token = await changePassword(data);
+    const user = await requireSession();
+    const parsed = changePasswordSchema.safeParse(input);
+    if (!parsed.success) return { error: { code: 'VALIDATION', message: 'Dados inválidos.' } };
+
+    const token = await changePassword(user.id, parsed.data);
     await setSessionCookie(token);
     return { ok: true as const };
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
-    logger.error({ route: 'auth.changePassword', error: String(err) });
+    logger.error({
+      route: 'auth.changePassword',
+      error: String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return { error: { code: 'UNEXPECTED', message: 'Não foi possível trocar a senha. Tente de novo.' } };
   }
 }
