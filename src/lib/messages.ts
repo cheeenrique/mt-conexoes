@@ -17,4 +17,7 @@ export const messages = {
     created: 'Plano cadastrado.',
     updated: 'Plano atualizado.',
   },
+  settings: {
+    saved: 'Alterações salvas.',
+  },
 } as const;
