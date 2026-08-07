@@ -57,12 +57,12 @@ export function resolveDueDay(desiredDay: number, year: number, month: number): 
 | 31 | fevereiro (comum) | 28 |
 | 31 | fevereiro (bissexto) | 29 |
 | 31 | abril | 30 |
-| 31 (pagando de novo em março, após passar por fevereiro) | março | **31** — volta |
+| 31 | julho → agosto (31 dias) | 31 |
 | 30 | fevereiro | 28 |
 | 29 | fevereiro (comum) | 28 |
 | 15 | qualquer | 15 |
 
-⚠️ A linha "volta a 31" só se aplica porque o **pagamento real** desse ciclo caiu de novo no dia 31 — não é um retorno automático nem uma memória do dia "desejado" original. Se o cliente tivesse pagado em março no dia 28, o próximo vencimento seria 28/04, não 31/04. Cada cálculo usa exclusivamente o dia do pagamento daquele ciclo.
+⚠️ A linha "julho → agosto" mostra o dia 31 preservado porque o **mês alvo** (julho + 1 mês = agosto) também tem 31 dias — é só `min(31, dias_do_mês_alvo)` dando 31 porque o mês alvo comporta. Não é retorno automático nem memória do dia "desejado": o resultado depende exclusivamente do dia do pagamento daquele ciclo e de quantos dias o mês alvo daquele cálculo específico tem. Pague de novo no dia 31 num mês cujo alvo tenha menos de 31 dias (ex. pagar em janeiro, alvo fevereiro) e o clamp entra de novo, como nas linhas acima.
 
 O clamp nunca "gruda" — ele é recalculado do dia real do pagamento a cada ciclo, nunca a partir do resultado do clamp anterior.
 
@@ -218,7 +218,7 @@ Escritos **antes** da implementação, vermelho antes de verde.
 - [ ] Pagou 31/01 → próximo vencimento 29/02 (bissexto, 2028)
 - [ ] Pagou 31/01, ciclo trimestral → próximo vencimento 30/04
 - [ ] Pagou 28/02, depois pagou de novo 28/03 → mantém dia 28 (não "sobe" sozinho pra 31)
-- [ ] Pagou dia 31 em janeiro, depois pagou de novo dia 31 em março → **volta a vencer 31**
+- [ ] Pagou dia 31 em julho, ciclo mensal → mês alvo agosto tem 31 dias → vence 31/08 (dia 31 preservado; o clamp só reaparece quando o mês alvo tem menos de 31 dias)
 - [ ] Pagou dia 1 e dia 15 → nunca mudam, qualquer mês
 
 ### Ciclos
