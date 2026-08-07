@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+apk add --no-cache curl >/dev/null
 echo "[cron-sim] simulating Cloud Scheduler, hitting $APP_URL every ${INTERVAL_SECONDS}s"
 while true; do
   for endpoint in $CRON_ENDPOINTS; do
