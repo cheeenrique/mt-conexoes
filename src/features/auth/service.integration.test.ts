@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hash } from '@node-rs/argon2';
 import { db } from '@/lib/db';
 import { changePassword, isSessionValid, login, resolveSessionUser } from './service';
-import { InvalidCredentialsError, TooManyLoginAttemptsError } from '@/lib/errors';
+import { CurrentPasswordInvalidError, InvalidCredentialsError, TooManyLoginAttemptsError } from '@/lib/errors';
 
 const TEST_EMAIL = 'teste@mtconexoes.com.br';
 
@@ -65,7 +65,7 @@ describe('changePassword', () => {
     const user = await db.user.findUniqueOrThrow({ where: { email: TEST_EMAIL } });
     await expect(
       changePassword(user.id, { currentPassword: 'errada', newPassword: 'nova-senha-123' }),
-    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+    ).rejects.toBeInstanceOf(CurrentPasswordInvalidError);
   });
 });
 

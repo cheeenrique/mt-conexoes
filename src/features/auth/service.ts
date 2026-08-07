@@ -1,6 +1,11 @@
 import { hash, verify } from '@node-rs/argon2';
 import { db } from '@/lib/db';
-import { InvalidCredentialsError, TooManyLoginAttemptsError, UnauthorizedError } from '@/lib/errors';
+import {
+  CurrentPasswordInvalidError,
+  InvalidCredentialsError,
+  TooManyLoginAttemptsError,
+  UnauthorizedError,
+} from '@/lib/errors';
 import { readSessionCookie, signSession, verifySession } from '@/lib/auth';
 
 const MAX_ATTEMPTS = 5;
@@ -79,7 +84,7 @@ export async function changePassword(
   if (!user) throw new UnauthorizedError();
 
   const validPassword = await verify(user.passwordHash, input.currentPassword);
-  if (!validPassword) throw new InvalidCredentialsError();
+  if (!validPassword) throw new CurrentPasswordInvalidError();
 
   const passwordHash = await hash(input.newPassword);
   const updated = await db.user.update({

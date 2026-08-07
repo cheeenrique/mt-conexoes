@@ -10,6 +10,12 @@ export class InvalidCredentialsError extends DomainError {
   }
 }
 
+export class CurrentPasswordInvalidError extends DomainError {
+  constructor(cause?: unknown) {
+    super('Senha atual incorreta.', 'CURRENT_PASSWORD_INVALID', { cause });
+  }
+}
+
 export class TooManyLoginAttemptsError extends DomainError {
   constructor(cause?: unknown) {
     super('Muitas tentativas. Aguarde alguns minutos e tente de novo.', 'TOO_MANY_ATTEMPTS', { cause });

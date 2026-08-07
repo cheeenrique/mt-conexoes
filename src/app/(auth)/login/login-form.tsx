@@ -3,18 +3,18 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import type { z } from 'zod';
 import { loginSchema } from '@/features/auth/schema';
 import { loginAction } from '@/features/auth/actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toastError } from '@/lib/toast';
 
-type FormValues = { email: string; password: string };
+type FormValues = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
   const router = useRouter();
-  const [serverError, setServerError] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
@@ -22,10 +22,9 @@ export function LoginForm() {
   } = useForm<FormValues>({ resolver: zodResolver(loginSchema) });
 
   async function onSubmit(values: FormValues) {
-    setServerError(null);
     const result = await loginAction(values);
     if ('error' in result) {
-      setServerError(result.error.message);
+      toastError(result.error);
       return;
     }
     router.push('/');
@@ -36,15 +35,28 @@ export function LoginForm() {
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
       <div>
         <Label htmlFor="email">E-mail</Label>
-        <Input id="email" type="email" {...register('email')} className="h-11" />
+        <Input
+          id="email"
+          type="email"
+          autoComplete="email"
+          aria-invalid={!!errors.email}
+          {...register('email')}
+          className="h-11"
+        />
         {errors.email && <p className="mt-1 text-sm text-destructive">{errors.email.message}</p>}
       </div>
       <div>
         <Label htmlFor="password">Senha</Label>
-        <Input id="password" type="password" {...register('password')} className="h-11" />
+        <Input
+          id="password"
+          type="password"
+          autoComplete="current-password"
+          aria-invalid={!!errors.password}
+          {...register('password')}
+          className="h-11"
+        />
         {errors.password && <p className="mt-1 text-sm text-destructive">{errors.password.message}</p>}
       </div>
-      {serverError && <p className="text-sm text-destructive">{serverError}</p>}
       <Button type="submit" disabled={isSubmitting} className="h-11">
         {isSubmitting ? 'Entrando...' : 'Entrar'}
       </Button>

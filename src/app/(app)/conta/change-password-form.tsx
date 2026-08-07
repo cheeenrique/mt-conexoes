@@ -2,6 +2,8 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter } from 'next/navigation';
+import type { z } from 'zod';
 import { changePasswordSchema } from '@/features/auth/schema';
 import { changePasswordAction } from '@/features/auth/actions';
 import { Button } from '@/components/ui/button';
@@ -10,19 +12,30 @@ import { Label } from '@/components/ui/label';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { messages } from '@/lib/messages';
 
-type FormValues = { currentPassword: string; newPassword: string };
+type FormValues = z.infer<typeof changePasswordSchema>;
 
 export function ChangePasswordForm() {
+  const router = useRouter();
   const {
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(changePasswordSchema) });
 
   async function onSubmit(values: FormValues) {
     const result = await changePasswordAction(values);
     if ('error' in result) {
+      if (result.error.code === 'CURRENT_PASSWORD_INVALID') {
+        setError('currentPassword', { message: result.error.message });
+        return;
+      }
+      if (result.error.code === 'UNAUTHORIZED') {
+        toastError(result.error);
+        router.push('/login');
+        return;
+      }
       toastError(result.error);
       return;
     }
@@ -34,12 +47,26 @@ export function ChangePasswordForm() {
     <form onSubmit={handleSubmit(onSubmit)} className="flex max-w-sm flex-col gap-4 rounded border border-border bg-surface p-5">
       <div>
         <Label htmlFor="currentPassword">Senha atual</Label>
-        <Input id="currentPassword" type="password" {...register('currentPassword')} className="h-11" />
+        <Input
+          id="currentPassword"
+          type="password"
+          autoComplete="current-password"
+          aria-invalid={!!errors.currentPassword}
+          {...register('currentPassword')}
+          className="h-11"
+        />
         {errors.currentPassword && <p className="mt-1 text-sm text-danger">{errors.currentPassword.message}</p>}
       </div>
       <div>
         <Label htmlFor="newPassword">Nova senha</Label>
-        <Input id="newPassword" type="password" {...register('newPassword')} className="h-11" />
+        <Input
+          id="newPassword"
+          type="password"
+          autoComplete="new-password"
+          aria-invalid={!!errors.newPassword}
+          {...register('newPassword')}
+          className="h-11"
+        />
         {errors.newPassword && <p className="mt-1 text-sm text-danger">{errors.newPassword.message}</p>}
       </div>
       <Button type="submit" disabled={isSubmitting} className="h-11 bg-brand text-background">
