@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { verifySession } from '@/lib/auth';
+import { COOKIE_NAME, verifySession } from '@/lib/auth';
 
 const PUBLIC_PATHS = ['/login', '/api/health'];
 const PUBLIC_PREFIXES = ['/api/cron'];
@@ -13,7 +13,7 @@ export async function middleware(req: NextRequest) {
   if (PUBLIC_PATHS.some((p) => matchesPath(pathname, p))) return NextResponse.next();
   if (PUBLIC_PREFIXES.some((p) => matchesPath(pathname, p))) return NextResponse.next();
 
-  const token = req.cookies.get('mtconexoes_session')?.value;
+  const token = req.cookies.get(COOKIE_NAME)?.value;
   const payload = token ? await verifySession(token) : null;
 
   if (!payload) {
