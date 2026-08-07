@@ -1,9 +1,10 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, Inbox } from 'lucide-react';
-import { EmptyState } from './empty-state';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Skeleton } from './skeleton';
+
+const PER_PAGE_OPTIONS = [8, 12, 20] as const;
 
 export interface Column<T> {
   header: string;
@@ -34,11 +35,6 @@ export function DataTable<T>({
   emptyState: ReactNode;
   loading?: boolean;
 }) {
-  const from = total === 0 ? 0 : (page - 1) * perPage + 1;
-  const to = Math.min(page * perPage, total);
-  const canPrev = page > 1;
-  const canNext = to < total;
-
   if (loading) {
     return (
       <div className="overflow-hidden rounded border border-border bg-surface">
@@ -50,8 +46,13 @@ export function DataTable<T>({
   }
 
   if (rows.length === 0) {
-    return <EmptyState icon={Inbox} title="Nada por aqui" description="" action={emptyState} />;
+    return <>{emptyState}</>;
   }
+
+  const from = (page - 1) * perPage + 1;
+  const to = Math.min(page * perPage, total);
+  const canPrev = page > 1;
+  const canNext = to < total;
 
   return (
     <div className="overflow-hidden rounded border border-border bg-surface">
@@ -59,9 +60,9 @@ export function DataTable<T>({
         <table className="w-full">
           <thead>
             <tr className="border-b border-border">
-              {columns.map((col) => (
+              {columns.map((col, index) => (
                 <th
-                  key={col.header}
+                  key={index}
                   className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-foreground-muted ${col.align === 'right' ? 'text-right' : 'text-left'}`}
                 >
                   {col.header}
@@ -72,9 +73,9 @@ export function DataTable<T>({
           <tbody>
             {rows.map((row) => (
               <tr key={rowKey(row)} className="h-11 border-b border-border last:border-0">
-                {columns.map((col) => (
+                {columns.map((col, index) => (
                   <td
-                    key={col.header}
+                    key={index}
                     className={`px-4 text-sm ${col.align === 'right' ? 'text-right font-mono tabular-mono' : 'text-left'}`}
                   >
                     {col.cell(row)}
@@ -93,10 +94,15 @@ export function DataTable<T>({
           <select
             aria-label="Por página"
             value={perPage}
-            onChange={(e) => onPerPageChange(Number(e.target.value) as 8 | 12 | 20)}
+            onChange={(e) => {
+              const value = Number(e.target.value);
+              if (PER_PAGE_OPTIONS.includes(value as (typeof PER_PAGE_OPTIONS)[number])) {
+                onPerPageChange(value as 8 | 12 | 20);
+              }
+            }}
             className="h-8 rounded-sm border border-border bg-surface-elevated px-2 text-xs"
           >
-            {[8, 12, 20].map((n) => (
+            {PER_PAGE_OPTIONS.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
