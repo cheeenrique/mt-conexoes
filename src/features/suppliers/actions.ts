@@ -14,7 +14,9 @@ export async function createSupplierAction(input: unknown): Promise<ActionResult
   try {
     await requireSession();
     const parsed = supplierSchema.safeParse(input);
-    if (!parsed.success) return { error: { code: 'VALIDATION', message: messages.common.invalidInput } };
+    if (!parsed.success) {
+      return { error: { code: 'VALIDATION', message: parsed.error.issues[0]?.message ?? messages.common.invalidInput } };
+    }
 
     await createSupplier(parsed.data);
     revalidatePath('/suppliers');
@@ -30,7 +32,9 @@ export async function updateSupplierAction(id: string, input: unknown): Promise<
   try {
     await requireSession();
     const parsed = supplierSchema.safeParse(input);
-    if (!parsed.success) return { error: { code: 'VALIDATION', message: messages.common.invalidInput } };
+    if (!parsed.success) {
+      return { error: { code: 'VALIDATION', message: parsed.error.issues[0]?.message ?? messages.common.invalidInput } };
+    }
 
     await updateSupplier(id, parsed.data);
     revalidatePath('/suppliers');

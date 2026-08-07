@@ -14,7 +14,9 @@ export async function createPlanAction(input: unknown): Promise<ActionResult> {
   try {
     await requireSession();
     const parsed = planSchema.safeParse(input);
-    if (!parsed.success) return { error: { code: 'VALIDATION', message: messages.common.invalidInput } };
+    if (!parsed.success) {
+      return { error: { code: 'VALIDATION', message: parsed.error.issues[0]?.message ?? messages.common.invalidInput } };
+    }
 
     await createPlan(parsed.data);
     revalidatePath('/plans');
@@ -30,7 +32,9 @@ export async function updatePlanAction(id: string, input: unknown): Promise<Acti
   try {
     await requireSession();
     const parsed = planSchema.safeParse(input);
-    if (!parsed.success) return { error: { code: 'VALIDATION', message: messages.common.invalidInput } };
+    if (!parsed.success) {
+      return { error: { code: 'VALIDATION', message: parsed.error.issues[0]?.message ?? messages.common.invalidInput } };
+    }
 
     await updatePlan(id, parsed.data);
     revalidatePath('/plans');
