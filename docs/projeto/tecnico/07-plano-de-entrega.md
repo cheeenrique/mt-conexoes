@@ -27,12 +27,12 @@ Não é etapa de entrega, é o que sustenta as outras. Antes de qualquer tela:
 - [x] `Settings` — nome do negócio, fuso, quiet hours, chave Pix, limite de margem
 - [x] CRUD de `Supplier` com custo padrão
 - [x] CRUD de `Plan` com preço e custo sugeridos
-- [ ] CRUD de `Customer`
-- [ ] CRUD de `Subscription`: plano, fornecedor, preço, custo, ciclo, desconto recorrente. Vencimento não é campo do formulário — nasce calculado (`startedAt + ciclo` na criação, `dataPagamento + ciclo` a cada renovação)
-- [ ] Credencial de acesso: usuário em claro, senha criptografada, mascarada, com revelar auditado
-- [ ] Margem calculada e exibida na hora, no formulário
-- [ ] Lista de clientes com busca por nome, telefone e usuário de acesso
-- [ ] Ficha do cliente com as assinaturas
+- [x] CRUD de `Customer`
+- [x] CRUD de `Subscription`: plano, fornecedor, preço, custo, ciclo, desconto recorrente. Vencimento não é campo do formulário — nasce calculado (`startedAt + ciclo` na criação, `dataPagamento + ciclo` a cada renovação)
+- [x] Credencial de acesso: usuário em claro, senha criptografada, mascarada, com revelar auditado
+- [x] Margem calculada e exibida na hora, no formulário
+- [x] Lista de clientes com busca por nome, telefone e usuário de acesso
+- [x] Ficha do cliente com as assinaturas
 - [ ] **Importação da base atual** — script de seed a partir da planilha, com relatório do que entrou e do que foi recusado
 
 **Critério de pronto:** a base real do cliente está dentro do sistema, ele abre a ficha de cinco clientes que conhece de cor e os números batem com a planilha dele.
