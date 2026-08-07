@@ -60,6 +60,7 @@ model Supplier {
   createdAt     DateTime @default(now())
 
   plans         Plan[]
+  subscriptions Subscription[]
 
   @@map("suppliers")
 }
@@ -75,6 +76,90 @@ model Plan {
   createdAt  DateTime     @default(now())
 
   supplier   Supplier?    @relation(fields: [supplierId], references: [id])
+  subscriptions Subscription[]
 
   @@map("plans")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+model Customer {
+  id             String    @id @default(uuid(7))
+  name           String
+  phone          String
+  email          String?
+  document       String?
+  notes          String?
+  optedOut       Boolean   @default(false)
+  optedOutAt     DateTime?
+  optedOutReason String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  subscriptions  Subscription[]
+
+  @@unique([phone])
+  @@index([name])
+  @@map("customers")
+}
+
+model Subscription {
+  id                String             @id @default(uuid(7))
+  customerId        String
+  planId            String?
+  supplierId        String?
+
+  priceCents        BigInt
+  costCents         BigInt             @default(0)
+  cycle             BillingCycle       @default(MONTHLY)
+
+  nextDueAt         DateTime
+  startedAt         DateTime           @default(now())
+
+  discountType      DiscountType?
+  discountValue     Decimal?           @db.Decimal(10, 2)
+  discountUntil     DateTime?
+
+  status            SubscriptionStatus @default(ACTIVE)
+  suspendedAt       DateTime?
+  cancelledAt       DateTime?
+  cancelReason      String?
+
+  accessUsername    String?
+  accessPasswordEnc String?
+  accessServer      String?
+  screens           Int                @default(1)
+  accessNotes       String?
+
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  customer          Customer           @relation(fields: [customerId], references: [id])
+  plan              Plan?              @relation(fields: [planId], references: [id])
+  supplier          Supplier?          @relation(fields: [supplierId], references: [id])
+
+  @@index([status, nextDueAt])
+  @@index([customerId])
+  @@index([supplierId])
+  @@map("subscriptions")
+}
+
+model CredentialReveal {
+  id             String   @id @default(uuid(7))
+  subscriptionId String
+  userId         String
+  revealedAt     DateTime @default(now())
+  ip             String?
+
+  @@index([subscriptionId, revealedAt])
+  @@map("credential_reveals")
 }
