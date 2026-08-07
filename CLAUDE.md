@@ -78,7 +78,7 @@ lib/       ──> Prisma, env
 - Banco em UTC; vencimento e corte de relatório são conceitos **locais** (`Settings.timezone`).
 - Vencimento é `23:59:59` local.
 - **Vencimento do próximo ciclo = data do pagamento total do ciclo atual + duração do ciclo**, mesmo dia do mês seguinte. Não existe mais dia fixo por assinatura — o "dia" é sempre o dia em que o cliente pagou. Pagou 05/02 → próxima cobrança vence 05/03, não importa quando a cobrança de fevereiro venceu.
-- Fim de mês continua com clamp: pagou 31/01 → vence 28/02 (ou 29 em bissexto) → **volta** a vencer 31/03. Cobrança nova só nasce em dois momentos: criação da assinatura (`startedAt + ciclo`) e pagamento total registrado. Pagamento parcial não gera cobrança nova.
+- Fim de mês continua com clamp: pagou 31/01 → vence 28/02 (ou 29 em bissexto); se o cliente pagar de novo no dia 31 (em um mês que permita), o próximo vencimento volta a cair no dia 31 — nunca é automático, sempre depende do dia real do pagamento seguinte. Pagar em fevereiro no dia 28 gera vencimento 28/03, não 31/03: não existe memória do dia "desejado" original entre ciclos. Cobrança nova só nasce em dois momentos: criação da assinatura (`startedAt + ciclo`) e pagamento total registrado. Pagamento parcial não gera cobrança nova.
 - Corte de relatório sai de `monthBoundsUtc(...)`, nunca de `date_trunc('month', ...)` em UTC.
 
 **Idempotência** — cada situação tem o seu mecanismo:

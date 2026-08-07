@@ -62,6 +62,8 @@ export function resolveDueDay(desiredDay: number, year: number, month: number): 
 | 29 | fevereiro (comum) | 28 |
 | 15 | qualquer | 15 |
 
+⚠️ A linha "volta a 31" só se aplica porque o **pagamento real** desse ciclo caiu de novo no dia 31 — não é um retorno automático nem uma memória do dia "desejado" original. Se o cliente tivesse pagado em março no dia 28, o próximo vencimento seria 28/04, não 31/04. Cada cálculo usa exclusivamente o dia do pagamento daquele ciclo.
+
 O clamp nunca "gruda" — ele é recalculado do dia real do pagamento a cada ciclo, nunca a partir do resultado do clamp anterior.
 
 ---
@@ -221,9 +223,9 @@ Escritos **antes** da implementação, vermelho antes de verde.
 
 ### Ciclos
 
-- [ ] Mensal: pagou 31/01 → vence 28/02; pagou 28/02 → vence 28/03 (não 31/03)
-- [ ] Trimestral: pagou 31/01 → vence 30/04 → pagou 30/04 → vence 31/07 (mês de 31 dias, volta a subir)
-- [ ] Semestral: pagou 31/08 → vence 28/02 → pagou 28/02 → vence 31/08 (volta)
+- [ ] Mensal: pagou 31/01 → vence 28/02; pagou 28/02 → vence 28/03 (não 31/03 — usa o dia do pagamento real, não "lembra" do 31)
+- [ ] Trimestral: pagou 31/01 → vence 30/04; pagou 30/04 → vence 30/07 (não 31/07 — o pagamento real caiu em 30, não em 31)
+- [ ] Semestral: pagou 31/08 → vence 28/02; pagou 28/02 → vence 28/08 (não 31/08 — mesma regra: só o dia do pagamento daquele ciclo importa)
 - [ ] Anual: pagou 29/02/2028 → vence 28/02/2029
 - [ ] Anual atravessando virada de ano: pagou 15/12/2026 → vence 15/12/2027
 
