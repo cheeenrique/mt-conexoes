@@ -36,7 +36,7 @@ export function ConfirmDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button className="bg-brand text-background" onClick={onConfirm}>
+          <Button onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </DialogFooter>

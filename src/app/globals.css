@@ -94,7 +94,7 @@
   --brand: #ea580c;
   --brand-light: #f97316;
   --primary: var(--brand);
-  --primary-foreground: var(--foreground);
+  --primary-foreground: var(--background);
   --secondary: var(--surface-elevated);
   --secondary-foreground: var(--foreground);
   --muted: var(--surface-elevated);

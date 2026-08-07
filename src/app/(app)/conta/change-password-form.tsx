@@ -69,7 +69,7 @@ export function ChangePasswordForm() {
         />
         {errors.newPassword && <p className="mt-1 text-sm text-danger">{errors.newPassword.message}</p>}
       </div>
-      <Button type="submit" disabled={isSubmitting} className="h-11 bg-brand text-background">
+      <Button type="submit" disabled={isSubmitting} className="h-11">
         {isSubmitting ? 'Salvando...' : 'Salvar alterações'}
       </Button>
     </form>
