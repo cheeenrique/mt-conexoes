@@ -24,9 +24,9 @@ Não é etapa de entrega, é o que sustenta as outras. Antes de qualquer tela:
 
 ## Etapa 1 — Cadastro e base (até a semana 2)
 
-- [ ] `Settings` — nome do negócio, fuso, quiet hours, chave Pix, limite de margem
-- [ ] CRUD de `Supplier` com custo padrão
-- [ ] CRUD de `Plan` com preço e custo sugeridos
+- [x] `Settings` — nome do negócio, fuso, quiet hours, chave Pix, limite de margem
+- [x] CRUD de `Supplier` com custo padrão
+- [x] CRUD de `Plan` com preço e custo sugeridos
 - [ ] CRUD de `Customer`
 - [ ] CRUD de `Subscription`: plano, fornecedor, preço, custo, ciclo, desconto recorrente. Vencimento não é campo do formulário — nasce calculado (`startedAt + ciclo` na criação, `dataPagamento + ciclo` a cada renovação)
 - [ ] Credencial de acesso: usuário em claro, senha criptografada, mascarada, com revelar auditado
