@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mt-conexoes-db
+    environment:
+      POSTGRES_USER: mtconexoes
+      POSTGRES_PASSWORD: mtconexoes
+      POSTGRES_DB: mtconexoes
+    ports:
+      - "5432:5432"
+    volumes:
+      - mt-conexoes-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mtconexoes -d mtconexoes"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  cron-sim:
+    image: node:20-alpine
+    container_name: mt-conexoes-cron-sim
+    depends_on:
+      - db
+    environment:
+      APP_URL: http://host.docker.internal:3000
+      CRON_SECRET: ${CRON_SECRET:-dev-cron-secret}
+      CRON_ENDPOINTS: /api/cron/ping
+      INTERVAL_SECONDS: "60"
+    volumes:
+      - ./docker/cron-sim/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["sh", "/entrypoint.sh"]
+
+volumes:
+  mt-conexoes-db-data:
