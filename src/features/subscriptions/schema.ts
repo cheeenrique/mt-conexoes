@@ -18,7 +18,7 @@ export const subscriptionSchema = z.object({
   cycle: z.enum(['MONTHLY', 'QUARTERLY', 'SEMIANNUAL', 'ANNUAL'], { error: 'Selecione um ciclo válido.' }),
   discountType: discountTypeField,
   discountValue: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Valor de desconto inválido.').optional().or(z.literal('')),
-  discountUntil: z.string().optional(),
+  discountUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data de validade inválida.').optional().or(z.literal('')),
   accessUsername: z.string().optional(),
   accessPassword: z.string().optional(),
   accessServer: z.string().optional(),

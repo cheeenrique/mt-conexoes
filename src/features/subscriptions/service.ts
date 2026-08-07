@@ -19,6 +19,13 @@ export class SubscriptionNotFoundError extends DomainError {
 // anterior em America/Sao_Paulo).
 function discountUntilLocal(dateStr: string, timezone: string): Date {
   const [year, month, day] = dateStr.split('-').map(Number);
+  if (!year || !month || !day || Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    // Nunca deveria chegar aqui se o schema validar certo — defesa em
+    // profundidade pra não deixar `Invalid Date` vazar pro Prisma, cujo
+    // erro de validação pode ecoar os outros argumentos da chamada
+    // (incluindo accessPasswordEnc) direto pro log.
+    throw new Error('Data de validade em formato inválido.');
+  }
   return endOfLocalDay(year, month - 1, day, timezone);
 }
 

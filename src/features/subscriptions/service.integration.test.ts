@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import { encrypt } from '@/lib/crypto';
-import { revealCredential } from './service';
+import { createSubscription, revealCredential } from './service';
+import type { subscriptionSchema } from './schema';
+import type { z } from 'zod';
 
 const CUSTOMER_PHONE = '+5511999990001';
 
@@ -69,5 +71,25 @@ describe('revealCredential', () => {
 
     const reveals = await db.credentialReveal.findMany({ where: { subscriptionId } });
     expect(reveals).toHaveLength(1);
+  });
+});
+
+describe('createSubscription — defesa em profundidade de discountUntil', () => {
+  // O schema Zod já bloqueia isso antes de chegar aqui (ver schema.test.ts).
+  // Este teste simula um caller que ignorou o schema — `as unknown as` força
+  // o TypeScript a aceitar o payload inválido — pra provar que o service
+  // também recusa, em vez de deixar `Invalid Date` vazar pro Prisma e virar
+  // um PrismaClientValidationError com os outros argumentos da chamada
+  // (accessPasswordEnc incluso) ecoados na mensagem de erro.
+  it('rejeita discountUntil não-data com erro explícito, não deixa Invalid Date chegar no Prisma', async () => {
+    const input = {
+      priceCents: '1000',
+      costCents: '500',
+      cycle: 'MONTHLY',
+      screens: 1,
+      discountUntil: 'abc',
+    } as unknown as z.infer<typeof subscriptionSchema>;
+
+    await expect(createSubscription(customerId, input)).rejects.toThrow('Data de validade em formato inválido.');
   });
 });
