@@ -33,31 +33,42 @@ export async function login(input: { email: string; password: string; ip: string
   return signSession({ userId: user.id, sessionVersion: user.sessionVersion });
 }
 
-// Uso interno — carrega o registro completo (com passwordHash) só pra validar
-// a sessão. Nunca exportado: quem precisa do usuário autenticado usa
-// getCurrentUser/requireSession, que devolvem o DTO sem o hash.
-async function findAuthenticatedUser() {
-  const token = await readSessionCookie();
+// Extraído pra ser testável isoladamente: uma sessão só é válida se a
+// versão gravada no token bater com a versão atual do usuário no banco.
+// Trocar a senha incrementa `sessionVersion`, o que invalida qualquer token
+// emitido antes — é essa comparação que faz a invalidação funcionar.
+export function isSessionValid(
+  user: { sessionVersion: number } | null | undefined,
+  payload: { sessionVersion: number } | null,
+): boolean {
+  if (!user || !payload) return false;
+  return user.sessionVersion === payload.sessionVersion;
+}
+
+// Caminho real de autenticação por token, sem depender de cookies() — é o
+// que getCurrentUser/requireSession chamam (só variam de onde tiram o
+// token), e é o que o teste de integração exercita diretamente pra provar
+// que a invalidação por sessionVersion funciona de ponta a ponta.
+export async function resolveSessionUser(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
 
   const payload = await verifySession(token);
   if (!payload) return null;
 
   const user = await db.user.findUnique({ where: { id: payload.userId } });
-  if (!user || user.sessionVersion !== payload.sessionVersion) return null;
+  if (!user || !isSessionValid(user, payload)) return null;
 
-  return user;
+  return toSessionUser(user);
 }
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
-  const user = await findAuthenticatedUser();
-  return user ? toSessionUser(user) : null;
+  return resolveSessionUser(await readSessionCookie());
 }
 
 export async function requireSession(): Promise<SessionUser> {
-  const user = await findAuthenticatedUser();
+  const user = await resolveSessionUser(await readSessionCookie());
   if (!user) throw new UnauthorizedError();
-  return toSessionUser(user);
+  return user;
 }
 
 export async function changePassword(

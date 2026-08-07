@@ -144,6 +144,7 @@ Um usuário. Sem OAuth, sem convite, sem recuperação por e-mail.
 - Sessão em cookie `httpOnly`, `secure`, `sameSite=lax`, JWT assinado com `SESSION_SECRET`, validade de 30 dias com renovação deslizante.
 - Middleware do Next protege tudo em `(app)/`; `(auth)/login` e `/api/cron/*` ficam de fora.
 - Troca de senha pela tela de configurações.
+- ⚠️ O deploy é Cloud Run **direto** (`gcloud run deploy`), sem load balancer externo na frente. O rate limit de login (`src/lib/net.ts`) confia na **última** entrada de `X-Forwarded-For`, porque nesse modelo há só 1 hop confiável — a própria borda do Cloud Run. Se um load balancer for adicionado no futuro, esse parser precisa mudar junto (a posição confiável deixa de ser a última).
 
 A tabela existe (em vez de credencial em env var) porque permite trocar a senha sem redeploy e acrescentar um segundo operador depois sem redesenhar nada.
 

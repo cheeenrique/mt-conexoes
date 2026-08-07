@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hash } from '@node-rs/argon2';
 import { db } from '@/lib/db';
-import { changePassword, login } from './service';
-import { verifySession } from '@/lib/auth';
+import { changePassword, isSessionValid, login, resolveSessionUser } from './service';
 import { InvalidCredentialsError, TooManyLoginAttemptsError } from '@/lib/errors';
 
 const TEST_EMAIL = 'teste@mtconexoes.com.br';
@@ -39,17 +38,27 @@ describe('login', () => {
 });
 
 describe('changePassword', () => {
-  it('invalida o token de sessão antigo ao trocar a senha', async () => {
+  it('rejeita o token de sessão antigo pelo caminho real de autenticação depois da troca de senha', async () => {
     const user = await db.user.findUniqueOrThrow({ where: { email: TEST_EMAIL } });
     const oldToken = await login({ email: TEST_EMAIL, password: 'senha-correta', ip: '127.0.0.4' });
 
+    // Confere que o token antigo autentica ANTES da troca — se essa asserção
+    // falhar, o teste de baixo não prova nada (não dá pra invalidar o que
+    // nunca funcionou). resolveSessionUser é o mesmo caminho que
+    // getCurrentUser/requireSession usam, só que sem depender de cookies().
+    expect(await resolveSessionUser(oldToken)).not.toBeNull();
+
     await changePassword(user.id, { currentPassword: 'senha-correta', newPassword: 'nova-senha-123' });
 
-    const oldPayload = await verifySession(oldToken);
-    const updatedUser = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+    // Depois da troca, o mesmo token — mesma assinatura, ainda válido pro
+    // jose — precisa deixar de autenticar porque sessionVersion mudou.
+    // Esse é o comportamento que quebra se alguém remover a checagem de
+    // isSessionValid dentro de resolveSessionUser.
+    expect(await resolveSessionUser(oldToken)).toBeNull();
 
-    expect(oldPayload).not.toBeNull();
-    expect(oldPayload?.sessionVersion).not.toBe(updatedUser.sessionVersion);
+    // E o token novo, emitido depois da troca, autentica normalmente.
+    const newToken = await login({ email: TEST_EMAIL, password: 'nova-senha-123', ip: '127.0.0.4' });
+    expect(await resolveSessionUser(newToken)).not.toBeNull();
   });
 
   it('rejeita senha atual errada', async () => {
@@ -57,5 +66,20 @@ describe('changePassword', () => {
     await expect(
       changePassword(user.id, { currentPassword: 'errada', newPassword: 'nova-senha-123' }),
     ).rejects.toBeInstanceOf(InvalidCredentialsError);
+  });
+});
+
+describe('isSessionValid', () => {
+  it('é verdadeiro quando a sessionVersion do usuário bate com a do payload', () => {
+    expect(isSessionValid({ sessionVersion: 3 }, { sessionVersion: 3 })).toBe(true);
+  });
+
+  it('é falso quando a sessionVersion diverge (senha trocada depois do token)', () => {
+    expect(isSessionValid({ sessionVersion: 4 }, { sessionVersion: 3 })).toBe(false);
+  });
+
+  it('é falso quando o usuário ou o payload é nulo', () => {
+    expect(isSessionValid(null, { sessionVersion: 3 })).toBe(false);
+    expect(isSessionValid({ sessionVersion: 3 }, null)).toBe(false);
   });
 });

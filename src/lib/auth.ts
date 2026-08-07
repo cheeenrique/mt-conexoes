@@ -29,8 +29,14 @@ export async function signSession(payload: SessionPayload): Promise<string> {
 }
 
 export async function verifySession(token: string): Promise<SessionPayload | null> {
+  // getSecret() fica FORA do try: SESSION_SECRET ausente ou curto demais é
+  // erro de configuração, e precisa estourar alto — não pode ser engolido
+  // pelo catch de "token inválido" e aparecer só como "sessão expirada,
+  // redireciona pro login" enquanto a causa real é a env var errada.
+  const secret = getSecret();
+
   try {
-    const { payload } = await jwtVerify(token, getSecret(), { algorithms: ['HS256'] });
+    const { payload } = await jwtVerify(token, secret, { algorithms: ['HS256'] });
     if (typeof payload.userId !== 'string' || typeof payload.sessionVersion !== 'number') return null;
     return { userId: payload.userId, sessionVersion: payload.sessionVersion };
   } catch {
