@@ -1621,9 +1621,6 @@ export default {
         sm: '4px',
         full: '50%',
       },
-      spacing: {
-        18: '4.5rem', // 72px, only if needed by a component — otherwise rely on default scale (4/8/12/16px already match the 4-28 scale)
-      },
       fontFamily: {
         sans: ['var(--font-nunito)', 'sans-serif'],
         mono: ['var(--font-ibm-plex-mono)', 'monospace'],
