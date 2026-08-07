@@ -4,5 +4,8 @@ export const messages = {
   },
   auth: {
     passwordChanged: 'Senha alterada com sucesso.',
+    invalidInput: 'Dados inválidos.',
+    loginFailed: 'Não foi possível entrar. Tente de novo.',
+    passwordChangeFailed: 'Não foi possível trocar a senha. Tente de novo.',
   },
 } as const;
