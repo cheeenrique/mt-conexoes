@@ -16,7 +16,10 @@ export const settingsSchema = z
       .max(23, 'Hora inválida.'),
     pixKey: z.string().optional(),
     pixHolderName: z.string().optional(),
-    marginAlertPercent: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Percentual inválido.'),
+    marginAlertPercent: z
+      .string()
+      .regex(/^\d+(\.\d{1,2})?$/, 'Percentual inválido.')
+      .refine((v) => Number(v) <= 100, 'O percentual não pode passar de 100.'),
   })
   .refine((data) => data.quietHourStart < data.quietHourEnd, {
     message: 'O início precisa ser antes do fim.',
