@@ -21,6 +21,10 @@ export const messages = {
     created: 'Cliente cadastrado.',
     updated: 'Cliente atualizado.',
   },
+  subscriptions: {
+    created: 'Assinatura cadastrada.',
+    updated: 'Assinatura atualizada.',
+  },
   settings: {
     saved: 'Alterações salvas.',
   },

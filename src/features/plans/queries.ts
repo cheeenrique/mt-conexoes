@@ -55,3 +55,26 @@ export async function getPlan(id: string): Promise<PlanDTO | null> {
     isActive: row.isActive,
   };
 }
+
+export async function listActivePlansForSelect(): Promise<{
+  id: string;
+  name: string;
+  priceCents: string;
+  costCents: string;
+  cycle: BillingCycle;
+  supplierId: string | null;
+}[]> {
+  const rows = await db.plan.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, priceCents: true, costCents: true, cycle: true, supplierId: true },
+    orderBy: { name: 'asc' },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    priceCents: row.priceCents.toString(),
+    costCents: row.costCents.toString(),
+    cycle: row.cycle,
+    supplierId: row.supplierId,
+  }));
+}
