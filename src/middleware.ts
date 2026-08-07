@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { verifySession } from '@/lib/auth';
 
-const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PATHS = ['/login', '/api/health'];
 const PUBLIC_PREFIXES = ['/api/cron'];
 
 function matchesPath(pathname: string, path: string): boolean {
