@@ -9,7 +9,11 @@ export const settingsSchema = z
       .int()
       .min(0, 'Hora inválida.')
       .max(23, 'Hora inválida.'),
-    quietHourEnd: z.number().int().min(0).max(23),
+    quietHourEnd: z
+      .number({ error: 'Informe um horário válido.' })
+      .int()
+      .min(0, 'Hora inválida.')
+      .max(23, 'Hora inválida.'),
     pixKey: z.string().optional(),
     pixHolderName: z.string().optional(),
     marginAlertPercent: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Percentual inválido.'),
