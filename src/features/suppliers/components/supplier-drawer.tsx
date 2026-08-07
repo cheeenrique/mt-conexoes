@@ -84,9 +84,15 @@ export function SupplierDrawer({
             />
           </div>
           {supplier && (
-            <p className="text-xs text-foreground-muted">
-              Mudar o custo não reajusta assinatura existente sozinho.
-            </p>
+            <>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="isActive" {...register('isActive')} className="h-4 w-4" />
+                <Label htmlFor="isActive">Ativo</Label>
+              </div>
+              <p className="text-xs text-foreground-muted">
+                Mudar o custo não reajusta assinatura existente sozinho.
+              </p>
+            </>
           )}
           <Button type="submit" disabled={isSubmitting} className="h-11">
             {isSubmitting ? 'Salvando...' : 'Salvar'}

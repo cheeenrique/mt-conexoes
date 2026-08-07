@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Pencil, Truck } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { formatCents } from '@/lib/format';
 import { SupplierDrawer } from './supplier-drawer';
@@ -33,7 +34,17 @@ export function SupplierTable({
   }
 
   const columns: Column<SupplierDTO>[] = [
-    { header: 'Fornecedor', cell: (row) => row.name },
+    {
+      header: 'Fornecedor',
+      cell: (row) => (
+        <div className="flex items-center gap-2">
+          <span>{row.name}</span>
+          <StatusBadge tone={row.isActive ? 'success' : 'neutral'}>
+            {row.isActive ? 'Ativo' : 'Inativo'}
+          </StatusBadge>
+        </div>
+      ),
+    },
     { header: 'Custo padrão por ciclo', align: 'right', cell: (row) => formatCents(row.unitCostCents) },
     { header: 'Assinaturas ativas', align: 'right', cell: () => '0' },
     { header: 'Margem média', align: 'right', cell: () => '—' },
