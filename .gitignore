@@ -8,5 +8,12 @@ coverage/
 .env
 .env.*
 !.env.example
+.env.local
 .idea/
 .vscode/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
