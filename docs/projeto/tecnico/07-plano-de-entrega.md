@@ -7,14 +7,14 @@
 
 Não é etapa de entrega, é o que sustenta as outras. Antes de qualquer tela:
 
-- [ ] Next.js + TypeScript + Tailwind + shadcn/ui
-- [ ] Prisma + Neon, primeira migration
-- [ ] `src/core/` com `money.ts` e `dates.ts` — **testes primeiro**
-- [ ] Autenticação: login, sessão em cookie, middleware, troca de senha
-- [ ] `lib/crypto.ts` com AES-256-GCM e teste de ida e volta
-- [ ] Vitest configurado; Postgres real (container) para os testes de integração
+- [x] Next.js + TypeScript + Tailwind + shadcn/ui
+- [x] Prisma + Neon, primeira migration
+- [x] `src/core/` com `money.ts` e `dates.ts` — **testes primeiro**
+- [x] Autenticação: login, sessão em cookie, middleware, troca de senha
+- [x] `lib/crypto.ts` com AES-256-GCM e teste de ida e volta
+- [x] Vitest configurado; Postgres real (container) para os testes de integração
 - [ ] Deploy no Cloud Run funcionando ponta a ponta, com o banco de dev
-- [ ] Logs em JSON, `/api/health`
+- [x] Logs em JSON, `/api/health`
 
 **Critério de pronto:** aplicação no ar, login funcionando, `pnpm test` verde, e o cálculo de vencimento por data de pagamento (com clamp de fim de mês) passando todos os casos de [`03-datas-e-ciclos.md`](./03-datas-e-ciclos.md).
 
