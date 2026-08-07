@@ -2,6 +2,16 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+ * Sem bloco `.dark` correspondente de propósito — este produto não tem
+ * alternância clara/escura. A linha abaixo mantém o variant `dark:` inerte
+ * (escopado a `.dark`, que nunca é aplicada) em vez de deixá-lo cair no
+ * padrão do Tailwind v4 (`@media (prefers-color-scheme: dark)`), que faria
+ * componentes gerados pelo shadcn (ex. button.tsx, input.tsx) reagirem ao SO
+ * do usuário — inconsistência real num produto permanentemente escuro.
+ */
+@custom-variant dark (&:is(.dark *));
+
 @theme inline {
   --breakpoint-md: 900px;
 
