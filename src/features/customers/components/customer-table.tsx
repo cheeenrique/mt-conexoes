@@ -11,9 +11,9 @@ import { Button } from '@/components/ui/button';
 import { CustomerDrawer } from './customer-drawer';
 import type { CustomerListRowDTO } from '../queries';
 
-function formatDueDate(iso: string | null): string {
+function formatDueDate(iso: string | null, timezone: string): string {
   if (!iso) return '—';
-  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' }).format(new Date(iso));
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: timezone }).format(new Date(iso));
 }
 
 export function CustomerTable({
@@ -22,12 +22,14 @@ export function CustomerTable({
   page,
   perPage,
   q,
+  timezone,
 }: {
   rows: CustomerListRowDTO[];
   total: number;
   page: number;
   perPage: 8 | 12 | 20;
   q: string;
+  timezone: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -56,7 +58,7 @@ export function CustomerTable({
     },
     { header: 'Plano', cell: (row) => row.planName ?? '—' },
     { header: 'Fornecedor', cell: (row) => row.supplierName ?? '—' },
-    { header: 'Vencimento', align: 'right', cell: (row) => formatDueDate(row.nextDueAt) },
+    { header: 'Vencimento', align: 'right', cell: (row) => formatDueDate(row.nextDueAt, timezone) },
     { header: 'Situação', cell: () => <StatusBadge tone="neutral">—</StatusBadge> },
     {
       header: '',

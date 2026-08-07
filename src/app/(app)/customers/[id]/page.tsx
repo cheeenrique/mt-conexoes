@@ -4,6 +4,7 @@ import { getCustomer } from '@/features/customers/queries';
 import { listSubscriptionsForCustomer } from '@/features/subscriptions/queries';
 import { listActivePlansForSelect } from '@/features/plans/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
+import { getSettings } from '@/features/settings/queries';
 import { CustomerProfileHeader } from '@/features/customers/components/customer-profile-header';
 import { CustomerTabs } from '@/features/customers/components/customer-tabs';
 import { BackButton } from '@/features/customers/components/back-button';
@@ -25,16 +26,17 @@ export default async function CustomerProfilePage({
   const customer = await getCustomer(id);
   if (!customer) notFound();
 
-  const [subscriptions, plans, suppliers] = await Promise.all([
+  const [subscriptions, plans, suppliers, settings] = await Promise.all([
     listSubscriptionsForCustomer(id),
     listActivePlansForSelect(),
     listActiveSuppliersForSelect(),
+    getSettings(),
   ]);
 
   const activeSub = subscriptions.find((s) => s.status === 'ACTIVE');
   const since =
     subscriptions.length > 0
-      ? new Intl.DateTimeFormat('pt-BR', { month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' }).format(
+      ? new Intl.DateTimeFormat('pt-BR', { month: '2-digit', year: 'numeric', timeZone: settings.timezone }).format(
           new Date(subscriptions[subscriptions.length - 1].startedAt),
         )
       : '—';
@@ -50,7 +52,13 @@ export default async function CustomerProfilePage({
       />
       <div className="mt-6">
         <CustomerTabs customerId={id} aba={aba}>
-          <SubscriptionList customerId={id} subscriptions={subscriptions} plans={plans} suppliers={suppliers} />
+          <SubscriptionList
+            customerId={id}
+            subscriptions={subscriptions}
+            plans={plans}
+            suppliers={suppliers}
+            timezone={settings.timezone}
+          />
         </CustomerTabs>
       </div>
     </AppShell>

@@ -5,6 +5,12 @@ const reaisFormatter = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 0,
 });
 
+export function formatLocalDate(iso: string, timezone: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: timezone }).format(
+    new Date(iso),
+  );
+}
+
 export function formatCents(value: string | bigint): string {
   const cents = typeof value === 'bigint' ? value : BigInt(value);
   const negative = cents < 0n;

@@ -1,5 +1,6 @@
 import { AppShell } from '@/components/layout/app-shell';
 import { listCustomers } from '@/features/customers/queries';
+import { getSettings } from '@/features/settings/queries';
 import { CustomerTable } from '@/features/customers/components/customer-table';
 import { NewCustomerButton } from '@/features/customers/components/new-customer-button';
 
@@ -17,11 +18,14 @@ export default async function CustomersPage({
     : 8) as 8 | 12 | 20;
   const q = params.q ?? '';
 
-  const { rows, total } = await listCustomers({ page, perPage, q: q || undefined });
+  const [{ rows, total }, settings] = await Promise.all([
+    listCustomers({ page, perPage, q: q || undefined }),
+    getSettings(),
+  ]);
 
   return (
     <AppShell title="Clientes" primaryAction={<NewCustomerButton />}>
-      <CustomerTable rows={rows} total={total} page={page} perPage={perPage} q={q} />
+      <CustomerTable rows={rows} total={total} page={page} perPage={perPage} q={q} timezone={settings.timezone} />
     </AppShell>
   );
 }

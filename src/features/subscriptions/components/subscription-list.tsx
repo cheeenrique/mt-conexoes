@@ -21,11 +21,13 @@ export function SubscriptionList({
   subscriptions,
   plans,
   suppliers,
+  timezone,
 }: {
   customerId: string;
   subscriptions: SubscriptionDTO[];
   plans: { id: string; name: string; priceCents: string; costCents: string; cycle: string; supplierId: string | null }[];
   suppliers: { id: string; name: string }[];
+  timezone: string;
 }) {
   const [editing, setEditing] = useState<SubscriptionDTO | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -73,6 +75,7 @@ export function SubscriptionList({
         subscription={editing}
         plans={plans}
         suppliers={suppliers}
+        timezone={timezone}
       />
     </div>
   );

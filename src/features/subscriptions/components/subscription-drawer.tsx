@@ -15,10 +15,12 @@ import { DateInput } from '@/components/ui/date-input';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { marginPercent } from '@/core/money';
 import { CYCLE_OPTIONS } from '@/lib/labels';
+import { formatLocalDate } from '@/lib/format';
 import { subscriptionSchema } from '../schema';
 import { createSubscriptionAction, updateSubscriptionAction } from '../actions';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { messages } from '@/lib/messages';
+import { SubscriptionAccessFields } from './subscription-access-fields';
 import type { SubscriptionDTO } from '../queries';
 
 type PlanOption = { id: string; name: string; priceCents: string; costCents: string; cycle: string; supplierId: string | null };
@@ -38,6 +40,7 @@ export function SubscriptionDrawer({
   subscription,
   plans,
   suppliers,
+  timezone,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -45,6 +48,7 @@ export function SubscriptionDrawer({
   subscription: SubscriptionDTO | null;
   plans: PlanOption[];
   suppliers: { id: string; name: string }[];
+  timezone: string;
 }) {
   const { register, control, handleSubmit, reset, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(subscriptionSchema),
@@ -66,6 +70,26 @@ export function SubscriptionDrawer({
         }
       : { planId: '', supplierId: '', priceCents: '0', costCents: '0', cycle: 'MONTHLY', discountType: '', discountValue: '', discountUntil: '', accessUsername: '', accessPassword: '', accessServer: '', screens: 1, accessNotes: '' },
   });
+
+  const planOptions =
+    subscription?.planId && !plans.some((p) => p.id === subscription.planId)
+      ? [
+          ...plans,
+          {
+            id: subscription.planId,
+            name: `${subscription.planName ?? 'Plano'} (inativo)`,
+            priceCents: '0',
+            costCents: '0',
+            cycle: 'MONTHLY',
+            supplierId: null,
+          },
+        ]
+      : plans;
+
+  const supplierOptions =
+    subscription?.supplierId && !suppliers.some((s) => s.id === subscription.supplierId)
+      ? [...suppliers, { id: subscription.supplierId, name: `${subscription.supplierName ?? 'Fornecedor'} (inativo)` }]
+      : suppliers;
 
   const priceCents = watch('priceCents');
   const costCents = watch('costCents');
@@ -89,7 +113,7 @@ export function SubscriptionDrawer({
 
   function handlePlanChange(planId: string) {
     setValue('planId', planId);
-    const plan = plans.find((p) => p.id === planId);
+    const plan = planOptions.find((p) => p.id === planId);
     if (!plan) return;
     if (subscription) {
       // Edição: preço/custo já podem ter sido negociados com o cliente.
@@ -143,7 +167,7 @@ export function SubscriptionDrawer({
               className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
             >
               <option value="">Nenhum</option>
-              {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {planOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
@@ -176,7 +200,7 @@ export function SubscriptionDrawer({
             <Label htmlFor="supplierId">Fornecedor</Label>
             <select id="supplierId" {...register('supplierId')} className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground">
               <option value="">Nenhum</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {supplierOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div>
@@ -201,40 +225,13 @@ export function SubscriptionDrawer({
           </div>
           {subscription && (
             <p className="font-mono text-sm tabular-mono text-foreground-muted">
-              Próximo vencimento: {new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' }).format(new Date(subscription.nextDueAt))}
+              Próximo vencimento: {formatLocalDate(subscription.nextDueAt, timezone)}
             </p>
           )}
           <p className="text-xs text-foreground-muted">
             O novo valor vale a partir da próxima cobrança gerada. Cobranças já emitidas não mudam.
           </p>
-          <div className="border-t border-border pt-4">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-foreground-muted">Acesso</p>
-            <div className="flex flex-col gap-3">
-              <div>
-                <Label htmlFor="accessUsername">Usuário</Label>
-                <Input id="accessUsername" aria-invalid={!!errors.accessUsername} {...register('accessUsername')} className="h-11" />
-              </div>
-              <div>
-                <Label htmlFor="accessPassword">
-                  Senha {subscription?.hasAccessPassword && '(deixe em branco para manter a atual)'}
-                </Label>
-                <Input id="accessPassword" type="password" aria-invalid={!!errors.accessPassword} {...register('accessPassword')} className="h-11" />
-              </div>
-              <div>
-                <Label htmlFor="accessServer">Servidor</Label>
-                <Input id="accessServer" aria-invalid={!!errors.accessServer} {...register('accessServer')} className="h-11" />
-              </div>
-              <div>
-                <Label htmlFor="screens">Telas</Label>
-                <Input id="screens" type="number" min={1} aria-invalid={!!errors.screens} {...register('screens', { valueAsNumber: true })} className="h-11" />
-                {errors.screens && <p className="mt-1 text-sm text-danger">{errors.screens.message}</p>}
-              </div>
-              <div>
-                <Label htmlFor="accessNotes">Observações de acesso</Label>
-                <textarea id="accessNotes" {...register('accessNotes')} className="min-h-16 w-full rounded-sm border border-border bg-surface-elevated px-3 py-2 text-sm text-foreground" />
-              </div>
-            </div>
-          </div>
+          <SubscriptionAccessFields register={register} errors={errors} hasAccessPassword={!!subscription?.hasAccessPassword} />
           <Button type="submit" disabled={isSubmitting} className="h-11">
             {isSubmitting ? 'Salvando...' : 'Salvar'}
           </Button>
