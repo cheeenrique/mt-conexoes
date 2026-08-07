@@ -9,7 +9,7 @@ import {
 
 const MENU_ITEMS = [
   { href: '/', label: 'Início', icon: LayoutDashboard },
-  { href: '/clientes', label: 'Clientes', icon: Users },
+  { href: '/customers', label: 'Clientes', icon: Users },
   { href: '/cobrancas', label: 'Cobranças', icon: Receipt },
   { href: '/mensagens', label: 'Mensagens', icon: MessageSquare },
   { href: '/regua', label: 'Réguas', icon: GitCommitHorizontal },
