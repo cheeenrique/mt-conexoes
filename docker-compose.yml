@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: mtconexoes
       POSTGRES_DB: mtconexoes
     ports:
-      - "5432:5432"
+      - "5442:5432" # host 5432 is commonly taken by other local projects; container stays on 5432
     volumes:
       - mt-conexoes-db-data:/var/lib/postgresql/data
     healthcheck:
