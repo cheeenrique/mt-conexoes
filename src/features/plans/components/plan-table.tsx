@@ -10,7 +10,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { formatCents } from '@/lib/format';
 import { marginPercent } from '@/core/money';
-import { CYCLE_OPTIONS } from '../schema';
+import { CYCLE_LABELS } from '@/lib/labels';
 import { PlanDrawer } from './plan-drawer';
 import type { PlanDTO } from '../queries';
 
@@ -22,7 +22,7 @@ function marginTone(pct: Decimal | null): 'success' | 'warning' | 'danger' | 'ne
 }
 
 function cycleLabel(cycle: string): string {
-  return CYCLE_OPTIONS.find((opt) => opt.value === cycle)?.label ?? cycle;
+  return CYCLE_LABELS[cycle] ?? cycle;
 }
 
 export function PlanTable({
