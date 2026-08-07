@@ -72,6 +72,21 @@ describe('nextDueDate — clamp de fim de mês', () => {
     const due = nextDueDate({ paidAt: new Date('2026-12-15T15:00:00Z'), cycle: 'ANNUAL', timezone: TZ });
     expect(due.toISOString()).toBe('2027-12-16T02:59:59.999Z');
   });
+
+  it('pagou dia 31 em julho, mensal → mês alvo agosto tem 31 dias → vence 31/08', () => {
+    const due = nextDueDate({ paidAt: new Date('2026-07-31T15:00:00Z'), cycle: 'MONTHLY', timezone: TZ });
+    expect(due.toISOString()).toBe('2026-09-01T02:59:59.999Z'); // 31/08 23:59:59.999 -03:00
+  });
+
+  it('trimestral: pagou 30/04 → vence 30/07, não 31/07', () => {
+    const due = nextDueDate({ paidAt: new Date('2026-04-30T15:00:00Z'), cycle: 'QUARTERLY', timezone: TZ });
+    expect(due.toISOString()).toBe('2026-07-31T02:59:59.999Z'); // 30/07 23:59:59.999 -03:00
+  });
+
+  it('semestral: pagou 28/02, depois pagou 28/02 de novo → vence 28/08, não 31/08', () => {
+    const due = nextDueDate({ paidAt: new Date('2027-02-28T15:00:00Z'), cycle: 'SEMIANNUAL', timezone: TZ });
+    expect(due.toISOString()).toBe('2027-08-29T02:59:59.999Z'); // 28/08 23:59:59.999 -03:00
+  });
 });
 
 describe('firstDueDate', () => {
