@@ -17,6 +17,10 @@ export const messages = {
     created: 'Plano cadastrado.',
     updated: 'Plano atualizado.',
   },
+  customers: {
+    created: 'Cliente cadastrado.',
+    updated: 'Cliente atualizado.',
+  },
   settings: {
     saved: 'Alterações salvas.',
   },
