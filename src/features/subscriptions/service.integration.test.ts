@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import { encrypt } from '@/lib/crypto';
@@ -24,7 +25,9 @@ beforeEach(async () => {
   });
   subscriptionId = subscription.id;
 
-  const user = await db.user.create({ data: { email: 'reveal-test@mtconexoes.com.br', name: 'Teste', passwordHash: 'x' } });
+  const user = await db.user.create({
+    data: { email: `reveal-test-${randomUUID()}@mtconexoes.com.br`, name: 'Teste', passwordHash: 'x' },
+  });
   userId = user.id;
 });
 
@@ -51,5 +54,20 @@ describe('revealCredential', () => {
 
     const reveals = await db.credentialReveal.findMany({ where: { subscriptionId } });
     expect(reveals).toHaveLength(2);
+  });
+
+  // Esse teste discrimina a ORDEM de verdade: o ciphertext corrompido faz o
+  // decrypt falhar depois que a auditoria já deveria ter sido gravada. Se a
+  // implementação inverter a ordem (decrypt antes do `create`), a exceção
+  // interrompe a função antes de gravar nada e este teste fica vermelho — os
+  // dois testes acima passariam de qualquer jeito, com a ordem certa ou
+  // errada, porque só conferem o estado final.
+  it('grava a auditoria mesmo quando o decrypt falha depois', async () => {
+    await db.subscription.update({ where: { id: subscriptionId }, data: { accessPasswordEnc: 'v1:AAAA:AAAA:AAAA' } });
+
+    await expect(revealCredential(subscriptionId, userId, '127.0.0.1')).rejects.toThrow();
+
+    const reveals = await db.credentialReveal.findMany({ where: { subscriptionId } });
+    expect(reveals).toHaveLength(1);
   });
 });
