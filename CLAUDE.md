@@ -133,7 +133,7 @@ Fora dessas áreas: teste junto ou depois, sem cerimônia.
 | Dinheiro | sufixo `Cents`, tipo `BigInt` | `principalCents` |
 | Datas | sufixo `At`, UTC | `dueAt`, `paidAt` |
 | IDs | `uuid` v7 | — |
-| Rotas da UI | pt-BR, plural | `/clientes/:id`, `/cobrancas` |
+| Rotas da UI | inglês, plural | `/suppliers`, `/plans`, `/settings` |
 
 **Vocabulário** — `Customer` é o assinante final do cliente. `User` é quem acessa o painel (existe **um**). `Plan` é o pacote comercial. `Supplier` é o fornecedor do crédito revendido. `Charge` é a cobrança de um ciclo; `Payment` é o dinheiro que entrou. Conceito com outro nome em qualquer lugar é bug de nomenclatura.
 

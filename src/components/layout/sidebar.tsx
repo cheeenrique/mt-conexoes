@@ -15,9 +15,9 @@ const MENU_ITEMS = [
   { href: '/regua', label: 'Réguas', icon: GitCommitHorizontal },
   { href: '/leads', label: 'Leads', icon: Inbox },
   { href: '/relatorios', label: 'Relatórios', icon: ChartNoAxesColumn },
-  { href: '/fornecedores', label: 'Fornecedores', icon: Truck },
-  { href: '/planos', label: 'Planos', icon: Layers },
-  { href: '/ajustes', label: 'Ajustes', icon: Settings },
+  { href: '/suppliers', label: 'Fornecedores', icon: Truck },
+  { href: '/plans', label: 'Planos', icon: Layers },
+  { href: '/settings', label: 'Ajustes', icon: Settings },
 ];
 
 export function Sidebar({
