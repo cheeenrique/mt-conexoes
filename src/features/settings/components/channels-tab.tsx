@@ -10,8 +10,7 @@ export function ChannelsTab() {
       {CHANNELS.map((channel) => (
         <div
           key={channel.name}
-          className="grid items-center gap-4 rounded border border-border bg-surface px-4 py-3.5"
-          style={{ gridTemplateColumns: 'minmax(0,1fr) 132px 200px 236px' }}
+          className="grid grid-cols-[minmax(0,1fr)_132px_236px] items-center gap-4 rounded border border-border bg-surface px-4 py-3.5"
         >
           <div className="flex items-center gap-2.5">
             <span className="h-2.5 w-2.5 rounded-full bg-border-strong" />
@@ -24,16 +23,17 @@ export function ChannelsTab() {
             <p className="text-xs text-foreground-muted">Situação</p>
             <span className="text-xs font-bold text-foreground-muted">Não configurado</span>
           </div>
-          <div />
           <div className="flex justify-end">
-            <button
-              type="button"
-              disabled
-              title="Disponível na Etapa 3"
-              className="h-9 rounded-sm border border-border px-3 text-xs font-semibold text-foreground-muted opacity-50"
-            >
-              Configurar
-            </button>
+            <span title="Disponível na Etapa 3">
+              <button
+                type="button"
+                aria-disabled="true"
+                disabled
+                className="h-9 rounded-sm border border-border px-3 text-xs font-semibold text-foreground-muted opacity-50"
+              >
+                Configurar
+              </button>
+            </span>
           </div>
         </div>
       ))}

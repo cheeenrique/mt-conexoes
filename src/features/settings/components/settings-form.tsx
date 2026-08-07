@@ -2,7 +2,7 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,13 @@ import type { SettingsDTO } from '../queries';
 
 type FormValues = z.infer<typeof settingsSchema>;
 
-export function SettingsForm({ initial }: { initial: SettingsDTO }) {
+export function SettingsForm({
+  initial,
+  onDirtyChange,
+}: {
+  initial: SettingsDTO;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const defaultValues: FormValues = {
     businessName: initial.businessName,
     timezone: initial.timezone,
@@ -34,6 +40,10 @@ export function SettingsForm({ initial }: { initial: SettingsDTO }) {
   const [savedSnapshot, setSavedSnapshot] = useState(defaultValues);
   const current = watch();
   const dirty = JSON.stringify(current) !== JSON.stringify(savedSnapshot);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   async function onSubmit(values: FormValues) {
     const result = await updateSettingsAction(values);
@@ -92,17 +102,19 @@ export function SettingsForm({ initial }: { initial: SettingsDTO }) {
           <div className="flex gap-4">
             <div className="flex-1">
               <Label htmlFor="quietHourStart">Envia a partir de</Label>
-              <Input id="quietHourStart" type="number" min={0} max={23} {...register('quietHourStart', { valueAsNumber: true })} className="h-11" />
+              <Input id="quietHourStart" type="number" min={0} max={23} aria-invalid={!!errors.quietHourStart} {...register('quietHourStart', { valueAsNumber: true })} className="h-11" />
+              {errors.quietHourStart && <p className="mt-1 text-sm text-danger">{errors.quietHourStart.message}</p>}
             </div>
             <div className="flex-1">
               <Label htmlFor="quietHourEnd">Para de enviar às</Label>
-              <Input id="quietHourEnd" type="number" min={0} max={23} {...register('quietHourEnd', { valueAsNumber: true })} className="h-11" />
+              <Input id="quietHourEnd" type="number" min={0} max={23} aria-invalid={!!errors.quietHourEnd} {...register('quietHourEnd', { valueAsNumber: true })} className="h-11" />
               {errors.quietHourEnd && <p className="mt-1 text-sm text-danger">{errors.quietHourEnd.message}</p>}
             </div>
           </div>
           <div>
             <Label htmlFor="marginAlertPercent">Alertar margem abaixo de (%)</Label>
-            <Input id="marginAlertPercent" {...register('marginAlertPercent')} className="h-11" />
+            <Input id="marginAlertPercent" aria-invalid={!!errors.marginAlertPercent} {...register('marginAlertPercent')} className="h-11" />
+            {errors.marginAlertPercent && <p className="mt-1 text-sm text-danger">{errors.marginAlertPercent.message}</p>}
           </div>
           <p className="text-xs text-foreground-muted">
             Mensagem calculada fora da janela sai no primeiro horário permitido. O alerta de margem não bloqueia venda.
@@ -111,7 +123,7 @@ export function SettingsForm({ initial }: { initial: SettingsDTO }) {
       </section>
 
       {dirty && (
-        <div className="fixed inset-x-0 bottom-0 flex items-center justify-between border-t-2 border-brand bg-surface px-6 py-3">
+        <div className="fixed bottom-0 left-60 right-0 flex items-center justify-between border-t-2 border-brand bg-surface px-6 py-3">
           <span className="text-sm text-foreground">Alterações ainda não salvas</span>
           <div className="flex gap-3">
             <Button type="button" variant="outline" onClick={() => reset(savedSnapshot)}>Descartar</Button>
