@@ -3,8 +3,12 @@ import { z } from 'zod';
 export const settingsSchema = z
   .object({
     businessName: z.string().min(1, 'Informe o nome do negócio.'),
-    timezone: z.string().min(1),
-    quietHourStart: z.number().int().min(0).max(23),
+    timezone: z.string().min(1, 'Selecione um fuso horário.'),
+    quietHourStart: z
+      .number({ error: 'Informe um horário válido.' })
+      .int()
+      .min(0, 'Hora inválida.')
+      .max(23, 'Hora inválida.'),
     quietHourEnd: z.number().int().min(0).max(23),
     pixKey: z.string().optional(),
     pixHolderName: z.string().optional(),
