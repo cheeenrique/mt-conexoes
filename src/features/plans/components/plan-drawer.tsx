@@ -93,12 +93,14 @@ export function PlanDrawer({
             <Controller control={control} name="priceCents" render={({ field }) => (
               <CurrencyInput id="priceCents" value={field.value} onValueChange={field.onChange} />
             )} />
+            {errors.priceCents && <p className="mt-1 text-sm text-danger">{errors.priceCents.message}</p>}
           </div>
           <div>
             <Label htmlFor="costCents">Custo padrão</Label>
             <Controller control={control} name="costCents" render={({ field }) => (
               <CurrencyInput id="costCents" value={field.value} onValueChange={field.onChange} />
             )} />
+            {errors.costCents && <p className="mt-1 text-sm text-danger">{errors.costCents.message}</p>}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-foreground-muted">Margem:</span>
@@ -116,7 +118,13 @@ export function PlanDrawer({
             </select>
           </div>
           {plan && (
-            <p className="text-xs text-foreground-muted">Mudar o preço não reajusta assinatura existente.</p>
+            <>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="isActive" {...register('isActive')} className="h-4 w-4" />
+                <Label htmlFor="isActive">Ativo</Label>
+              </div>
+              <p className="text-xs text-foreground-muted">Mudar o preço não reajusta assinatura existente.</p>
+            </>
           )}
           <Button type="submit" disabled={isSubmitting} className="h-11">
             {isSubmitting ? 'Salvando...' : 'Salvar'}

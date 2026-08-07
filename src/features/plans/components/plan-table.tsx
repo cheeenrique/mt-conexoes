@@ -50,7 +50,17 @@ export function PlanTable({
   }
 
   const columns: Column<PlanDTO>[] = [
-    { header: 'Plano', cell: (row) => row.name },
+    {
+      header: 'Plano',
+      cell: (row) => (
+        <div className="flex items-center gap-2">
+          <span>{row.name}</span>
+          <StatusBadge tone={row.isActive ? 'success' : 'neutral'}>
+            {row.isActive ? 'Ativo' : 'Inativo'}
+          </StatusBadge>
+        </div>
+      ),
+    },
     { header: 'Ciclo', cell: (row) => cycleLabel(row.cycle) },
     { header: 'Preço', align: 'right', cell: (row) => formatCents(row.priceCents) },
     { header: 'Custo', align: 'right', cell: (row) => formatCents(row.costCents) },
