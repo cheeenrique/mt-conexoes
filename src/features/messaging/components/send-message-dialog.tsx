@@ -23,6 +23,7 @@ export function SendMessageDialog({
   const [isSending, setIsSending] = useState(false);
 
   async function send() {
+    if (isSending) return;
     setIsSending(true);
     const result = await sendManualMessagesAction({ customerIds: recipients.map((r) => r.id), body });
     setIsSending(false);
@@ -56,6 +57,7 @@ export function SendMessageDialog({
             onChange={(e) => setBody(e.target.value)}
             rows={5}
             placeholder="Olá {{cliente.primeiro_nome}}!"
+            aria-label="Texto da mensagem"
             className="w-full rounded-sm border border-border bg-surface px-2 py-1.5 text-sm"
           />
           <ul className="mt-2 max-h-40 overflow-y-auto text-sm text-foreground-muted">
