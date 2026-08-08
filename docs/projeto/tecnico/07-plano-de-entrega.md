@@ -39,15 +39,20 @@ Não é etapa de entrega, é o que sustenta as outras. Antes de qualquer tela:
 
 ### Sobre a importação
 
-Não é o pipeline de 9 fases do spec original. É um script rodado uma vez, com a planilha real na mão.
+Não é o pipeline de 9 fases do spec original. É um script rodado uma vez, com a planilha real na mão — `scripts/import-customers.ts`, um arquivo por fornecedor.
 
-O que ele precisa fazer, e que dá errado se for ignorado:
+A planilha real do cliente (`.xlsm`) não bateu com o resumo em vídeo que guiou o desenho inicial — nenhuma das 28 linhas tinha WhatsApp preenchido. Isso mudou duas decisões de modelo, registradas em [`docs/superpowers/specs/2026-08-07-etapa-1c-importacao-design.md`](../../superpowers/specs/2026-08-07-etapa-1c-importacao-design.md):
 
-- **Normalizar telefone para E.164.** A planilha tem `(11) 99999-8888`, `11999998888`, `+5511999998888` e `9999-8888` sem DDD. O último não dá para salvar — vira linha recusada, com o motivo.
-- **Consolidar duplicata por telefone.** `Customer.phone` é único, e é o que sustenta o opt-out e a dedupe diária. Duas linhas com o mesmo telefone viram um cliente com duas assinaturas.
-- **Gravar o último pagamento de cada assinatura**, não um dia fixo. O vencimento da primeira cobrança pós-importação sai de `nextDueDate(últimoPagamentoConhecido, cycle, tz)` — se a planilha não tem data de pagamento confiável pra alguma linha, essa linha entra no relatório de recusa, não se chuta uma data.
-- **Recusar em vez de chutar.** Linha com valor ilegível, ciclo ambíguo ou data impossível sai no relatório de recusa. Dado errado importado em silêncio é pior que linha faltando.
-- **Relatório ao fim:** quantas entraram, quantas foram recusadas e por quê, soma dos valores para conferir contra a planilha.
+- **`Customer.phone` é opcional**, não obrigatório. Telefone ausente não é motivo de recusa — o operador completa depois. Dedupe usa telefone quando presente; sem telefone, cada linha vira um `Customer` novo. `@@unique([phone])` continua válido: Postgres trata `NULL` como distinto em índice único, sem precisar de índice parcial.
+- **O vencimento vem direto da planilha**, não de `nextDueDate(últimoPagamento, cycle, tz)`. A origem não tem "data do último pagamento", só o vencimento que o cliente já controla na mão — é um bootstrap único desta importação. A partir do primeiro pagamento registrado no sistema novo (Etapa 2), a regra normal (pagamento → próximo vencimento calculado) passa a valer.
+
+O que o script faz, e que dá errado se for ignorado:
+
+- **Normalizar telefone para E.164** quando presente. A planilha pode ter `(11) 99999-8888`, `11999998888`, `+5511999998888` e `9999-8888` sem DDD. O último não dá para normalizar — fica sem telefone, sem recusar a linha.
+- **Consolidar duplicata por telefone**, quando há telefone em mais de uma linha para o mesmo cliente (ex.: mesmo cliente em duas planilhas de fornecedores diferentes).
+- **Idempotência checada antes de tocar em `Customer`** — telefone nulo não serve de chave de upsert. A checagem é por `Subscription` existente com o mesmo `accessUsername` + fornecedor; só depois disso o script resolve o `Customer`.
+- **Recusar em vez de chutar.** Nome vazio, vencimento ausente/impossível ou valor negativo saem no relatório de recusa. Dado errado importado em silêncio é pior que linha faltando.
+- **Relatório ao fim** (`tmp/import-report-<timestamp>.txt`): quantas entraram, quantas foram puladas por já existir, quantas foram recusadas e por quê, quais entraram com ressalva de telefone inválido, soma dos valores para conferir contra a planilha.
 
 ⚠️ Até 4 horas de tratamento estão no contrato. Passou disso, é R$ 150/hora — combinado antes de começar, não depois.
 
