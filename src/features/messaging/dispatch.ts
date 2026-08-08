@@ -18,6 +18,16 @@ export class OutsideQuietHoursError extends DomainError {
   }
 }
 
+export class ChannelDoesNotSupportFreeTextError extends DomainError {
+  constructor(cause?: unknown) {
+    super(
+      'O canal padrão não envia texto livre. Configure um canal com suporte a envio manual (Evolution ou Salvy).',
+      'CHANNEL_NO_FREE_TEXT',
+      { cause },
+    );
+  }
+}
+
 export interface DispatchSummary {
   sent: number;
   failed: number;
@@ -35,6 +45,9 @@ export async function sendManualBatch(input: { customerIds: string[]; body: stri
   const channelRow = await db.channelConfig.findFirst({ where: { isDefault: true, isActive: true } });
   if (!channelRow) throw new NoDefaultChannelError();
 
+  const adapter = resolveAdapter(channelRow.provider);
+  if (!adapter.capabilities.supportsFreeText) throw new ChannelDoesNotSupportFreeTextError();
+
   const settings = await getSettings();
   if (!isWithinLocalHourRange(input.now, settings.quietHourStart, settings.quietHourEnd, settings.timezone)) {
     throw new OutsideQuietHoursError();
@@ -47,7 +60,6 @@ export async function sendManualBatch(input: { customerIds: string[]; body: stri
   const skippedNoPhone = customers.filter((c) => !c.optedOut && !c.phone).length;
   const eligible = customers.filter((c) => !c.optedOut && c.phone);
 
-  const adapter = resolveAdapter(channelRow.provider);
   const credentials = JSON.parse(decrypt(channelRow.credentials, 'channel.credentials'));
   const scheduledDate = localDateOnly(input.now, settings.timezone);
 

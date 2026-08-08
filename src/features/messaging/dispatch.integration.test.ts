@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { db } from '@/lib/db';
 import { encrypt } from '@/lib/crypto';
-import { sendManualBatch, NoDefaultChannelError, OutsideQuietHoursError } from './dispatch';
+import { sendManualBatch, NoDefaultChannelError, OutsideQuietHoursError, ChannelDoesNotSupportFreeTextError } from './dispatch';
 import { UnknownTemplateVariableError } from '@/lib/errors';
 
 process.env.CREDENTIAL_KEY = process.env.CREDENTIAL_KEY ?? Buffer.alloc(32, 9).toString('base64');
@@ -29,6 +29,22 @@ async function seedActiveDefaultChannel() {
   });
 }
 
+// META_CLOUD exige templateRef aprovado (requiresApprovedTemplate: true,
+// supportsFreeText: false) — usado só para provar que sendManualBatch rejeita
+// esse canal de saída antes de tentar enviar qualquer coisa.
+async function seedMetaCloudDefaultChannel() {
+  await db.channelConfig.create({
+    data: {
+      provider: 'META_CLOUD',
+      label: 'Meta Cloud API',
+      isActive: true,
+      isDefault: true,
+      credentials: encrypt(JSON.stringify({ accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' }), 'channel.credentials'),
+      lastCheckOk: true,
+    },
+  });
+}
+
 async function seedCustomer(overrides: Partial<{ phone: string | null; optedOut: boolean }> = {}) {
   return db.customer.create({
     data: {
@@ -43,7 +59,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await db.message.deleteMany({ where: { customer: { name: 'Cliente Teste' } } });
   await db.customer.deleteMany({ where: { name: 'Cliente Teste' } });
-  await db.channelConfig.deleteMany({ where: { provider: 'EVOLUTION' } });
+  await db.channelConfig.deleteMany({ where: { provider: { in: ['EVOLUTION', 'META_CLOUD'] } } });
 });
 
 describe('sendManualBatch', () => {
@@ -74,6 +90,18 @@ describe('sendManualBatch', () => {
     await expect(
       sendManualBatch({ customerIds: [customer.id], body: 'Olá {{cliente.primeiro_nome}}', now: OUT_OF_HOURS_NOW }),
     ).rejects.toThrow(OutsideQuietHoursError);
+
+    const count = await db.message.count({ where: { customerId: customer.id } });
+    expect(count).toBe(0);
+  });
+
+  it('rejeita canal padrão sem suporte a texto livre, sem criar nenhuma Message', async () => {
+    await seedMetaCloudDefaultChannel();
+    const customer = await seedCustomer();
+
+    await expect(
+      sendManualBatch({ customerIds: [customer.id], body: 'Olá {{cliente.primeiro_nome}}', now: IN_HOURS_NOW }),
+    ).rejects.toThrow(ChannelDoesNotSupportFreeTextError);
 
     const count = await db.message.count({ where: { customerId: customer.id } });
     expect(count).toBe(0);
