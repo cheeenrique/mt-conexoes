@@ -38,3 +38,20 @@ export const CHANNEL_PROVIDER_LABELS: Record<string, string> = {
   EVOLUTION: 'Evolution API',
   SALVY: 'Salvy',
 };
+
+export const DUNNING_ACTION_OPTIONS = [
+  { value: 'SEND_MESSAGE', label: 'Enviar mensagem' },
+  { value: 'SUSPEND', label: 'Suspender assinatura' },
+  { value: 'NOTIFY_OWNER', label: 'Notificar operador' },
+] as const;
+
+export const DUNNING_ACTION_LABELS: Record<string, string> = Object.fromEntries(
+  DUNNING_ACTION_OPTIONS.map((opt) => [opt.value, opt.label]),
+);
+
+export const DUNNING_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Rascunho',
+  REVIEW: 'Em revisão',
+  ACTIVE: 'Ativa',
+  PAUSED: 'Pausada',
+};
