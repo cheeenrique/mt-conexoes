@@ -45,4 +45,43 @@ describe('listMessagesForCustomer', () => {
     await db.message.deleteMany({ where: { customerId: customer.id } });
     await db.customer.delete({ where: { id: customer.id } });
   });
+
+  it('ordena por createdAt desc, mesmo com múltiplas mensagens', async () => {
+    const customer = await db.customer.create({ data: { name: 'Timeline Ordem', phone: '+5511999990003' } });
+    const older = await db.message.create({
+      data: {
+        customerId: customer.id,
+        kind: 'MANUAL',
+        status: 'SENT',
+        toPhone: customer.phone!,
+        body: 'Primeira',
+        scheduledFor: new Date(),
+        scheduledDate: new Date(),
+        sentAt: new Date(),
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+      },
+    });
+    const newer = await db.message.create({
+      data: {
+        customerId: customer.id,
+        kind: 'MANUAL',
+        status: 'SENT',
+        toPhone: customer.phone!,
+        body: 'Segunda',
+        scheduledFor: new Date(),
+        scheduledDate: new Date(),
+        sentAt: new Date(),
+        createdAt: new Date('2026-01-02T00:00:00Z'),
+      },
+    });
+
+    const rows = await listMessagesForCustomer(customer.id);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].id).toBe(newer.id);
+    expect(rows[1].id).toBe(older.id);
+
+    await db.message.deleteMany({ where: { customerId: customer.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
 });
