@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 const TABS = [
   { key: 'subscriptions', label: 'Assinaturas', disabled: false, title: undefined },
   { key: 'charges', label: 'Cobranças', disabled: false, title: undefined },
-  { key: 'messages', label: 'Mensagens', disabled: true, title: 'Disponível na Etapa 3' },
+  { key: 'messages', label: 'Mensagens', disabled: false, title: undefined },
 ] as const;
 
 export function CustomerTabs({
