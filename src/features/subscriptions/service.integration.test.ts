@@ -132,4 +132,21 @@ describe('createSubscription — emissão da primeira Charge', () => {
     await db.subscription.delete({ where: { id: subscription.id } });
     await db.customer.delete({ where: { id: customer.id } });
   });
+
+  it('desconto FIXED vigente na emissão converte reais para centavos corretamente', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Desconto Fixo Teste' } });
+    const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const subscription = await createSubscription(customer.id, {
+      planId: '', supplierId: '', priceCents: '10000', costCents: '3000', cycle: 'MONTHLY',
+      discountType: 'FIXED', discountValue: '10.50', discountUntil: farFuture,
+      accessUsername: '', accessPassword: '', accessServer: '', screens: 1, accessNotes: '',
+    } as unknown as z.infer<typeof subscriptionSchema>);
+
+    const charge = await db.charge.findFirst({ where: { subscriptionId: subscription.id } });
+    expect(charge!.discountCents.toString()).toBe('1050'); // R$10,50 -> 1050 centavos
+
+    await db.charge.deleteMany({ where: { subscriptionId: subscription.id } });
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
 });

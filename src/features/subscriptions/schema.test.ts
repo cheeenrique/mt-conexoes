@@ -71,7 +71,7 @@ describe('subscriptionSchema — discountType/discountValue', () => {
   });
 
   it('normaliza vírgula decimal pra ponto e aceita', () => {
-    const result = subscriptionSchema.safeParse({ ...VALID_INPUT, discountType: 'FIXED', discountValue: '10,50' });
+    const result = subscriptionSchema.safeParse({ ...VALID_INPUT, priceCents: '10000', discountType: 'FIXED', discountValue: '10,50' });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -80,7 +80,7 @@ describe('subscriptionSchema — discountType/discountValue', () => {
   });
 
   it('aceita valor com ponto decimal normalmente', () => {
-    const result = subscriptionSchema.safeParse({ ...VALID_INPUT, discountType: 'FIXED', discountValue: '10.50' });
+    const result = subscriptionSchema.safeParse({ ...VALID_INPUT, priceCents: '10000', discountType: 'FIXED', discountValue: '10.50' });
     expect(result.success).toBe(true);
   });
 
@@ -95,7 +95,37 @@ describe('subscriptionSchema — discountType/discountValue', () => {
   });
 
   it('aceita combinação válida tipo + valor sem estourar dígitos', () => {
-    const result = subscriptionSchema.safeParse({ ...VALID_INPUT, discountType: 'FIXED', discountValue: '99999999.99' });
+    // priceCents cobre o discountValue de propósito — este teste é sobre o
+    // bound de dígitos do DECIMAL(10,2), não sobre o bound de preço (coberto
+    // à parte em 'subscriptionSchema — FIXED vs priceCents').
+    const result = subscriptionSchema.safeParse({
+      ...VALID_INPUT,
+      priceCents: '10000000000',
+      discountType: 'FIXED',
+      discountValue: '99999999.99',
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('subscriptionSchema — FIXED vs priceCents', () => {
+  it('rejeita desconto FIXED maior que o preço, com mensagem em pt-BR', () => {
+    const result = subscriptionSchema.safeParse({ ...VALID_INPUT, priceCents: '10000', discountType: 'FIXED', discountValue: '500.00' });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === 'discountValue');
+      expect(issue?.message).toBe('Desconto não pode ser maior que o preço da assinatura.');
+    }
+  });
+
+  it('aceita desconto FIXED igual ao preço', () => {
+    const result = subscriptionSchema.safeParse({ ...VALID_INPUT, priceCents: '10000', discountType: 'FIXED', discountValue: '100.00' });
+    expect(result.success).toBe(true);
+  });
+
+  it('aceita desconto FIXED menor que o preço, com conversão reais→centavos correta', () => {
+    const result = subscriptionSchema.safeParse({ ...VALID_INPUT, priceCents: '10000', discountType: 'FIXED', discountValue: '10.50' });
     expect(result.success).toBe(true);
   });
 });
