@@ -20,3 +20,15 @@ export const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
   SUSPENDED: 'Suspensa',
   CANCELLED: 'Cancelada',
 };
+
+export const CHARGE_STATUS_OPTIONS = [
+  { value: 'OPEN', label: 'Aberta' },
+  { value: 'OVERDUE', label: 'Vencida' },
+  { value: 'PARTIALLY_PAID', label: 'Parcial' },
+  { value: 'PAID', label: 'Paga' },
+  { value: 'CANCELLED', label: 'Cancelada' },
+] as const;
+
+export const CHARGE_STATUS_LABELS: Record<string, string> = Object.fromEntries(
+  CHARGE_STATUS_OPTIONS.map((opt) => [opt.value, opt.label]),
+);
