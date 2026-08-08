@@ -1,13 +1,9 @@
 import { db } from '@/lib/db';
-import { DomainError } from '@/lib/errors';
+import { DomainError, UnknownTemplateVariableError } from '@/lib/errors';
 import { assertKnownVariables } from '@/core/dunning-template';
 import type { DunningStepInput } from './schema';
 
-export class UnknownTemplateVariableError extends DomainError {
-  constructor(message: string, cause?: unknown) {
-    super(message, 'UNKNOWN_TEMPLATE_VARIABLE', { cause });
-  }
-}
+export { UnknownTemplateVariableError };
 
 export class DuplicateStepOffsetError extends DomainError {
   constructor(cause?: unknown) {
