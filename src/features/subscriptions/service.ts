@@ -85,3 +85,54 @@ export async function revealCredential(subscriptionId: string, userId: string, i
   await db.credentialReveal.create({ data: { subscriptionId, userId, ip } });
   return decrypt(subscription.accessPasswordEnc, 'subscription.accessPassword');
 }
+
+/**
+ * Criação de assinatura pela importação da base — única exceção no app que
+ * NÃO calcula `nextDueAt` via `firstDueDate`. A planilha de origem só tem o
+ * vencimento atual (controlado na mão pelo cliente), nunca um histórico de
+ * pagamento — decisão registrada em docs/superpowers/specs/2026-08-07-etapa-1c-importacao-design.md.
+ * A partir do primeiro pagamento registrado no sistema novo, a regra normal
+ * (pagamento → próximo vencimento) passa a valer.
+ */
+export async function createImportedSubscription(params: {
+  customerId: string;
+  supplierId: string;
+  priceCents: bigint;
+  costCents: bigint;
+  nextDueAt: Date;
+  startedAt: Date;
+  accessUsername: string | null;
+  accessPassword: string | null;
+  screens: number;
+}): Promise<{ id: string }> {
+  return db.subscription.create({
+    data: {
+      customerId: params.customerId,
+      supplierId: params.supplierId,
+      priceCents: params.priceCents,
+      costCents: params.costCents,
+      cycle: 'MONTHLY',
+      nextDueAt: params.nextDueAt,
+      startedAt: params.startedAt,
+      accessUsername: params.accessUsername,
+      accessPasswordEnc: params.accessPassword ? encrypt(params.accessPassword, 'subscription.accessPassword') : null,
+      screens: params.screens,
+    },
+    select: { id: true },
+  });
+}
+
+/**
+ * Idempotência da importação — checado ANTES de tocar em `Customer`, porque
+ * telefone nulo não serve de chave de upsert (`WHERE phone IS NULL` bateria
+ * em qualquer cliente sem telefone, não no cliente certo desta linha).
+ */
+export async function findImportedSubscriptionBySupplier(params: {
+  supplierId: string;
+  accessUsername: string;
+}): Promise<{ id: string } | null> {
+  return db.subscription.findFirst({
+    where: { supplierId: params.supplierId, accessUsername: params.accessUsername },
+    select: { id: true },
+  });
+}
