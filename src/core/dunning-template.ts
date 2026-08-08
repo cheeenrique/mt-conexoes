@@ -12,14 +12,14 @@ export type TemplateVariable = (typeof TEMPLATE_VARIABLES)[number];
 export type TemplateContext = Record<TemplateVariable, string>;
 
 const VARIABLE_PATTERN = /\{\{([^{}]+)\}\}/g;
+const KNOWN_VARIABLES = new Set<string>(TEMPLATE_VARIABLES);
 
 export function extractTemplateVariables(text: string): string[] {
   return [...text.matchAll(VARIABLE_PATTERN)].map((match) => match[1].trim());
 }
 
 export function assertKnownVariables(text: string): void {
-  const known = new Set<string>(TEMPLATE_VARIABLES);
-  const unknown = extractTemplateVariables(text).filter((v) => !known.has(v));
+  const unknown = extractTemplateVariables(text).filter((v) => !KNOWN_VARIABLES.has(v));
   if (unknown.length > 0) {
     throw new Error(`Variável de template desconhecida: ${[...new Set(unknown)].join(', ')}`);
   }
@@ -27,7 +27,7 @@ export function assertKnownVariables(text: string): void {
 
 export function renderTemplate(text: string, context: TemplateContext): string {
   return text.replace(VARIABLE_PATTERN, (match, rawVariable) => {
-    const variable = rawVariable.trim() as TemplateVariable;
-    return variable in context ? context[variable] : match;
+    const variable = rawVariable.trim();
+    return KNOWN_VARIABLES.has(variable) ? context[variable as TemplateVariable] : match;
   });
 }

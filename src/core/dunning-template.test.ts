@@ -16,6 +16,18 @@ describe('extractTemplateVariables', () => {
       'cliente.nome', 'cobranca.valor', 'pix.chave', 'cliente.nome',
     ]);
   });
+
+  it('chaves aninhadas {{a{{b}}c}} casam só o par interno mais próximo', () => {
+    expect(extractTemplateVariables('{{a{{b}}c}}')).toEqual(['b']);
+  });
+
+  it('chaves vazias {{}} não casam — nome de variável vazio não é match', () => {
+    expect(extractTemplateVariables('X={{}}')).toEqual([]);
+  });
+
+  it('chave não fechada não casa', () => {
+    expect(extractTemplateVariables('{{cliente.nome')).toEqual([]);
+  });
 });
 
 describe('assertKnownVariables', () => {
@@ -64,5 +76,9 @@ describe('renderTemplate', () => {
 
   it('texto sem variável retorna igual', () => {
     expect(renderTemplate('Texto fixo.', context)).toBe('Texto fixo.');
+  });
+
+  it('não vaza propriedade herdada do prototype — {{constructor}} fica literal', () => {
+    expect(renderTemplate('{{constructor}}', context)).toBe('{{constructor}}');
   });
 });
