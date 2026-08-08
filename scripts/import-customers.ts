@@ -15,7 +15,7 @@ import { readFile, utils } from 'xlsx';
 import { config } from 'dotenv';
 import { db } from '@/lib/db';
 import { createImportedSubscription, findImportedSubscriptionBySupplier } from '@/features/subscriptions/service';
-import { normalizePhoneBR, parseCentsFromBR, parseDateBR } from './import/parse-row';
+import { normalizePhoneBR, parseCentsFromBR, parseDateBR, toBusinessDueDate } from './import/parse-row';
 
 config({ path: '.env.local' });
 
@@ -56,7 +56,7 @@ interface ImportResult {
   priceCents?: bigint;
 }
 
-async function importRow(rawRow: Record<string, unknown>, supplierId: string): Promise<ImportResult> {
+async function importRow(rawRow: Record<string, unknown>, supplierId: string, timezone: string): Promise<ImportResult> {
   const row = normalizeHeaders(rawRow);
 
   const rawName = pick(row, COLUMN.name);
@@ -66,8 +66,9 @@ async function importRow(rawRow: Record<string, unknown>, supplierId: string): P
   if (!name) return { status: 'rejected', identifier, reason: 'Nome ausente.' };
 
   const rawDue = pick(row, COLUMN.dueDate);
-  const dueDate = rawDue !== undefined ? parseDateBR(rawDue as string | number | Date) : null;
-  if (!dueDate) return { status: 'rejected', identifier, reason: 'Data de vencimento ausente ou inválida.' };
+  const parsedDueDate = rawDue !== undefined ? parseDateBR(rawDue as string | number | Date) : null;
+  if (!parsedDueDate) return { status: 'rejected', identifier, reason: 'Data de vencimento ausente ou inválida.' };
+  const dueDate = toBusinessDueDate(parsedDueDate, timezone);
 
   const rawPrice = pick(row, COLUMN.price);
   const priceCents = rawPrice !== undefined ? parseCentsFromBR(rawPrice as string | number) : null;
@@ -77,7 +78,8 @@ async function importRow(rawRow: Record<string, unknown>, supplierId: string): P
   const costCents = rawCost !== undefined ? (parseCentsFromBR(rawCost as string | number) ?? 0n) : 0n;
 
   const rawStarted = pick(row, COLUMN.startedAt);
-  const startedAt = rawStarted !== undefined ? (parseDateBR(rawStarted as string | number | Date) ?? new Date()) : new Date();
+  const parsedStartedAt = rawStarted !== undefined ? parseDateBR(rawStarted as string | number | Date) : null;
+  const startedAt = parsedStartedAt ? toBusinessDueDate(parsedStartedAt, timezone) : new Date();
 
   const rawUsername = pick(row, COLUMN.username);
   const username = rawUsername !== undefined ? String(rawUsername).trim() || null : null;
@@ -128,6 +130,8 @@ async function main() {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: undefined });
 
+  const settings = await db.settings.findUniqueOrThrow({ where: { id: 'singleton' } });
+
   const supplier = await db.supplier.upsert({
     where: { name: supplierName },
     update: {},
@@ -136,7 +140,7 @@ async function main() {
 
   const results: ImportResult[] = [];
   for (const row of rows) {
-    results.push(await importRow(row, supplier.id));
+    results.push(await importRow(row, supplier.id, settings.timezone));
   }
 
   const imported = results.filter((r) => r.status === 'imported');

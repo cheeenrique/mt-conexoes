@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { normalizePhoneBR, parseCentsFromBR, parseDateBR } from './parse-row';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { normalizePhoneBR, parseCentsFromBR, parseDateBR, toBusinessDueDate } from './parse-row';
 
 describe('normalizePhoneBR', () => {
   it('normaliza (11) 99999-8888 pra E.164', () => {
@@ -66,5 +66,35 @@ describe('parseDateBR', () => {
 
   it('rejeita data impossível', () => {
     expect(parseDateBR('32/13/2026')).toBeNull();
+  });
+});
+
+describe('toBusinessDueDate', () => {
+  const originalTz = process.env.TZ;
+
+  beforeEach(() => {
+    // Simula o processo Node do Cloud Run rodando em UTC — o bug corrigido
+    // era sensível ao fuso do PROCESSO, não só ao dado. Sem isso, o teste
+    // passaria mesmo com getters locais em vez de UTC, dependendo de onde
+    // roda a suíte.
+    process.env.TZ = 'UTC';
+  });
+
+  afterEach(() => {
+    process.env.TZ = originalTz;
+  });
+
+  it('ancora no fim do dia local do negócio, não em meia-noite UTC', () => {
+    // Célula-data decodificada pelo xlsx pro dia 10/08/2026, como um Date de
+    // meia-noite UTC — é exatamente o formato que `parseDateBR` devolve para
+    // uma célula-data real.
+    const cellDate = new Date(Date.UTC(2026, 7, 10));
+
+    const result = toBusinessDueDate(cellDate, 'America/Sao_Paulo');
+
+    // 23:59:59.999 de 10/08 em America/Sao_Paulo (UTC-3) vira 11/08 02:59:59.999 em UTC.
+    // Sob o bug antigo (armazenar o Date cru), o valor gravado seria
+    // 2026-08-10T00:00:00.000Z — um dia inteiro adiantado na exibição local.
+    expect(result.toISOString()).toBe('2026-08-11T02:59:59.999Z');
   });
 });

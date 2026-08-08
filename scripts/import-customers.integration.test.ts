@@ -70,7 +70,8 @@ describe('import-customers script', () => {
     const subscription = await db.subscription.findFirst({ where: { customerId: withPhone!.id } });
     expect(subscription?.priceCents.toString()).toBe('5000');
     expect(subscription?.costCents.toString()).toBe('2000');
-    expect(subscription?.nextDueAt.toISOString().slice(0, 10)).toBe('2026-08-10');
+    // 23:59:59.999 de 10/08/2026 em America/Sao_Paulo (UTC-3) cai em 11/08 em UTC.
+    expect(subscription?.nextDueAt.toISOString()).toBe('2026-08-11T02:59:59.999Z');
     expect(subscription?.accessUsername).toBe('maria.import');
 
     // Segunda rodada — mesmo arquivo, não duplica (checado por accessUsername+fornecedor)

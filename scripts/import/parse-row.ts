@@ -1,3 +1,20 @@
+import { endOfLocalDay } from '@/core/dates';
+
+/**
+ * Converte um `Date` decodificado pelo `xlsx` (`cellDates: true`) pro instante
+ * correto de vencimento/início: 23:59:59 no fuso do negócio, não meia-noite UTC.
+ *
+ * O `Date` que o `xlsx` devolve carrega o dia certo em termos de UTC — a
+ * decodificação do serial do Excel só introduz deriva de horário dentro do
+ * mesmo dia (compensação de LMT histórico), nunca troca o dia. Por isso as
+ * partes de calendário são lidas com getters UTC (`getUTCFullYear` etc.),
+ * nunca getters locais — getters locais dependem do fuso do processo Node
+ * (`TZ`), que no Cloud Run não é necessariamente o fuso do negócio.
+ */
+export function toBusinessDueDate(cellDate: Date, timezone: string): Date {
+  return endOfLocalDay(cellDate.getUTCFullYear(), cellDate.getUTCMonth(), cellDate.getUTCDate(), timezone);
+}
+
 /** Normaliza telefone brasileiro pra E.164 (+55DDDNÚMERO). null se impossível — nunca chuta DDD. */
 export function normalizePhoneBR(raw: string): string | null {
   const digits = raw.replace(/\D/g, '');
