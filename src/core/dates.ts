@@ -61,3 +61,11 @@ export function localDateOnly(instant: Date, timezone: string): Date {
   const local = new TZDate(instant, timezone);
   return new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
 }
+
+/** Diferença em dias de calendário local entre duas datas, nunca negativa. */
+export function daysBetweenLocalDates(from: Date, to: Date, timezone: string): number {
+  const fromLocal = localDateOnly(from, timezone);
+  const toLocal = localDateOnly(to, timezone);
+  const diffMs = toLocal.getTime() - fromLocal.getTime();
+  return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+}

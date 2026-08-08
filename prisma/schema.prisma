@@ -262,3 +262,43 @@ model ChannelConfig {
 
   @@map("channel_configs")
 }
+
+enum DunningStatus {
+  DRAFT
+  REVIEW
+  ACTIVE
+  PAUSED
+}
+
+enum DunningAction {
+  SEND_MESSAGE
+  SUSPEND
+  NOTIFY_OWNER
+}
+
+model DunningRule {
+  id        String        @id @default(uuid(7))
+  name      String
+  status    DunningStatus @default(DRAFT)
+  isDefault Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  steps     DunningStep[]
+
+  @@map("dunning_rules")
+}
+
+model DunningStep {
+  id           String        @id @default(uuid(7))
+  ruleId       String
+  offsetDays   Int
+  action       DunningAction @default(SEND_MESSAGE)
+  templateBody String?
+  isActive     Boolean       @default(true)
+
+  rule         DunningRule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, offsetDays])
+  @@map("dunning_steps")
+}

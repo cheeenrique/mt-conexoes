@@ -52,6 +52,35 @@ async function main() {
       create: { id: 'singleton', businessName: 'MT Conexões' },
     });
     console.log(`[seed] settings pronto: ${settings.businessName}`);
+
+    const defaultRule = await db.dunningRule.upsert({
+      where: { id: 'default-rule' },
+      update: {},
+      create: {
+        id: 'default-rule',
+        name: 'Régua padrão',
+        status: 'REVIEW',
+        isDefault: true,
+      },
+    });
+
+    const DEFAULT_STEPS: { offsetDays: number; action: 'SEND_MESSAGE' | 'SUSPEND'; templateBody: string | null }[] = [
+      { offsetDays: -5, action: 'SEND_MESSAGE', templateBody: 'Olá {{cliente.primeiro_nome}}! Sua renovação de {{cobranca.valor}} vence em breve, dia {{cobranca.vencimento}}.\n\n{{negocio.nome}}' },
+      { offsetDays: -2, action: 'SEND_MESSAGE', templateBody: 'Olá {{cliente.primeiro_nome}}! Sua renovação de {{cobranca.valor}} vence dia {{cobranca.vencimento}}.\n\nPix: {{pix.chave}}\n\n{{negocio.nome}}' },
+      { offsetDays: 0, action: 'SEND_MESSAGE', templateBody: 'Olá {{cliente.primeiro_nome}}! Sua renovação de {{cobranca.valor}} vence hoje ({{cobranca.vencimento}}).\n\nPix: {{pix.chave}}\n\nQualquer dúvida, é só responder aqui.\n{{negocio.nome}}' },
+      { offsetDays: 1, action: 'SEND_MESSAGE', templateBody: 'Olá {{cliente.primeiro_nome}}, sua renovação de {{cobranca.valor}} está {{cobranca.dias_atraso}} dia(s) atrasada.\n\nPix: {{pix.chave}}\n\n{{negocio.nome}}' },
+      { offsetDays: 3, action: 'SEND_MESSAGE', templateBody: 'Olá {{cliente.primeiro_nome}}, último aviso: sua renovação de {{cobranca.valor}} está {{cobranca.dias_atraso}} dia(s) atrasada e o acesso pode ser suspenso.\n\nPix: {{pix.chave}}\n\n{{negocio.nome}}' },
+      { offsetDays: 5, action: 'SUSPEND', templateBody: null },
+    ];
+
+    for (const step of DEFAULT_STEPS) {
+      await db.dunningStep.upsert({
+        where: { ruleId_offsetDays: { ruleId: defaultRule.id, offsetDays: step.offsetDays } },
+        update: {},
+        create: { ruleId: defaultRule.id, ...step },
+      });
+    }
+    console.log(`[seed] régua padrão pronta: ${defaultRule.name} (${DEFAULT_STEPS.length} passos)`);
   } finally {
     await db.$disconnect();
   }

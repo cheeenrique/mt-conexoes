@@ -40,4 +40,9 @@ export const messages = {
     deactivated: 'Canal desativado.',
     defaultSet: 'Canal definido como padrão.',
   },
+  dunning: {
+    stepCreated: 'Passo criado.',
+    stepUpdated: 'Passo atualizado.',
+    stepDeleted: 'Passo removido.',
+  },
 } as const;
