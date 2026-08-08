@@ -14,7 +14,7 @@
     "test:all": "pnpm test && pnpm test:integration",
     "db:migrate": "dotenv -e .env.local -- prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "import:customers": "tsx scripts/import-customers.ts"
+    "import:customers": "dotenv -e .env.local -- tsx scripts/import-customers.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
