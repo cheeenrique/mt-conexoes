@@ -238,3 +238,27 @@ model Payment {
   @@index([paidAt])
   @@map("payments")
 }
+
+enum ChannelProvider {
+  META_CLOUD
+  EVOLUTION
+  SALVY
+}
+
+model ChannelConfig {
+  id             String          @id @default(uuid(7))
+  provider       ChannelProvider @unique
+  label          String
+  isActive       Boolean         @default(false)
+  isDefault      Boolean         @default(false)
+  phoneNumber    String?
+  credentials    String
+  riskAcceptedAt DateTime?
+  lastCheckAt    DateTime?
+  lastCheckOk    Boolean?
+  lastError      String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@map("channel_configs")
+}
