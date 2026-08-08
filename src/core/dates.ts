@@ -25,6 +25,12 @@ export function endOfLocalDay(year: number, month: number, day: number, timezone
   return new Date(local.getTime());
 }
 
+/** 00:00:00.000 local convertido para UTC. */
+export function startOfLocalDay(year: number, month: number, day: number, timezone: string): Date {
+  const local = new TZDate(year, month, day, 0, 0, 0, 0, timezone);
+  return new Date(local.getTime());
+}
+
 function computeDueDate(referenceLocal: TZDate, cycle: BillingCycle, timezone: string): Date {
   const target = addMonths(startOfMonth(referenceLocal), CYCLE_MONTHS[cycle]);
   const day = resolveDueDay(referenceLocal.getDate(), target.getFullYear(), target.getMonth());
@@ -48,4 +54,10 @@ export function monthBoundsUtc(year: number, month: number, timezone: string): {
   const from = new TZDate(year, month, 1, 0, 0, 0, 0, timezone);
   const to = new TZDate(year, month + 1, 1, 0, 0, 0, 0, timezone);
   return { from: new Date(from.getTime()), to: new Date(to.getTime()) };
+}
+
+/** Data local sem hora (meia-noite UTC do dia local), para colunas @db.Date. */
+export function localDateOnly(instant: Date, timezone: string): Date {
+  const local = new TZDate(instant, timezone);
+  return new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
 }

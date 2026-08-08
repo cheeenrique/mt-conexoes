@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js';
 import { z } from 'zod';
 
 // Enum com `{ error }` custom perde a mensagem quando fica dentro de um
@@ -51,5 +52,19 @@ export const subscriptionSchema = z
     }
     if (hasType && hasValue && data.discountType === 'PERCENT' && Number(data.discountValue) > 100) {
       ctx.addIssue({ code: 'custom', path: ['discountValue'], message: 'Desconto percentual não pode passar de 100%.' });
+    }
+
+    // FIXED é reais (DECIMAL(10,2)), priceCents é centavos — mesma conversão
+    // que computeChargeDiscount faz no service. Sem este bound, um desconto
+    // fixo maior que o preço passa por aqui inteiro e só estoura no banco,
+    // no CHECK charges_discount_bounded, como erro genérico de Postgres na
+    // tela — o service não recalcula: quando o desconto chega até lá, tem
+    // que estar garantido que cabe no principal.
+    if (hasType && hasValue && data.discountType === 'FIXED' && data.priceCents && /^\d+$/.test(data.priceCents)) {
+      const discountCents = new Decimal(data.discountValue as string).times(100);
+      const priceCents = new Decimal(data.priceCents);
+      if (discountCents.greaterThan(priceCents)) {
+        ctx.addIssue({ code: 'custom', path: ['discountValue'], message: 'Desconto não pode ser maior que o preço da assinatura.' });
+      }
     }
   });

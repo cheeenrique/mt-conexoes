@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 
 const TABS = [
   { key: 'subscriptions', label: 'Assinaturas', disabled: false, title: undefined },
-  { key: 'charges', label: 'Cobranças', disabled: true, title: 'Disponível na Etapa 2' },
+  { key: 'charges', label: 'Cobranças', disabled: false, title: undefined },
   { key: 'messages', label: 'Mensagens', disabled: true, title: 'Disponível na Etapa 3' },
 ] as const;
 

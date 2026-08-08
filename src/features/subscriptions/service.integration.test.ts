@@ -93,3 +93,60 @@ describe('createSubscription — defesa em profundidade de discountUntil', () =>
     await expect(createSubscription(customerId, input)).rejects.toThrow('Data de validade em formato inválido.');
   });
 });
+
+describe('createSubscription — emissão da primeira Charge', () => {
+  it('assinatura ACTIVE emite a primeira Charge na criação', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Cobrança Teste' } });
+    const subscription = await createSubscription(customer.id, {
+      planId: '', supplierId: '', priceCents: '10000', costCents: '3000', cycle: 'MONTHLY',
+      discountType: '', discountValue: '', discountUntil: '',
+      accessUsername: '', accessPassword: '', accessServer: '', screens: 1, accessNotes: '',
+    } as unknown as z.infer<typeof subscriptionSchema>);
+
+    const charge = await db.charge.findFirst({ where: { subscriptionId: subscription.id } });
+    expect(charge).not.toBeNull();
+    expect(charge!.status).toBe('OPEN');
+    expect(charge!.principalCents.toString()).toBe('10000');
+    expect(charge!.costCents.toString()).toBe('3000');
+    expect(charge!.discountCents.toString()).toBe('0');
+    expect(charge!.customerId).toBe(customer.id);
+
+    await db.charge.deleteMany({ where: { subscriptionId: subscription.id } });
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
+
+  it('desconto PERCENT vigente na emissão reduz o principal líquido', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Desconto Teste' } });
+    const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const subscription = await createSubscription(customer.id, {
+      planId: '', supplierId: '', priceCents: '10000', costCents: '3000', cycle: 'MONTHLY',
+      discountType: 'PERCENT', discountValue: '10', discountUntil: farFuture,
+      accessUsername: '', accessPassword: '', accessServer: '', screens: 1, accessNotes: '',
+    } as unknown as z.infer<typeof subscriptionSchema>);
+
+    const charge = await db.charge.findFirst({ where: { subscriptionId: subscription.id } });
+    expect(charge!.discountCents.toString()).toBe('1000'); // 10% de 10000
+
+    await db.charge.deleteMany({ where: { subscriptionId: subscription.id } });
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
+
+  it('desconto FIXED vigente na emissão converte reais para centavos corretamente', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Desconto Fixo Teste' } });
+    const farFuture = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const subscription = await createSubscription(customer.id, {
+      planId: '', supplierId: '', priceCents: '10000', costCents: '3000', cycle: 'MONTHLY',
+      discountType: 'FIXED', discountValue: '10.50', discountUntil: farFuture,
+      accessUsername: '', accessPassword: '', accessServer: '', screens: 1, accessNotes: '',
+    } as unknown as z.infer<typeof subscriptionSchema>);
+
+    const charge = await db.charge.findFirst({ where: { subscriptionId: subscription.id } });
+    expect(charge!.discountCents.toString()).toBe('1050'); // R$10,50 -> 1050 centavos
+
+    await db.charge.deleteMany({ where: { subscriptionId: subscription.id } });
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
+});

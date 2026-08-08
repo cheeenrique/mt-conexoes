@@ -5,10 +5,12 @@ import { listSubscriptionsForCustomer } from '@/features/subscriptions/queries';
 import { listActivePlansForSelect } from '@/features/plans/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
 import { getSettings } from '@/features/settings/queries';
+import { getChargesForCustomer } from '@/features/charges/queries';
 import { CustomerProfileHeader } from '@/features/customers/components/customer-profile-header';
 import { CustomerTabs } from '@/features/customers/components/customer-tabs';
 import { BackButton } from '@/features/customers/components/back-button';
 import { SubscriptionList } from '@/features/subscriptions/components/subscription-list';
+import { CustomerChargeHistory } from '@/features/charges/components/customer-charge-history';
 
 export default async function CustomerProfilePage({
   params,
@@ -18,19 +20,17 @@ export default async function CustomerProfilePage({
   searchParams: Promise<{ aba?: string }>;
 }) {
   const { id } = await params;
-  await searchParams; // única aba real hoje é "subscriptions" — ?aba= é lido aqui pra manter o
-  // padrão de URL-as-state estabelecido em 1a; passa a ramificar quando Cobranças/Mensagens
-  // ganharem conteúdo real (Etapa 2/3), não antes.
-  const aba = 'subscriptions';
+  const aba = (await searchParams).aba === 'charges' ? 'charges' : 'subscriptions';
 
   const customer = await getCustomer(id);
   if (!customer) notFound();
 
-  const [subscriptions, plans, suppliers, settings] = await Promise.all([
+  const [subscriptions, plans, suppliers, settings, charges] = await Promise.all([
     listSubscriptionsForCustomer(id),
     listActivePlansForSelect(),
     listActiveSuppliersForSelect(),
     getSettings(),
+    getChargesForCustomer(id),
   ]);
 
   const activeSub = subscriptions.find((s) => s.status === 'ACTIVE');
@@ -52,13 +52,17 @@ export default async function CustomerProfilePage({
       />
       <div className="mt-6">
         <CustomerTabs customerId={id} aba={aba}>
-          <SubscriptionList
-            customerId={id}
-            subscriptions={subscriptions}
-            plans={plans}
-            suppliers={suppliers}
-            timezone={settings.timezone}
-          />
+          {aba === 'charges' ? (
+            <CustomerChargeHistory charges={charges} timezone={settings.timezone} />
+          ) : (
+            <SubscriptionList
+              customerId={id}
+              subscriptions={subscriptions}
+              plans={plans}
+              suppliers={suppliers}
+              timezone={settings.timezone}
+            />
+          )}
         </CustomerTabs>
       </div>
     </AppShell>

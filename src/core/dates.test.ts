@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { endOfLocalDay, firstDueDate, monthBoundsUtc, nextDueDate, resolveDueDay } from './dates';
+import { endOfLocalDay, firstDueDate, localDateOnly, monthBoundsUtc, nextDueDate, resolveDueDay } from './dates';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -114,5 +114,30 @@ describe('monthBoundsUtc', () => {
     const { from, to } = monthBoundsUtc(2026, 7, TZ);
     const payment = new Date('2026-09-01T01:00:00Z'); // 31/08 22:00 -03:00
     expect(payment.getTime() >= from.getTime() && payment.getTime() < to.getTime()).toBe(true);
+  });
+});
+
+describe('localDateOnly', () => {
+  it('extrai a data local sem componente de hora', () => {
+    // 2026-08-10T23:59:59.999Z é 20:59:59 de 10/08 em America/Sao_Paulo (UTC-3)
+    const result = localDateOnly(new Date('2026-08-10T23:59:59.999Z'), 'America/Sao_Paulo');
+    expect(result.toISOString()).toBe('2026-08-10T00:00:00.000Z');
+  });
+
+  it('vira o dia certo quando o instante UTC já passou da meia-noite local do dia seguinte', () => {
+    // 2026-08-11T02:00:00.000Z é 23:00 de 10/08 em America/Sao_Paulo — ainda dia 10 local
+    const result = localDateOnly(new Date('2026-08-11T02:00:00.000Z'), 'America/Sao_Paulo');
+    expect(result.toISOString()).toBe('2026-08-10T00:00:00.000Z');
+  });
+
+  it('é independente do fuso do processo — mesmo resultado sob TZ diferente', () => {
+    const original = process.env.TZ;
+    process.env.TZ = 'UTC';
+    try {
+      const result = localDateOnly(new Date('2026-08-10T23:59:59.999Z'), 'America/Sao_Paulo');
+      expect(result.toISOString()).toBe('2026-08-10T00:00:00.000Z');
+    } finally {
+      process.env.TZ = original;
+    }
   });
 });

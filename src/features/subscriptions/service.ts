@@ -1,7 +1,9 @@
+import Decimal from 'decimal.js';
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { encrypt, decrypt } from '@/lib/crypto';
-import { firstDueDate, endOfLocalDay } from '@/core/dates';
+import { firstDueDate, endOfLocalDay, localDateOnly } from '@/core/dates';
+import { applyPercent } from '@/core/money';
 import { getSettings } from '@/features/settings/queries';
 import type { z } from 'zod';
 import type { subscriptionSchema } from './schema';
@@ -54,15 +56,55 @@ export async function createSubscription(customerId: string, input: Subscription
   const startedAt = new Date();
   const nextDueAt = firstDueDate({ startedAt, cycle: input.cycle, timezone: settings.timezone });
 
-  return db.subscription.create({
-    data: {
-      customerId,
-      startedAt,
-      nextDueAt,
-      ...toBaseData(input, settings.timezone),
-    },
-    omit: { accessPasswordEnc: true },
+  return db.$transaction(async (tx) => {
+    const subscription = await tx.subscription.create({
+      data: {
+        customerId,
+        startedAt,
+        nextDueAt,
+        ...toBaseData(input, settings.timezone),
+      },
+      omit: { accessPasswordEnc: true },
+    });
+
+    if (subscription.status === 'ACTIVE') {
+      const principalCents = subscription.priceCents;
+      const periodStart = localDateOnly(startedAt, settings.timezone);
+      const discountCents = computeChargeDiscount(subscription, periodStart);
+
+      await tx.charge.create({
+        data: {
+          subscriptionId: subscription.id,
+          customerId,
+          supplierId: subscription.supplierId,
+          principalCents,
+          discountCents,
+          costCents: subscription.costCents,
+          periodStart,
+          periodEnd: localDateOnly(nextDueAt, settings.timezone),
+          dueAt: nextDueAt,
+        },
+      });
+    }
+
+    return subscription;
   });
+}
+
+/** Desconto vigente na emissão, em centavos. discountUntil precisa cobrir o início do período. */
+function computeChargeDiscount(
+  subscription: { priceCents: bigint; discountType: string | null; discountValue: unknown; discountUntil: Date | null },
+  periodStart: Date,
+): bigint {
+  if (!subscription.discountType || !subscription.discountValue) return 0n;
+  if (subscription.discountUntil && subscription.discountUntil < periodStart) return 0n;
+
+  const value = new Decimal(subscription.discountValue.toString());
+  if (subscription.discountType === 'PERCENT') {
+    return applyPercent(subscription.priceCents, value);
+  }
+  // FIXED: discountValue está em reais (Decimal(10,2)), converte pra centavos.
+  return BigInt(value.times(100).toFixed(0));
 }
 
 export async function updateSubscription(id: string, input: SubscriptionInput) {

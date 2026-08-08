@@ -4,19 +4,20 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, Receipt, MessageSquare, GitCommitHorizontal,
-  Inbox, ChartNoAxesColumn, Truck, Layers, Settings, Pause, Play,
+  Inbox, ChartNoAxesColumn, Truck, Layers, Settings, Pause, Play, Radio,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
   { href: '/', label: 'Início', icon: LayoutDashboard },
   { href: '/customers', label: 'Clientes', icon: Users },
-  { href: '/cobrancas', label: 'Cobranças', icon: Receipt },
+  { href: '/charges', label: 'Cobranças', icon: Receipt },
   { href: '/mensagens', label: 'Mensagens', icon: MessageSquare },
   { href: '/regua', label: 'Réguas', icon: GitCommitHorizontal },
   { href: '/leads', label: 'Leads', icon: Inbox },
   { href: '/relatorios', label: 'Relatórios', icon: ChartNoAxesColumn },
   { href: '/suppliers', label: 'Fornecedores', icon: Truck },
   { href: '/plans', label: 'Planos', icon: Layers },
+  { href: '/channels', label: 'Canais', icon: Radio },
   { href: '/settings', label: 'Ajustes', icon: Settings },
 ];
 
