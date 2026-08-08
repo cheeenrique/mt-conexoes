@@ -2,8 +2,9 @@
 
 import { revalidatePath } from 'next/cache';
 import type { ChannelProvider } from '@prisma/client';
-import { saveChannelCredentialsSchema } from './schema';
+import { saveChannelCredentialsSchema, sendManualMessagesSchema } from './schema';
 import { saveChannelCredentials, testChannelConnection, setChannelActive, setDefaultChannel } from './service';
+import { sendManualBatch, type DispatchSummary } from './dispatch';
 import { requireSession } from '@/features/auth/service';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -63,6 +64,23 @@ export async function setDefaultChannelAction(provider: ChannelProvider): Promis
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
     logger.error({ route: 'messaging.setDefault', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+export async function sendManualMessagesAction(input: unknown): Promise<{ ok: true; summary: DispatchSummary } | { error: { code: string; message: string } }> {
+  try {
+    await requireSession();
+    const parsed = sendManualMessagesSchema.safeParse(input);
+    if (!parsed.success) {
+      return { error: { code: 'VALIDATION', message: parsed.error.issues[0]?.message ?? messages.common.invalidInput } };
+    }
+    const summary = await sendManualBatch({ ...parsed.data, now: new Date() });
+    revalidatePath('/customers');
+    return { ok: true as const, summary };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'messaging.sendManual', error: String(err), stack: err instanceof Error ? err.stack : undefined });
     return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
   }
 }
