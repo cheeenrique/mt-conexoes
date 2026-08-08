@@ -1,4 +1,11 @@
 import type { ChannelProvider } from '@prisma/client';
+import { DomainError } from '@/lib/errors';
+
+export class ChannelCredentialsInvalidError extends DomainError {
+  constructor(cause?: unknown) {
+    super('Credencial em formato inválido para este canal.', 'CHANNEL_CREDENTIALS_INVALID', { cause });
+  }
+}
 
 export type ChannelCapabilities = {
   supportsFreeText: boolean;

@@ -8,6 +8,7 @@ import {
   EvolutionRiskNotAcceptedError,
   ChannelNotVerifiedError,
   ChannelNotConfiguredError,
+  ChannelNotActiveError,
 } from './service';
 
 process.env.CREDENTIAL_KEY = process.env.CREDENTIAL_KEY ?? Buffer.alloc(32, 7).toString('base64');
@@ -131,5 +132,29 @@ describe('setDefaultChannel', () => {
     const rows = await db.channelConfig.findMany({ where: { provider: { in: ['META_CLOUD', 'EVOLUTION'] } } });
     expect(rows.filter((r) => r.isDefault)).toHaveLength(1);
     expect(rows.find((r) => r.isDefault)?.provider).toBe('EVOLUTION');
+  });
+
+  it('rejeita definir como padrão canal nunca configurado', async () => {
+    await expect(setDefaultChannel('SALVY')).rejects.toThrow(ChannelNotConfiguredError);
+  });
+
+  it('rejeita definir como padrão canal configurado mas ainda não ativado', async () => {
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
+
+    await expect(setDefaultChannel('META_CLOUD')).rejects.toThrow(ChannelNotActiveError);
+  });
+});
+
+describe('constraint de banco — canal padrão único', () => {
+  it('rejeita duas linhas com isDefault=true de verdade no Postgres', async () => {
+    await db.channelConfig.create({
+      data: { provider: 'META_CLOUD', label: 'Meta Cloud API', credentials: 'ciphertext', isDefault: true },
+    });
+
+    await expect(
+      db.channelConfig.create({
+        data: { provider: 'EVOLUTION', label: 'Evolution API', credentials: 'ciphertext', isDefault: true },
+      }),
+    ).rejects.toThrow();
   });
 });

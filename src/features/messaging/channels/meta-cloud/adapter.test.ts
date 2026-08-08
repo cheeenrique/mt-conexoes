@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { metaCloudAdapter } from './adapter';
+import { ChannelCredentialsInvalidError } from '../types';
 
 const CREDENTIALS = { accessToken: 'tok', phoneNumberId: '123', wabaId: '456' };
 
@@ -63,7 +64,18 @@ describe('metaCloudAdapter.send', () => {
   it('rejeita credencial com forma inválida', async () => {
     await expect(
       metaCloudAdapter.send({ toPhone: '+5511999998888', body: '' }, { accessToken: '' }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(ChannelCredentialsInvalidError);
+  });
+
+  it('marca retryable=false quando o corpo de sucesso vem em formato inesperado', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }));
+
+    const result = await metaCloudAdapter.send(
+      { toPhone: '+5511999998888', body: '', templateRef: { name: 'x' } },
+      CREDENTIALS,
+    );
+
+    expect(result).toEqual({ ok: false, retryable: false, reason: 'Resposta inesperada da Meta Cloud API.' });
   });
 
   it('marca retryable=true quando o fetch rejeita (rede instável)', async () => {

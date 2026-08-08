@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { salvyAdapter } from './adapter';
+import { ChannelCredentialsInvalidError } from '../types';
 
 const CREDENTIALS = { apiKey: 'salvy-key' };
 
@@ -39,6 +40,20 @@ describe('salvyAdapter.send', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fetch failed')));
     const result = await salvyAdapter.send({ toPhone: '+5511999998888', body: 'Olá!' }, CREDENTIALS);
     expect(result).toEqual({ ok: false, retryable: true, reason: 'fetch failed' });
+  });
+
+  it('marca retryable=false quando o corpo de sucesso vem em formato inesperado', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }));
+
+    const result = await salvyAdapter.send({ toPhone: '+5511999998888', body: 'Olá!' }, CREDENTIALS);
+
+    expect(result).toEqual({ ok: false, retryable: false, reason: 'Resposta inesperada do Salvy.' });
+  });
+
+  it('rejeita credencial com forma inválida', async () => {
+    await expect(
+      salvyAdapter.send({ toPhone: '+5511999998888', body: 'Olá!' }, { apiKey: '' }),
+    ).rejects.toThrow(ChannelCredentialsInvalidError);
   });
 });
 

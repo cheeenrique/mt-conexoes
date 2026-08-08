@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { evolutionAdapter } from './adapter';
+import { ChannelCredentialsInvalidError } from '../types';
 
 const CREDENTIALS = { baseUrl: 'https://evo.cliente.com', apiKey: 'key', instanceName: 'principal' };
 
@@ -43,6 +44,20 @@ describe('evolutionAdapter.send', () => {
     const result = await evolutionAdapter.send({ toPhone: 'x', body: 'Olá!' }, CREDENTIALS);
 
     expect(result).toEqual({ ok: false, retryable: false, reason: 'número inválido' });
+  });
+
+  it('marca retryable=false quando o corpo de sucesso vem em formato inesperado', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) }));
+
+    const result = await evolutionAdapter.send({ toPhone: '+5511999998888', body: 'Olá!' }, CREDENTIALS);
+
+    expect(result).toEqual({ ok: false, retryable: false, reason: 'Resposta inesperada do Evolution.' });
+  });
+
+  it('rejeita credencial com forma inválida', async () => {
+    await expect(
+      evolutionAdapter.send({ toPhone: '+5511999998888', body: 'Olá!' }, { baseUrl: '' }),
+    ).rejects.toThrow(ChannelCredentialsInvalidError);
   });
 });
 

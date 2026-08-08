@@ -23,6 +23,12 @@ export class ChannelNotConfiguredError extends DomainError {
   }
 }
 
+export class ChannelNotActiveError extends DomainError {
+  constructor(cause?: unknown) {
+    super('Ative o canal antes de defini-lo como padrão.', 'CHANNEL_NOT_ACTIVE', { cause });
+  }
+}
+
 const LABELS: Record<ChannelProvider, string> = {
   META_CLOUD: 'Meta Cloud API',
   EVOLUTION: 'Evolution API',
@@ -82,6 +88,10 @@ export async function setChannelActive(provider: ChannelProvider, active: boolea
 }
 
 export async function setDefaultChannel(provider: ChannelProvider): Promise<void> {
+  const row = await db.channelConfig.findUnique({ where: { provider } });
+  if (!row) throw new ChannelNotConfiguredError();
+  if (row.isActive !== true) throw new ChannelNotActiveError();
+
   await db.$transaction(async (tx) => {
     await tx.channelConfig.updateMany({ where: { isDefault: true }, data: { isDefault: false } });
     await tx.channelConfig.update({ where: { provider }, data: { isDefault: true } });

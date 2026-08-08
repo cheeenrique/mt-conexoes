@@ -1,8 +1,11 @@
+import { ZodError } from 'zod';
 import type { ChannelAdapter, HealthResult, SendInput, SendResult } from '../types';
+import { ChannelCredentialsInvalidError } from '../types';
 import { metaCloudCredentialsSchema, type MetaCloudCredentials } from './schema';
 
 const GRAPH_BASE = 'https://graph.facebook.com/v20.0';
 const RATE_LIMIT_CODES = new Set([4, 80007, 130429]);
+const FETCH_TIMEOUT_MS = 10_000;
 
 function isRetryable(status: number, errorCode?: number): boolean {
   if (status >= 500) return true;
@@ -10,8 +13,17 @@ function isRetryable(status: number, errorCode?: number): boolean {
   return false;
 }
 
+function parseCredentials(rawCredentials: unknown): MetaCloudCredentials {
+  try {
+    return metaCloudCredentialsSchema.parse(rawCredentials);
+  } catch (err) {
+    if (err instanceof ZodError) throw new ChannelCredentialsInvalidError(err);
+    throw err;
+  }
+}
+
 async function send(input: SendInput, rawCredentials: unknown): Promise<SendResult> {
-  const credentials: MetaCloudCredentials = metaCloudCredentialsSchema.parse(rawCredentials);
+  const credentials = parseCredentials(rawCredentials);
   if (!input.templateRef) {
     return { ok: false, retryable: false, reason: 'Passo sem template aprovado para o canal Meta Cloud.' };
   }
@@ -32,23 +44,31 @@ async function send(input: SendInput, rawCredentials: unknown): Promise<SendResu
             : [],
         },
       }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
 
-    const payload = await response.json();
     if (!response.ok) {
+      const payload = await response.json();
       return { ok: false, retryable: isRetryable(response.status, payload.error?.code), reason: payload.error?.message ?? 'Falha desconhecida na Meta Cloud API.' };
     }
-    return { ok: true, externalId: payload.messages[0].id };
+
+    const payload = await response.json();
+    const externalId = payload?.messages?.[0]?.id;
+    if (typeof externalId !== 'string') {
+      return { ok: false, retryable: false, reason: 'Resposta inesperada da Meta Cloud API.' };
+    }
+    return { ok: true, externalId };
   } catch (err) {
     return { ok: false, retryable: true, reason: err instanceof Error ? err.message : 'Falha de rede ao falar com a Meta Cloud API.' };
   }
 }
 
 async function healthCheck(rawCredentials: unknown): Promise<HealthResult> {
-  const credentials: MetaCloudCredentials = metaCloudCredentialsSchema.parse(rawCredentials);
+  const credentials = parseCredentials(rawCredentials);
   try {
     const response = await fetch(`${GRAPH_BASE}/${credentials.phoneNumberId}?fields=id`, {
       headers: { Authorization: `Bearer ${credentials.accessToken}` },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (response.ok) return { ok: true };
     const payload = await response.json();
