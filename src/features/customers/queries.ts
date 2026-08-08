@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 export interface CustomerDTO {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   email: string | null;
   document: string | null;
   notes: string | null;
@@ -18,7 +18,7 @@ export interface CustomerListRowDTO extends CustomerDTO {
 function toDTO(row: {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   email: string | null;
   document: string | null;
   notes: string | null;

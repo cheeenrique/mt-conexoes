@@ -34,7 +34,7 @@ export function CustomerDrawer({
   } = useForm<FormValues>({
     resolver: zodResolver(customerSchema),
     values: customer
-      ? { name: customer.name, phone: customer.phone, email: customer.email ?? '', document: customer.document ?? '', notes: customer.notes ?? '' }
+      ? { name: customer.name, phone: customer.phone ?? '', email: customer.email ?? '', document: customer.document ?? '', notes: customer.notes ?? '' }
       : { name: '', phone: '', email: '', document: '', notes: '' },
   });
 
@@ -70,7 +70,7 @@ export function CustomerDrawer({
               control={control}
               name="phone"
               render={({ field }) => (
-                <PhoneInput id="phone" value={field.value} onValueChange={field.onChange} />
+                <PhoneInput id="phone" value={field.value ?? ''} onValueChange={field.onChange} />
               )}
             />
             {errors.phone && <p className="mt-1 text-sm text-danger">{errors.phone.message}</p>}

@@ -95,7 +95,7 @@ enum DiscountType {
 model Customer {
   id             String    @id @default(uuid(7))
   name           String
-  phone          String
+  phone          String?
   email          String?
   document       String?
   notes          String?

@@ -14,7 +14,7 @@ export class CustomerPhoneTakenError extends DomainError {
 function toData(input: CustomerInput) {
   return {
     name: input.name,
-    phone: input.phone,
+    phone: input.phone || null,
     email: input.email || null,
     document: input.document || null,
     notes: input.notes || null,

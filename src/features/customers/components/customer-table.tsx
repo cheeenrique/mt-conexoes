@@ -52,7 +52,7 @@ export function CustomerTable({
           <Link href={`/customers/${row.id}`} className="font-semibold text-foreground hover:text-brand">
             {row.name}
           </Link>
-          <p className="font-mono text-xs tabular-mono text-foreground-muted">{row.phone}</p>
+          <p className="font-mono text-xs tabular-mono text-foreground-muted">{row.phone ?? '—'}</p>
         </div>
       ),
     },
