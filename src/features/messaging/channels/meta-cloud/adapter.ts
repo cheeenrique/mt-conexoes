@@ -16,38 +16,46 @@ async function send(input: SendInput, rawCredentials: unknown): Promise<SendResu
     return { ok: false, retryable: false, reason: 'Passo sem template aprovado para o canal Meta Cloud.' };
   }
 
-  const response = await fetch(`${GRAPH_BASE}/${credentials.phoneNumberId}/messages`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${credentials.accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: input.toPhone,
-      type: 'template',
-      template: {
-        name: input.templateRef.name,
-        language: { code: 'pt_BR' },
-        components: input.templateRef.params
-          ? [{ type: 'body', parameters: Object.values(input.templateRef.params).map((text) => ({ type: 'text', text })) }]
-          : [],
-      },
-    }),
-  });
+  try {
+    const response = await fetch(`${GRAPH_BASE}/${credentials.phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${credentials.accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: input.toPhone,
+        type: 'template',
+        template: {
+          name: input.templateRef.name,
+          language: { code: 'pt_BR' },
+          components: input.templateRef.params
+            ? [{ type: 'body', parameters: Object.values(input.templateRef.params).map((text) => ({ type: 'text', text })) }]
+            : [],
+        },
+      }),
+    });
 
-  const payload = await response.json();
-  if (!response.ok) {
-    return { ok: false, retryable: isRetryable(response.status, payload.error?.code), reason: payload.error?.message ?? 'Falha desconhecida na Meta Cloud API.' };
+    const payload = await response.json();
+    if (!response.ok) {
+      return { ok: false, retryable: isRetryable(response.status, payload.error?.code), reason: payload.error?.message ?? 'Falha desconhecida na Meta Cloud API.' };
+    }
+    return { ok: true, externalId: payload.messages[0].id };
+  } catch (err) {
+    return { ok: false, retryable: true, reason: err instanceof Error ? err.message : 'Falha de rede ao falar com a Meta Cloud API.' };
   }
-  return { ok: true, externalId: payload.messages[0].id };
 }
 
 async function healthCheck(rawCredentials: unknown): Promise<HealthResult> {
   const credentials: MetaCloudCredentials = metaCloudCredentialsSchema.parse(rawCredentials);
-  const response = await fetch(`${GRAPH_BASE}/${credentials.phoneNumberId}?fields=id`, {
-    headers: { Authorization: `Bearer ${credentials.accessToken}` },
-  });
-  if (response.ok) return { ok: true };
-  const payload = await response.json();
-  return { ok: false, reason: payload.error?.message ?? 'Falha ao validar credencial da Meta Cloud API.' };
+  try {
+    const response = await fetch(`${GRAPH_BASE}/${credentials.phoneNumberId}?fields=id`, {
+      headers: { Authorization: `Bearer ${credentials.accessToken}` },
+    });
+    if (response.ok) return { ok: true };
+    const payload = await response.json();
+    return { ok: false, reason: payload.error?.message ?? 'Falha ao validar credencial da Meta Cloud API.' };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : 'Falha de rede ao falar com a Meta Cloud API.' };
+  }
 }
 
 export const metaCloudAdapter: ChannelAdapter = {

@@ -65,6 +65,17 @@ describe('metaCloudAdapter.send', () => {
       metaCloudAdapter.send({ toPhone: '+5511999998888', body: '' }, { accessToken: '' }),
     ).rejects.toThrow();
   });
+
+  it('marca retryable=true quando o fetch rejeita (rede instável)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fetch failed')));
+
+    const result = await metaCloudAdapter.send(
+      { toPhone: '+5511999998888', body: '', templateRef: { name: 'x' } },
+      CREDENTIALS,
+    );
+
+    expect(result).toEqual({ ok: false, retryable: true, reason: 'fetch failed' });
+  });
 });
 
 describe('metaCloudAdapter.healthCheck', () => {
@@ -80,5 +91,10 @@ describe('metaCloudAdapter.healthCheck', () => {
       json: async () => ({ error: { message: 'Invalid OAuth access token' } }),
     }));
     expect(await metaCloudAdapter.healthCheck(CREDENTIALS)).toEqual({ ok: false, reason: 'Invalid OAuth access token' });
+  });
+
+  it('devolve ok=false quando o fetch rejeita (rede instável)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fetch failed')));
+    expect(await metaCloudAdapter.healthCheck(CREDENTIALS)).toEqual({ ok: false, reason: 'fetch failed' });
   });
 });
