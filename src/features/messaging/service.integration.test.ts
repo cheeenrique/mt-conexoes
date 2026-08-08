@@ -7,6 +7,7 @@ import {
   setDefaultChannel,
   EvolutionRiskNotAcceptedError,
   ChannelNotVerifiedError,
+  ChannelNotConfiguredError,
 } from './service';
 
 process.env.CREDENTIAL_KEY = process.env.CREDENTIAL_KEY ?? Buffer.alloc(32, 7).toString('base64');
@@ -41,6 +42,19 @@ describe('saveChannelCredentials', () => {
     await expect(saveChannelCredentials({ provider: 'EVOLUTION', credentials: { baseUrl: 'https://x.com', apiKey: 'k', instanceName: 'i' } }))
       .rejects.toThrow(EvolutionRiskNotAcceptedError);
   });
+
+  it('desativa o canal ao trocar as credenciais, mesmo que estivesse ativo', async () => {
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 'b' }) }));
+    await testChannelConnection('META_CLOUD');
+    vi.unstubAllGlobals();
+    await setChannelActive('META_CLOUD', true);
+
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a2', phoneNumberId: 'b', wabaId: 'c' } });
+
+    const row = await db.channelConfig.findUniqueOrThrow({ where: { provider: 'META_CLOUD' } });
+    expect(row.isActive).toBe(false);
+  });
 });
 
 describe('testChannelConnection', () => {
@@ -68,12 +82,20 @@ describe('testChannelConnection', () => {
     expect(row.lastError).toBe('token inválido');
     vi.unstubAllGlobals();
   });
+
+  it('rejeita testar canal nunca configurado', async () => {
+    await expect(testChannelConnection('SALVY')).rejects.toThrow(ChannelNotConfiguredError);
+  });
 });
 
 describe('setChannelActive', () => {
   it('rejeita ativar canal nunca testado', async () => {
     await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
     await expect(setChannelActive('META_CLOUD', true)).rejects.toThrow(ChannelNotVerifiedError);
+  });
+
+  it('rejeita ativar canal nunca configurado', async () => {
+    await expect(setChannelActive('SALVY', true)).rejects.toThrow(ChannelNotConfiguredError);
   });
 
   it('permite ativar depois de um teste com sucesso', async () => {

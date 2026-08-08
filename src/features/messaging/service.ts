@@ -17,6 +17,12 @@ export class ChannelNotVerifiedError extends DomainError {
   }
 }
 
+export class ChannelNotConfiguredError extends DomainError {
+  constructor(cause?: unknown) {
+    super('Configure as credenciais deste canal antes de continuar.', 'CHANNEL_NOT_CONFIGURED', { cause });
+  }
+}
+
 const LABELS: Record<ChannelProvider, string> = {
   META_CLOUD: 'Meta Cloud API',
   EVOLUTION: 'Evolution API',
@@ -39,6 +45,7 @@ export async function saveChannelCredentials(input: SaveChannelCredentialsInput)
     },
     update: {
       credentials: encrypted,
+      isActive: false,
       lastCheckAt: null,
       lastCheckOk: null,
       lastError: null,
@@ -48,7 +55,8 @@ export async function saveChannelCredentials(input: SaveChannelCredentialsInput)
 }
 
 export async function testChannelConnection(provider: ChannelProvider): Promise<{ ok: boolean; reason?: string }> {
-  const row = await db.channelConfig.findUniqueOrThrow({ where: { provider } });
+  const row = await db.channelConfig.findUnique({ where: { provider } });
+  if (!row) throw new ChannelNotConfiguredError();
   const credentials = JSON.parse(decrypt(row.credentials, 'channel.credentials'));
   const result = await resolveAdapter(provider).healthCheck(credentials);
 
@@ -66,7 +74,8 @@ export async function testChannelConnection(provider: ChannelProvider): Promise<
 
 export async function setChannelActive(provider: ChannelProvider, active: boolean): Promise<void> {
   if (active) {
-    const row = await db.channelConfig.findUniqueOrThrow({ where: { provider } });
+    const row = await db.channelConfig.findUnique({ where: { provider } });
+    if (!row) throw new ChannelNotConfiguredError();
     if (row.lastCheckOk !== true) throw new ChannelNotVerifiedError();
   }
   await db.channelConfig.update({ where: { provider }, data: { isActive: active } });
