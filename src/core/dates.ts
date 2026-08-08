@@ -49,3 +49,9 @@ export function monthBoundsUtc(year: number, month: number, timezone: string): {
   const to = new TZDate(year, month + 1, 1, 0, 0, 0, 0, timezone);
   return { from: new Date(from.getTime()), to: new Date(to.getTime()) };
 }
+
+/** Data local sem hora (meia-noite UTC do dia local), para colunas @db.Date. */
+export function localDateOnly(instant: Date, timezone: string): Date {
+  const local = new TZDate(instant, timezone);
+  return new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()));
+}
