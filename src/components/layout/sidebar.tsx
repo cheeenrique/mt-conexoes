@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Users, Receipt, MessageSquare, GitCommitHorizontal,
-  Inbox, ChartNoAxesColumn, Truck, Layers, Settings, Pause, Play,
+  Inbox, ChartNoAxesColumn, Truck, Layers, Settings, Pause, Play, Radio,
 } from 'lucide-react';
 
 const MENU_ITEMS = [
@@ -17,6 +17,7 @@ const MENU_ITEMS = [
   { href: '/relatorios', label: 'Relatórios', icon: ChartNoAxesColumn },
   { href: '/suppliers', label: 'Fornecedores', icon: Truck },
   { href: '/plans', label: 'Planos', icon: Layers },
+  { href: '/channels', label: 'Canais', icon: Radio },
   { href: '/settings', label: 'Ajustes', icon: Settings },
 ];
 
