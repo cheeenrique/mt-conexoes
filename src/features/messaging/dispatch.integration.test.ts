@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { db } from '@/lib/db';
 import { encrypt } from '@/lib/crypto';
-import { sendManualBatch, NoDefaultChannelError, OutsideQuietHoursError, ChannelDoesNotSupportFreeTextError } from './dispatch';
+import {
+  sendManualBatch,
+  NoDefaultChannelError,
+  OutsideQuietHoursError,
+  ChannelDoesNotSupportFreeTextError,
+  ChargeVariablesNotAllowedInManualSendError,
+} from './dispatch';
 import { UnknownTemplateVariableError } from '@/lib/errors';
 
 process.env.CREDENTIAL_KEY = process.env.CREDENTIAL_KEY ?? Buffer.alloc(32, 9).toString('base64');
@@ -70,6 +76,18 @@ describe('sendManualBatch', () => {
     await expect(
       sendManualBatch({ customerIds: [customer.id], body: 'Olá {{cliente.apelido}}', now: IN_HOURS_NOW }),
     ).rejects.toThrow(UnknownTemplateVariableError);
+
+    const count = await db.message.count({ where: { customerId: customer.id } });
+    expect(count).toBe(0);
+  });
+
+  it('rejeita variável de cobrança (sem contexto de charge no envio manual), sem criar nenhuma Message', async () => {
+    await seedActiveDefaultChannel();
+    const customer = await seedCustomer();
+
+    await expect(
+      sendManualBatch({ customerIds: [customer.id], body: 'Sua cobrança de {{cobranca.valor}} venceu', now: IN_HOURS_NOW }),
+    ).rejects.toThrow(ChargeVariablesNotAllowedInManualSendError);
 
     const count = await db.message.count({ where: { customerId: customer.id } });
     expect(count).toBe(0);

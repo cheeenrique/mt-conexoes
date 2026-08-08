@@ -15,6 +15,14 @@ function parseLocalDateBoundary(value: string | undefined, timezone: string, bou
   return fn(year, month - 1, day, timezone);
 }
 
+/** Deduplica por customerId — usado tanto na página quanto na lista completa de destinatários. */
+function uniqueRecipientsFrom(rows: { customerId: string; customerName: string }[]) {
+  return Array.from(new Map(rows.map((r) => [r.customerId, { id: r.customerId, name: r.customerName }])).values());
+}
+
+// Acima de qualquer base realista do projeto (CLAUDE.md: "até 1.000 assinantes").
+const RECIPIENTS_FETCH_PER_PAGE = 2000;
+
 export default async function ChargesPage({
   searchParams,
 }: {
@@ -35,21 +43,22 @@ export default async function ChargesPage({
   const dueTo = params.dueTo ?? '';
 
   const settings = await getSettings();
-  const [{ rows, nextCursor }, suppliers] = await Promise.all([
-    listCharges({
-      status: status || undefined,
-      customerId: customerId || undefined,
-      supplierId: supplierId || undefined,
-      cursor: params.cursor || undefined,
-      dueFrom: parseLocalDateBoundary(dueFrom, settings.timezone, 'start'),
-      dueTo: parseLocalDateBoundary(dueTo, settings.timezone, 'end'),
-    }),
+  const filters = {
+    status: status || undefined,
+    customerId: customerId || undefined,
+    supplierId: supplierId || undefined,
+    dueFrom: parseLocalDateBoundary(dueFrom, settings.timezone, 'start'),
+    dueTo: parseLocalDateBoundary(dueTo, settings.timezone, 'end'),
+  };
+  const [{ rows, nextCursor }, { rows: allFilteredRows }, suppliers] = await Promise.all([
+    listCharges({ ...filters, cursor: params.cursor || undefined }),
+    listCharges({ ...filters, perPage: RECIPIENTS_FETCH_PER_PAGE }),
     listActiveSuppliersForSelect(),
   ]);
 
-  const uniqueRecipients = Array.from(
-    new Map(rows.map((r) => [r.customerId, { id: r.customerId, name: r.customerName }])).values(),
-  );
+  // Destinatários vêm do filtro inteiro, não só da página visível na tabela —
+  // senão o botão de envio manual só alcança as 20 linhas da página atual.
+  const uniqueRecipients = uniqueRecipientsFrom(allFilteredRows);
 
   return (
     <AppShell title="Cobranças">

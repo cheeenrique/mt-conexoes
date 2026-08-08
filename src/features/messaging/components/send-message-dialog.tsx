@@ -25,16 +25,21 @@ export function SendMessageDialog({
   async function send() {
     if (isSending) return;
     setIsSending(true);
-    const result = await sendManualMessagesAction({ customerIds: recipients.map((r) => r.id), body });
-    setIsSending(false);
-    if ('error' in result) {
-      toastError(result.error);
-      return;
+    try {
+      const result = await sendManualMessagesAction({ customerIds: recipients.map((r) => r.id), body });
+      if ('error' in result) {
+        toastError(result.error);
+        return;
+      }
+      toastSuccess(`Enviado: ${result.summary.sent} · Falhou: ${result.summary.failed} · Opt-out: ${result.summary.skippedOptedOut} · Sem telefone: ${result.summary.skippedNoPhone}`);
+      setBody('');
+      setConfirmOpen(false);
+      onOpenChange(false);
+    } catch {
+      toastError({ code: 'UNEXPECTED_ERROR', message: 'Falha inesperada ao enviar. Tente novamente.' });
+    } finally {
+      setIsSending(false);
     }
-    toastSuccess(`Enviado: ${result.summary.sent} · Falhou: ${result.summary.failed} · Opt-out: ${result.summary.skippedOptedOut} · Sem telefone: ${result.summary.skippedNoPhone}`);
-    setBody('');
-    setConfirmOpen(false);
-    onOpenChange(false);
   }
 
   function handleConfirmClick() {

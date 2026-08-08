@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { DomainError, UnknownTemplateVariableError } from '@/lib/errors';
-import { assertKnownVariables, renderTemplate, type TemplateContext } from '@/core/dunning-template';
+import { assertKnownVariables, extractTemplateVariables, renderTemplate, type TemplateContext } from '@/core/dunning-template';
 import { isWithinLocalHourRange, localDateOnly } from '@/core/dates';
 import { decrypt } from '@/lib/crypto';
 import { resolveAdapter } from './channels/registry';
@@ -28,6 +28,12 @@ export class ChannelDoesNotSupportFreeTextError extends DomainError {
   }
 }
 
+export class ChargeVariablesNotAllowedInManualSendError extends DomainError {
+  constructor(variables: string[], cause?: unknown) {
+    super(`Envio manual não tem cobrança associada — remova: ${variables.join(', ')}`, 'CHARGE_VARIABLES_NOT_ALLOWED', { cause });
+  }
+}
+
 export interface DispatchSummary {
   sent: number;
   failed: number;
@@ -40,6 +46,11 @@ export async function sendManualBatch(input: { customerIds: string[]; body: stri
     assertKnownVariables(input.body);
   } catch (err) {
     throw new UnknownTemplateVariableError(err instanceof Error ? err.message : 'Variável de template desconhecida.', err);
+  }
+
+  const chargeVariables = extractTemplateVariables(input.body).filter((v) => v.startsWith('cobranca.'));
+  if (chargeVariables.length > 0) {
+    throw new ChargeVariablesNotAllowedInManualSendError([...new Set(chargeVariables)]);
   }
 
   const channelRow = await db.channelConfig.findFirst({ where: { isDefault: true, isActive: true } });
