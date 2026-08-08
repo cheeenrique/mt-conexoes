@@ -22,6 +22,32 @@ export type ChannelConfigDTO = {
   lastError: string | null;
 };
 
+export interface MessageDTO {
+  id: string;
+  kind: string;
+  status: string;
+  body: string;
+  sentAt: string | null;
+  failReason: string | null;
+  createdAt: string;
+}
+
+export async function listMessagesForCustomer(customerId: string): Promise<MessageDTO[]> {
+  const rows = await db.message.findMany({
+    where: { customerId },
+    orderBy: { createdAt: 'desc' },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    body: row.body,
+    sentAt: row.sentAt?.toISOString() ?? null,
+    failReason: row.failReason,
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
 export async function listChannelConfigs(): Promise<ChannelConfigDTO[]> {
   const rows = await db.channelConfig.findMany({
     where: { provider: { in: ALL_PROVIDERS } },
