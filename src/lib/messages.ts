@@ -25,6 +25,10 @@ export const messages = {
     created: 'Assinatura cadastrada.',
     updated: 'Assinatura atualizada.',
   },
+  charges: {
+    paymentRegistered: 'Pagamento registrado.',
+    cancelled: 'Cobrança cancelada.',
+  },
   settings: {
     saved: 'Alterações salvas.',
   },
