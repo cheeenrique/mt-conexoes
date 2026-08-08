@@ -8,11 +8,15 @@ export function ChargeFilters({
   status,
   customerId,
   supplierId,
+  dueFrom,
+  dueTo,
   suppliers,
 }: {
   status: string;
   customerId: string;
   supplierId: string;
+  dueFrom: string;
+  dueTo: string;
   suppliers: { id: string; name: string }[];
 }) {
   const router = useRouter();
@@ -63,6 +67,20 @@ export function ChargeFilters({
           </option>
         ))}
       </select>
+      <input
+        type="date"
+        aria-label="Vencimento de"
+        defaultValue={dueFrom}
+        onChange={(e) => setParam('dueFrom', e.target.value)}
+        className="h-11 rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
+      />
+      <input
+        type="date"
+        aria-label="Vencimento até"
+        defaultValue={dueTo}
+        onChange={(e) => setParam('dueTo', e.target.value)}
+        className="h-11 rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
+      />
     </div>
   );
 }

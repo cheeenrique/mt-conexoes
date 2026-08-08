@@ -62,6 +62,7 @@ const CHARGE_INCLUDE = {
 
 export async function listCharges(filters: {
   status?: string; customerId?: string; supplierId?: string; cursor?: string; perPage?: number;
+  dueFrom?: Date; dueTo?: Date;
 }): Promise<{ rows: ChargeDTO[]; nextCursor: string | null }> {
   const perPage = filters.perPage ?? 20;
   const rows = await db.charge.findMany({
@@ -69,6 +70,10 @@ export async function listCharges(filters: {
       status: filters.status ? (filters.status as never) : undefined,
       customerId: filters.customerId || undefined,
       supplierId: filters.supplierId || undefined,
+      dueAt:
+        filters.dueFrom || filters.dueTo
+          ? { gte: filters.dueFrom, lte: filters.dueTo }
+          : undefined,
     },
     include: CHARGE_INCLUDE,
     orderBy: [{ dueAt: 'desc' }, { id: 'desc' }],

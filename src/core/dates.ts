@@ -25,6 +25,12 @@ export function endOfLocalDay(year: number, month: number, day: number, timezone
   return new Date(local.getTime());
 }
 
+/** 00:00:00.000 local convertido para UTC. */
+export function startOfLocalDay(year: number, month: number, day: number, timezone: string): Date {
+  const local = new TZDate(year, month, day, 0, 0, 0, 0, timezone);
+  return new Date(local.getTime());
+}
+
 function computeDueDate(referenceLocal: TZDate, cycle: BillingCycle, timezone: string): Date {
   const target = addMonths(startOfMonth(referenceLocal), CYCLE_MONTHS[cycle]);
   const day = resolveDueDay(referenceLocal.getDate(), target.getFullYear(), target.getMonth());

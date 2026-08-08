@@ -60,13 +60,13 @@ O que o script faz, e que dá errado se for ignorado:
 
 ## Etapa 2 — Cobrança (até a semana 3)
 
-- [ ] Emissão de cobrança na criação da assinatura e no pagamento total (não é job — é evento na transação), idempotente
-- [ ] Job `charges-mark-overdue` de marcação de atraso
-- [ ] Painel de vencimentos: vencem hoje, próximos dias, em atraso, recebido no mês
-- [ ] Lista de cobranças com filtro por status, cliente, fornecedor e período
-- [ ] Registro manual de pagamento, total e parcial
-- [ ] Cancelamento de cobrança — bloqueado se houver pagamento registrado
-- [ ] Histórico de cobranças e pagamentos na ficha do cliente
+- [x] Emissão de cobrança na criação da assinatura e no pagamento total (não é job — é evento na transação), idempotente
+- [x] Job `charges-mark-overdue` de marcação de atraso
+- [x] Painel de vencimentos: vencem hoje, próximos dias, em atraso, recebido no mês
+- [x] Lista de cobranças com filtro por status, cliente, fornecedor e período
+- [x] Registro manual de pagamento, total e parcial
+- [x] Cancelamento de cobrança — bloqueado se houver pagamento registrado
+- [x] Histórico de cobranças e pagamentos na ficha do cliente
 - [ ] Cloud Scheduler configurado com autenticação OIDC
 
 **Critério de pronto:** criar assinatura gera a primeira cobrança, registrar pagamento parcial e depois total gera a próxima com o vencimento certo, e o status e os totais baterem em todos os casos. Registrar o mesmo pagamento duas vezes (dupla submissão) não duplica cobrança nem pagamento.
