@@ -1,6 +1,14 @@
 import { db } from '@/lib/db';
 import { monthBoundsUtc } from '@/core/dates';
 
+export interface PaymentDTO {
+  id: string;
+  amountCents: string;
+  method: string;
+  paidAt: string;
+  note: string | null;
+}
+
 export interface ChargeDTO {
   id: string;
   customerId: string;
@@ -13,13 +21,14 @@ export interface ChargeDTO {
   status: string;
   dueAt: string;
   issuedAt: string;
+  payments: PaymentDTO[];
 }
 
 function toChargeDTO(row: {
   id: string; customerId: string; principalCents: bigint; discountCents: bigint;
   status: string; dueAt: Date; issuedAt: Date;
   customer: { name: string }; supplier: { name: string } | null;
-  payments: { amountCents: bigint }[];
+  payments: { id: string; amountCents: bigint; method: string; paidAt: Date; note: string | null }[];
 }): ChargeDTO {
   const netCents = row.principalCents - row.discountCents;
   const paidCents = row.payments.reduce((sum, p) => sum + p.amountCents, 0n);
@@ -35,10 +44,21 @@ function toChargeDTO(row: {
     status: row.status,
     dueAt: row.dueAt.toISOString(),
     issuedAt: row.issuedAt.toISOString(),
+    payments: row.payments.map((p) => ({
+      id: p.id,
+      amountCents: p.amountCents.toString(),
+      method: p.method,
+      paidAt: p.paidAt.toISOString(),
+      note: p.note,
+    })),
   };
 }
 
-const CHARGE_INCLUDE = { customer: { select: { name: true } }, supplier: { select: { name: true } }, payments: { select: { amountCents: true } } } as const;
+const CHARGE_INCLUDE = {
+  customer: { select: { name: true } },
+  supplier: { select: { name: true } },
+  payments: { select: { id: true, amountCents: true, method: true, paidAt: true, note: true } },
+} as const;
 
 export async function listCharges(filters: {
   status?: string; customerId?: string; supplierId?: string; cursor?: string; perPage?: number;

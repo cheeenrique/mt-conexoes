@@ -10,7 +10,7 @@ import {
   PaymentExceedsBalanceError,
 } from './service';
 import type { z } from 'zod';
-import type { registerPaymentSchema } from './schema';
+import { registerPaymentSchema } from './schema';
 
 type RegisterPaymentInput = z.infer<typeof registerPaymentSchema>;
 
@@ -65,6 +65,15 @@ function paymentInput(overrides: Partial<RegisterPaymentInput> = {}): RegisterPa
   };
 }
 
+describe('registerPaymentSchema', () => {
+  it('recusa amountCents "0" na borda Zod, antes do CHECK do banco', () => {
+    const result = registerPaymentSchema.safeParse(paymentInput({ amountCents: '0' }));
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe('Valor deve ser maior que zero.');
+  });
+});
+
 describe('registerPayment', () => {
   it('pagamento total marca PAID e emite a próxima Charge com vencimento certo', async () => {
     const result = await registerPayment(chargeId, paymentInput({ amountCents: '10000', paidAt: '2026-08-31' }));
@@ -118,6 +127,19 @@ describe('registerPayment', () => {
 
     const payments = await db.payment.findMany({ where: { chargeId } });
     expect(payments).toHaveLength(0);
+  });
+
+  it('pagamento de 1 centavo marca PARTIALLY_PAID sem disparar arredondamento indevido', async () => {
+    const result = await registerPayment(chargeId, paymentInput({ amountCents: '1' }));
+
+    expect(result.status).toBe('PARTIALLY_PAID');
+
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: chargeId } });
+    expect(charge.status).toBe('PARTIALLY_PAID');
+
+    const payments = await db.payment.findMany({ where: { chargeId } });
+    expect(payments).toHaveLength(1);
+    expect(payments[0].amountCents.toString()).toBe('1');
   });
 
   it('cobrança já paga recusa novo pagamento com ChargeAlreadyPaidError', async () => {
