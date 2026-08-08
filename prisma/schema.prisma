@@ -11,8 +11,8 @@ model User {
   id             String   @id @default(uuid(7))
   email          String   @unique
   name           String
-  passwordHash   String                       // argon2id
-  sessionVersion Int      @default(0)          // bump invalida sessões existentes (troca de senha)
+  passwordHash   String // argon2id
+  sessionVersion Int      @default(0) // bump invalida sessões existentes (troca de senha)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -61,6 +61,7 @@ model Supplier {
 
   plans         Plan[]
   subscriptions Subscription[]
+  charges       Charge[]
 
   @@map("suppliers")
 }
@@ -75,7 +76,7 @@ model Plan {
   isActive   Boolean      @default(true)
   createdAt  DateTime     @default(now())
 
-  supplier   Supplier?    @relation(fields: [supplierId], references: [id])
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
   subscriptions Subscription[]
 
   @@map("plans")
@@ -92,6 +93,27 @@ enum DiscountType {
   FIXED
 }
 
+enum ChargeStatus {
+  OPEN
+  OVERDUE
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  PIX
+  CASH
+  TRANSFER
+  CARD
+  OTHER
+}
+
+enum PaymentSource {
+  MANUAL
+  WEBHOOK
+}
+
 model Customer {
   id             String    @id @default(uuid(7))
   name           String
@@ -105,7 +127,8 @@ model Customer {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  subscriptions  Subscription[]
+  subscriptions Subscription[]
+  charges       Charge[]
 
   @@unique([phone])
   @@index([name])
@@ -113,39 +136,40 @@ model Customer {
 }
 
 model Subscription {
-  id                String             @id @default(uuid(7))
-  customerId        String
-  planId            String?
-  supplierId        String?
+  id         String  @id @default(uuid(7))
+  customerId String
+  planId     String?
+  supplierId String?
 
-  priceCents        BigInt
-  costCents         BigInt             @default(0)
-  cycle             BillingCycle       @default(MONTHLY)
+  priceCents BigInt
+  costCents  BigInt       @default(0)
+  cycle      BillingCycle @default(MONTHLY)
 
-  nextDueAt         DateTime
-  startedAt         DateTime           @default(now())
+  nextDueAt DateTime
+  startedAt DateTime @default(now())
 
-  discountType      DiscountType?
-  discountValue     Decimal?           @db.Decimal(10, 2)
-  discountUntil     DateTime?
+  discountType  DiscountType?
+  discountValue Decimal?      @db.Decimal(10, 2)
+  discountUntil DateTime?
 
-  status            SubscriptionStatus @default(ACTIVE)
-  suspendedAt       DateTime?
-  cancelledAt       DateTime?
-  cancelReason      String?
+  status       SubscriptionStatus @default(ACTIVE)
+  suspendedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
 
   accessUsername    String?
   accessPasswordEnc String?
   accessServer      String?
-  screens           Int                @default(1)
+  screens           Int     @default(1)
   accessNotes       String?
 
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  customer          Customer           @relation(fields: [customerId], references: [id])
-  plan              Plan?              @relation(fields: [planId], references: [id])
-  supplier          Supplier?          @relation(fields: [supplierId], references: [id])
+  customer Customer  @relation(fields: [customerId], references: [id])
+  plan     Plan?     @relation(fields: [planId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  charges  Charge[]
 
   @@index([status, nextDueAt])
   @@index([customerId])
@@ -162,4 +186,55 @@ model CredentialReveal {
 
   @@index([subscriptionId, revealedAt])
   @@map("credential_reveals")
+}
+
+model Charge {
+  id             String  @id @default(uuid(7))
+  subscriptionId String
+  customerId     String
+  supplierId     String?
+
+  principalCents BigInt
+  discountCents  BigInt @default(0)
+  costCents      BigInt @default(0)
+
+  periodStart DateTime @db.Date
+  periodEnd   DateTime @db.Date
+  dueAt       DateTime
+  issuedAt    DateTime @default(now())
+
+  status       ChargeStatus @default(OPEN)
+  paidAt       DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  customer     Customer     @relation(fields: [customerId], references: [id])
+  supplier     Supplier?    @relation(fields: [supplierId], references: [id])
+  payments     Payment[]
+
+  @@unique([subscriptionId, periodStart])
+  @@index([status, dueAt])
+  @@index([customerId, dueAt])
+  @@map("charges")
+}
+
+model Payment {
+  id             String        @id @default(uuid(7))
+  chargeId       String
+  amountCents    BigInt
+  method         PaymentMethod @default(PIX)
+  source         PaymentSource @default(MANUAL)
+  externalId     String?
+  idempotencyKey String?       @unique
+  paidAt         DateTime
+  note           String?
+  createdAt      DateTime      @default(now())
+
+  charge Charge @relation(fields: [chargeId], references: [id])
+
+  @@unique([source, externalId])
+  @@index([chargeId])
+  @@index([paidAt])
+  @@map("payments")
 }

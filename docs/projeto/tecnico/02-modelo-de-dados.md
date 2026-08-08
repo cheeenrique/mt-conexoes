@@ -364,7 +364,11 @@ model Message {
 
 ### SQL manual que a migration precisa ter
 
-O `schema.prisma` não expressa tudo. Estes vão escritos à mão na migration:
+O `schema.prisma` não expressa tudo. Estes vão escritos à mão na migration.
+
+> Nota: o `CHECK subs_anchor_range (due_day_anchor BETWEEN 1 AND 31)` foi removido deste bloco —
+> a coluna `due_day_anchor` não existe mais desde o pivô para vencimento por data de pagamento
+> (ver `CLAUDE.md`). Ficou órfão no doc depois do pivô.
 
 ```sql
 -- T7: um customer recebe no máximo uma mensagem de cobrança por dia
@@ -376,11 +380,10 @@ CREATE UNIQUE INDEX messages_dunning_daily_dedupe
 CREATE UNIQUE INDEX settings_singleton ON settings ((id = 'singleton')) WHERE id = 'singleton';
 
 -- Dinheiro não é negativo
-ALTER TABLE payments      ADD CONSTRAINT payments_amount_positive  CHECK (amount_cents > 0);
-ALTER TABLE charges       ADD CONSTRAINT charges_principal_nonneg  CHECK (principal_cents >= 0);
-ALTER TABLE charges       ADD CONSTRAINT charges_cost_nonneg       CHECK (cost_cents >= 0);
-ALTER TABLE charges       ADD CONSTRAINT charges_discount_bounded  CHECK (discount_cents >= 0 AND discount_cents <= principal_cents);
-ALTER TABLE subscriptions ADD CONSTRAINT subs_anchor_range         CHECK (due_day_anchor BETWEEN 1 AND 31);
+ALTER TABLE payments ADD CONSTRAINT payments_amount_positive CHECK (amount_cents > 0);
+ALTER TABLE charges  ADD CONSTRAINT charges_principal_nonneg CHECK (principal_cents >= 0);
+ALTER TABLE charges  ADD CONSTRAINT charges_cost_nonneg      CHECK (cost_cents >= 0);
+ALTER TABLE charges  ADD CONSTRAINT charges_discount_bounded CHECK (discount_cents >= 0 AND discount_cents <= principal_cents);
 
 -- Apenas um canal padrão
 CREATE UNIQUE INDEX channel_configs_single_default ON channel_configs (is_default) WHERE is_default;
