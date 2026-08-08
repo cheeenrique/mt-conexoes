@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { endOfLocalDay, firstDueDate, localDateOnly, monthBoundsUtc, nextDueDate, resolveDueDay } from './dates';
+import { daysBetweenLocalDates, endOfLocalDay, firstDueDate, localDateOnly, monthBoundsUtc, nextDueDate, resolveDueDay } from './dates';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -114,6 +114,22 @@ describe('monthBoundsUtc', () => {
     const { from, to } = monthBoundsUtc(2026, 7, TZ);
     const payment = new Date('2026-09-01T01:00:00Z'); // 31/08 22:00 -03:00
     expect(payment.getTime() >= from.getTime() && payment.getTime() < to.getTime()).toBe(true);
+  });
+});
+
+describe('daysBetweenLocalDates', () => {
+  it('vencimento 23:59:59 local de ontem, checado hoje de manhã → 1 dia, não 0', () => {
+    // vencimento: 07/08/2026 23:59:59.999 -03:00
+    const due = endOfLocalDay(2026, 7, 7, TZ);
+    // agora: 08/08/2026 10:00 -03:00 (raw diff seria ~10h, floor daria 0)
+    const now = new Date('2026-08-08T13:00:00Z');
+    expect(daysBetweenLocalDates(due, now, TZ)).toBe(1);
+  });
+
+  it('mesmo dia local → 0 dias', () => {
+    const due = endOfLocalDay(2026, 7, 8, TZ);
+    const now = new Date('2026-08-08T13:00:00Z'); // 10:00 local do mesmo dia 08
+    expect(daysBetweenLocalDates(due, now, TZ)).toBe(0);
   });
 });
 

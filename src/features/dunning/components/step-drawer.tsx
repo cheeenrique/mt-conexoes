@@ -30,7 +30,7 @@ export function StepDrawer({
   charges: PreviewChargeDTO[];
   settings: { timezone: string; pixKey: string | null; businessName: string };
 }) {
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, watch, setError, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(dunningStepSchema),
     values: step
       ? { offsetDays: step.offsetDays, action: step.action as FormValues['action'], templateBody: step.templateBody ?? '', isActive: step.isActive }
@@ -45,6 +45,9 @@ export function StepDrawer({
       : await createDunningStepAction(ruleId, values);
 
     if ('error' in result) {
+      if (result.error.code === 'UNKNOWN_TEMPLATE_VARIABLE') {
+        setError('templateBody', { message: result.error.message });
+      }
       toastError(result.error);
       return;
     }

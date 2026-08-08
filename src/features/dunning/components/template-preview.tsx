@@ -1,16 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { daysBetweenLocalDates } from '@/core/dates';
 import { renderTemplate, type TemplateContext } from '@/core/dunning-template';
 import { formatCents, formatLocalDate } from '@/lib/format';
 import type { PreviewChargeDTO } from '../queries';
-
-function daysOverdue(dueAtIso: string, timezone: string): number {
-  const due = new Date(dueAtIso);
-  const now = new Date();
-  const diffMs = now.getTime() - due.getTime();
-  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
-}
 
 export function TemplatePreview({
   templateBody,
@@ -39,7 +33,9 @@ export function TemplatePreview({
     'cliente.nome': charge?.customerName ?? '',
     'cobranca.valor': charge ? formatCents(charge.netCents) : '',
     'cobranca.vencimento': charge ? formatLocalDate(charge.dueAt, settings.timezone) : '',
-    'cobranca.dias_atraso': charge ? String(daysOverdue(charge.dueAt, settings.timezone)) : '0',
+    'cobranca.dias_atraso': charge
+      ? String(daysBetweenLocalDates(new Date(charge.dueAt), new Date(), settings.timezone))
+      : '0',
     'pix.chave': settings.pixKey ?? '',
     'negocio.nome': settings.businessName,
   };
