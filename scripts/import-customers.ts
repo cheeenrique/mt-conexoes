@@ -10,14 +10,12 @@
  * objeto COLUMN abaixo se um fornecedor diferente usar nomes de coluna
  * diferentes.
  */
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { readFile, utils } from 'xlsx';
-import { config } from 'dotenv';
 import { db } from '@/lib/db';
+import { formatCents } from '@/lib/format';
 import { createImportedSubscription, findImportedSubscriptionBySupplier } from '@/features/subscriptions/service';
 import { normalizePhoneBR, parseCentsFromBR, parseDateBR, toBusinessDueDate } from './import/parse-row';
-
-config({ path: '.env.local' });
 
 // Nomes de coluna confirmados contra o arquivo real. `trim()` aplicado na
 // hora de ler o cabeçalho — a planilha real tem espaço em branco em alguns
@@ -54,6 +52,7 @@ interface ImportResult {
   identifier: string;
   reason?: string;
   priceCents?: bigint;
+  hasPhoneWarning?: boolean;
 }
 
 async function importRow(rawRow: Record<string, unknown>, supplierId: string, timezone: string): Promise<ImportResult> {
@@ -88,11 +87,12 @@ async function importRow(rawRow: Record<string, unknown>, supplierId: string, ti
   const password = rawPassword !== undefined ? String(rawPassword).trim() || null : null;
 
   const screensRaw = pick(row, COLUMN.screens);
-  const screens = typeof screensRaw === 'number' ? Math.max(1, Math.floor(screensRaw)) : 1;
+  const screensNumber = typeof screensRaw === 'number' ? screensRaw : Number(screensRaw);
+  const screens = screensRaw !== undefined && !Number.isNaN(screensNumber) ? Math.max(1, Math.floor(screensNumber)) : 1;
 
   const rawPhone = pick(row, COLUMN.phone);
-  const phone = typeof rawPhone === 'string' ? normalizePhoneBR(rawPhone) : null;
-  const phoneNoteSuffix = rawPhone && !phone ? ' (telefone informado mas inválido, importado sem telefone)' : '';
+  const phone = rawPhone !== undefined ? normalizePhoneBR(String(rawPhone)) : null;
+  const phoneNoteSuffix = rawPhone !== undefined && !phone ? ' (telefone informado mas inválido, importado sem telefone)' : '';
 
   // Idempotência checada ANTES de criar/tocar em Customer — ver Task 3.
   if (username) {
@@ -116,7 +116,12 @@ async function importRow(rawRow: Record<string, unknown>, supplierId: string, ti
     screens,
   });
 
-  return { status: 'imported', identifier: identifier + phoneNoteSuffix, priceCents };
+  return {
+    status: 'imported',
+    identifier: identifier + phoneNoteSuffix,
+    priceCents,
+    hasPhoneWarning: phoneNoteSuffix !== '',
+  };
 }
 
 async function main() {
@@ -146,6 +151,7 @@ async function main() {
   const imported = results.filter((r) => r.status === 'imported');
   const skipped = results.filter((r) => r.status === 'skipped');
   const rejected = results.filter((r) => r.status === 'rejected');
+  const withPhoneWarning = imported.filter((r) => r.hasPhoneWarning);
   const importedTotalCents = imported.reduce((sum, r) => sum + (r.priceCents ?? 0n), 0n);
 
   const reportLines = [
@@ -154,13 +160,18 @@ async function main() {
     `Importadas: ${imported.length}`,
     `Puladas (já existiam): ${skipped.length}`,
     `Recusadas: ${rejected.length}`,
-    `Soma importada: R$ ${(Number(importedTotalCents) / 100).toFixed(2)}`,
+    `Soma importada: R$ ${formatCents(importedTotalCents)}`,
     '',
     'Recusadas:',
     ...rejected.map((r) => `  - ${r.identifier}: ${r.reason}`),
+    '',
+    'Importadas com ressalva (telefone informado mas inválido):',
+    ...(withPhoneWarning.length ? withPhoneWarning.map((r) => `  - ${r.identifier}`) : ['  (nenhuma)']),
   ];
 
-  const reportPath = `import-report-${Date.now()}.txt`;
+  const reportDir = './tmp';
+  mkdirSync(reportDir, { recursive: true });
+  const reportPath = `${reportDir}/import-report-${Date.now()}.txt`;
   writeFileSync(reportPath, reportLines.join('\n'));
   console.log(reportLines.join('\n'));
   console.log(`\nRelatório salvo em ${reportPath}`);

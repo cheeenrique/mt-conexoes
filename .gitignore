@@ -17,3 +17,6 @@ coverage/
 out/
 next-env.d.ts
 *.tsbuildinfo
+
+# relatórios locais (dados de cliente reais — nunca versionar)
+tmp/

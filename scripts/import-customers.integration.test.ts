@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { writeFileSync, unlinkSync, readdirSync } from 'node:fs';
+import { writeFileSync, unlinkSync, readdirSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { db } from '@/lib/db';
+import { decrypt } from '@/lib/crypto';
 import { buildFixtureWorkbook } from './import/__fixtures__/generate-fixture';
+
+const REPORT_DIR = './tmp';
 
 const SUPPLIER_NAME = 'Fornecedor Teste Importação';
 const FIXTURE_PATH = '/tmp/import-fixture-test.xlsx';
@@ -40,8 +43,10 @@ async function cleanup() {
   await db.customer.deleteMany({ where: { phone: '+5511988887777' } });
   await db.customer.deleteMany({ where: { name: 'Cliente Sem Telefone' } });
   await db.supplier.deleteMany({ where: { name: SUPPLIER_NAME } });
-  for (const file of readdirSync('.')) {
-    if (file.startsWith('import-report-')) unlinkSync(file);
+  if (existsSync(REPORT_DIR)) {
+    for (const file of readdirSync(REPORT_DIR)) {
+      if (file.startsWith('import-report-')) unlinkSync(`${REPORT_DIR}/${file}`);
+    }
   }
 }
 
@@ -55,7 +60,11 @@ describe('import-customers script', () => {
   it('importa com e sem telefone, recusa linha inválida, é idempotente', async () => {
     writeFileSync(FIXTURE_PATH, buildFixtureWorkbook(ROWS));
 
-    const run = () => execSync(`pnpm tsx scripts/import-customers.ts ${FIXTURE_PATH} "${SUPPLIER_NAME}"`, { encoding: 'utf8' });
+    // Invoca o script pelo npm script real (`pnpm import:customers`), não
+    // diretamente via `tsx` — assim o wrapper `dotenv-cli` que carrega
+    // .env.local entra no caminho testado, em vez de depender só do setup
+    // do vitest já ter carregado as env vars no processo pai.
+    const run = () => execSync(`pnpm import:customers ${FIXTURE_PATH} "${SUPPLIER_NAME}"`, { encoding: 'utf8' });
 
     const firstOutput = run();
     expect(firstOutput).toContain('Importadas: 2');
@@ -73,6 +82,10 @@ describe('import-customers script', () => {
     // 23:59:59.999 de 10/08/2026 em America/Sao_Paulo (UTC-3) cai em 11/08 em UTC.
     expect(subscription?.nextDueAt.toISOString()).toBe('2026-08-11T02:59:59.999Z');
     expect(subscription?.accessUsername).toBe('maria.import');
+    // SENHA chega como número na planilha real (123456) — confirma que a
+    // credencial revela corretamente de ponta a ponta (import → criptografia → decrypt).
+    expect(subscription?.accessPasswordEnc).toBeTruthy();
+    expect(decrypt(subscription!.accessPasswordEnc!, 'subscription.accessPassword')).toBe('123456');
 
     // Segunda rodada — mesmo arquivo, não duplica (checado por accessUsername+fornecedor)
     const secondOutput = run();
