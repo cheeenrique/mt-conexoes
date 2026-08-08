@@ -128,4 +128,18 @@ describe('subscriptionSchema — FIXED vs priceCents', () => {
     const result = subscriptionSchema.safeParse({ ...VALID_INPUT, priceCents: '10000', discountType: 'FIXED', discountValue: '10.50' });
     expect(result.success).toBe(true);
   });
+
+  // priceCents malformado é coberto pela regra própria do campo
+  // ('Preço inválido.'), mas o cross-check de FIXED vs priceCents rodava
+  // incondicionalmente e construía um Decimal a partir de 'abc' — `safeParse`
+  // nunca pode lançar, sempre devolve um resultado.
+  it('não lança quando priceCents é malformado com desconto FIXED — retorna erro de validação', () => {
+    const result = subscriptionSchema.safeParse({ ...VALID_INPUT, priceCents: 'abc', discountType: 'FIXED', discountValue: '10.50' });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === 'priceCents');
+      expect(issue?.message).toBe('Preço inválido.');
+    }
+  });
 });

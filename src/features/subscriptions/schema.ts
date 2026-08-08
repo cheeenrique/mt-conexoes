@@ -60,7 +60,7 @@ export const subscriptionSchema = z
     // no CHECK charges_discount_bounded, como erro genérico de Postgres na
     // tela — o service não recalcula: quando o desconto chega até lá, tem
     // que estar garantido que cabe no principal.
-    if (hasType && hasValue && data.discountType === 'FIXED' && data.priceCents) {
+    if (hasType && hasValue && data.discountType === 'FIXED' && data.priceCents && /^\d+$/.test(data.priceCents)) {
       const discountCents = new Decimal(data.discountValue as string).times(100);
       const priceCents = new Decimal(data.priceCents);
       if (discountCents.greaterThan(priceCents)) {
