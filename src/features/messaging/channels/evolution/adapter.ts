@@ -21,14 +21,18 @@ async function send(input: SendInput, rawCredentials: unknown): Promise<SendResu
 
 async function healthCheck(rawCredentials: unknown): Promise<HealthResult> {
   const credentials: EvolutionCredentials = evolutionCredentialsSchema.parse(rawCredentials);
-  const response = await fetch(`${credentials.baseUrl}/instance/connectionState/${credentials.instanceName}`, {
-    headers: { apikey: credentials.apiKey },
-  });
-  if (!response.ok) return { ok: false, reason: 'Não foi possível falar com o servidor Evolution.' };
-  const payload = await response.json();
-  const state = payload.instance?.state;
-  if (state === 'open') return { ok: true };
-  return { ok: false, reason: `Instância Evolution desconectada (state: ${state}).` };
+  try {
+    const response = await fetch(`${credentials.baseUrl}/instance/connectionState/${credentials.instanceName}`, {
+      headers: { apikey: credentials.apiKey },
+    });
+    if (!response.ok) return { ok: false, reason: 'Não foi possível falar com o servidor Evolution.' };
+    const payload = await response.json();
+    const state = payload.instance?.state;
+    if (state === 'open') return { ok: true };
+    return { ok: false, reason: `Instância Evolution desconectada (state: ${state}).` };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : 'Falha de rede ao falar com o servidor Evolution.' };
+  }
 }
 
 export const evolutionAdapter: ChannelAdapter = {

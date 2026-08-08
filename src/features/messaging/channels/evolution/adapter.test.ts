@@ -56,4 +56,12 @@ describe('evolutionAdapter.healthCheck', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ instance: { state: 'close' } }) }));
     expect(await evolutionAdapter.healthCheck(CREDENTIALS)).toEqual({ ok: false, reason: 'Instância Evolution desconectada (state: close).' });
   });
+
+  it('resolve com ok=false quando o fetch rejeita (rede instável)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fetch failed')));
+
+    const result = await evolutionAdapter.healthCheck(CREDENTIALS);
+
+    expect(result).toEqual({ ok: false, reason: 'fetch failed' });
+  });
 });
