@@ -14,6 +14,11 @@ export function assertCronRequest(req: Request): void {
 
 const oidcClient = new OAuth2Client();
 
+// Formas válidas do emissor em tokens OIDC do Google — verifyIdToken já valida
+// o emissor internamente contra essa mesma lista (+ universeDomain, que não usamos
+// aqui); mantemos a checagem explícita pra não depender do allowlist implícito da lib.
+const VALID_ISSUERS = new Set(['https://accounts.google.com', 'accounts.google.com']);
+
 /**
  * Produção: Cloud Scheduler chama com token OIDC assinado pelo Google —
  * valida emissor e audiência antes de aceitar. Desenvolvimento: sem
@@ -34,7 +39,7 @@ export async function assertCloudSchedulerToken(req: Request): Promise<void> {
   const audience = requireEnv('CRON_OIDC_AUDIENCE');
   const ticket = await oidcClient.verifyIdToken({ idToken: token, audience });
   const payload = ticket.getPayload();
-  if (!payload || payload.iss !== 'https://accounts.google.com') {
+  if (!payload || !VALID_ISSUERS.has(payload.iss)) {
     throw new Error('unauthorized');
   }
 }

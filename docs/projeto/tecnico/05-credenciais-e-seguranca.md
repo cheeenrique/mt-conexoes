@@ -102,6 +102,8 @@ Um usuário, sem OAuth, sem convite, sem recuperação por e-mail.
 
 Cloud Scheduler chama com token OIDC. O handler valida emissor e audiência com `google-auth-library`; token ausente ou inválido devolve 401 sem corpo.
 
+`CRON_OIDC_AUDIENCE` precisa bater byte a byte com a audiência configurada no job do Cloud Scheduler (URL completa do endpoint, barra final incluída ou não conforme o job) — divergência de um caractere derruba a verificação e vira 401.
+
 ```ts
 // src/app/api/cron/dunning-evaluate/route.ts
 export async function POST(req: Request) {
