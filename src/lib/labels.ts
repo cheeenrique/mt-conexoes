@@ -32,3 +32,9 @@ export const CHARGE_STATUS_OPTIONS = [
 export const CHARGE_STATUS_LABELS: Record<string, string> = Object.fromEntries(
   CHARGE_STATUS_OPTIONS.map((opt) => [opt.value, opt.label]),
 );
+
+export const CHANNEL_PROVIDER_LABELS: Record<string, string> = {
+  META_CLOUD: 'Meta Cloud API',
+  EVOLUTION: 'Evolution API',
+  SALVY: 'Salvy',
+};

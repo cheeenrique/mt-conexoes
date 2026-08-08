@@ -32,4 +32,12 @@ export const messages = {
   settings: {
     saved: 'Alterações salvas.',
   },
+  messaging: {
+    credentialsSaved: 'Credenciais salvas.',
+    testOk: 'Conexão testada com sucesso.',
+    testFailed: 'Falha ao testar a conexão.',
+    activated: 'Canal ativado.',
+    deactivated: 'Canal desativado.',
+    defaultSet: 'Canal definido como padrão.',
+  },
 } as const;
