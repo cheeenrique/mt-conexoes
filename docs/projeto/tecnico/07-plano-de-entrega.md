@@ -33,7 +33,7 @@ Não é etapa de entrega, é o que sustenta as outras. Antes de qualquer tela:
 - [x] Margem calculada e exibida na hora, no formulário
 - [x] Lista de clientes com busca por nome, telefone e usuário de acesso
 - [x] Ficha do cliente com as assinaturas
-- [ ] **Importação da base atual** — script de seed a partir da planilha, com relatório do que entrou e do que foi recusado
+- [x] **Importação da base atual** — script de seed a partir da planilha, com relatório do que entrou e do que foi recusado
 
 **Critério de pronto:** a base real do cliente está dentro do sistema, ele abre a ficha de cinco clientes que conhece de cor e os números batem com a planilha dele.
 
