@@ -4,6 +4,7 @@ import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
 import { getSettings } from '@/features/settings/queries';
 import { ChargeFilters } from '@/features/charges/components/charge-filters';
 import { ChargeTable } from '@/features/charges/components/charge-table';
+import { SendMessageButton } from '@/features/messaging/components/send-message-button';
 import { startOfLocalDay, endOfLocalDay } from '@/core/dates';
 
 /** Converte 'YYYY-MM-DD' em limite de dia local, sem cair na armadilha do fuso do navegador. */
@@ -46,16 +47,23 @@ export default async function ChargesPage({
     listActiveSuppliersForSelect(),
   ]);
 
+  const uniqueRecipients = Array.from(
+    new Map(rows.map((r) => [r.customerId, { id: r.customerId, name: r.customerName }])).values(),
+  );
+
   return (
     <AppShell title="Cobranças">
-      <ChargeFilters
-        status={status}
-        customerId={customerId}
-        supplierId={supplierId}
-        dueFrom={dueFrom}
-        dueTo={dueTo}
-        suppliers={suppliers}
-      />
+      <div className="flex items-center justify-between gap-4">
+        <ChargeFilters
+          status={status}
+          customerId={customerId}
+          supplierId={supplierId}
+          dueFrom={dueFrom}
+          dueTo={dueTo}
+          suppliers={suppliers}
+        />
+        <SendMessageButton recipients={uniqueRecipients} />
+      </div>
       <ChargeTable rows={rows} nextCursor={nextCursor} timezone={settings.timezone} />
     </AppShell>
   );
