@@ -73,4 +73,16 @@ describe('GET /api/webhooks/meta-cloud (handshake)', () => {
     const res = await GET(new Request(url));
     expect(res.status).toBe(403);
   });
+
+  it('env var não configurada devolve 403 em vez de lançar', async () => {
+    const original = process.env.META_WEBHOOK_VERIFY_TOKEN;
+    delete process.env.META_WEBHOOK_VERIFY_TOKEN;
+    try {
+      const url = 'http://localhost/api/webhooks/meta-cloud?hub.mode=subscribe&hub.verify_token=qualquer&hub.challenge=abc123';
+      const res = await GET(new Request(url));
+      expect(res.status).toBe(403);
+    } finally {
+      process.env.META_WEBHOOK_VERIFY_TOKEN = original;
+    }
+  });
 });

@@ -37,7 +37,16 @@ export async function POST(req: Request): Promise<Response> {
 
 export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  if (url.searchParams.get('hub.verify_token') !== requireEnv('META_WEBHOOK_VERIFY_TOKEN')) {
+
+  let verifyToken: string;
+  try {
+    verifyToken = requireEnv('META_WEBHOOK_VERIFY_TOKEN');
+  } catch (err) {
+    logger.error({ route: 'webhooks.meta-cloud.get', error: String(err) });
+    return new Response(null, { status: 403 });
+  }
+
+  if (url.searchParams.get('hub.verify_token') !== verifyToken) {
     return new Response(null, { status: 403 });
   }
   return new Response(url.searchParams.get('hub.challenge'));
