@@ -27,7 +27,7 @@ async function seedActiveDefaultChannel() {
       isActive: true,
       isDefault: true,
       credentials: encrypt(
-        JSON.stringify({ baseUrl: 'https://evolution.example.com', apiKey: 'a', instanceName: 'default' }),
+        JSON.stringify({ baseUrl: 'https://evolution.example.com', apiKey: 'a', instanceName: 'default', webhookToken: 'webhook-token-teste' }),
         'channel.credentials',
       ),
       lastCheckOk: true,
