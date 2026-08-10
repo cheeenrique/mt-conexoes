@@ -18,9 +18,11 @@ type FormValues = {
   accessToken: string;
   phoneNumberId: string;
   wabaId: string;
+  appSecret: string;
   baseUrl: string;
   apiKey: string;
   instanceName: string;
+  webhookToken: string;
 };
 
 export function ChannelCredentialsDialog({
@@ -40,17 +42,52 @@ export function ChannelCredentialsDialog({
     setError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
-    defaultValues: { accessToken: '', phoneNumberId: '', wabaId: '', baseUrl: '', apiKey: '', instanceName: '' },
+    defaultValues: {
+      accessToken: '',
+      phoneNumberId: '',
+      wabaId: '',
+      appSecret: '',
+      baseUrl: '',
+      apiKey: '',
+      instanceName: '',
+      webhookToken: '',
+    },
   });
 
-  const FIELD_NAMES: (keyof FormValues)[] = ['accessToken', 'phoneNumberId', 'wabaId', 'baseUrl', 'apiKey', 'instanceName'];
+  const FIELD_NAMES: (keyof FormValues)[] = [
+    'accessToken',
+    'phoneNumberId',
+    'wabaId',
+    'appSecret',
+    'baseUrl',
+    'apiKey',
+    'instanceName',
+    'webhookToken',
+  ];
 
   async function onSubmit(values: FormValues) {
     const payload =
       provider === 'META_CLOUD'
-        ? { provider, credentials: { accessToken: values.accessToken, phoneNumberId: values.phoneNumberId, wabaId: values.wabaId } }
+        ? {
+            provider,
+            credentials: {
+              accessToken: values.accessToken,
+              phoneNumberId: values.phoneNumberId,
+              wabaId: values.wabaId,
+              appSecret: values.appSecret,
+            },
+          }
         : provider === 'EVOLUTION'
-          ? { provider, credentials: { baseUrl: values.baseUrl, apiKey: values.apiKey, instanceName: values.instanceName }, riskAccepted }
+          ? {
+              provider,
+              credentials: {
+                baseUrl: values.baseUrl,
+                apiKey: values.apiKey,
+                instanceName: values.instanceName,
+                webhookToken: values.webhookToken,
+              },
+              riskAccepted,
+            }
           : { provider, credentials: { apiKey: values.apiKey } };
 
     const parsed = saveChannelCredentialsSchema.safeParse(payload);
@@ -104,6 +141,11 @@ export function ChannelCredentialsDialog({
                 <Input id="wabaId" aria-invalid={!!errors.wabaId} {...register('wabaId')} />
                 {errors.wabaId && <p className="mt-1 text-sm text-danger">{errors.wabaId.message}</p>}
               </div>
+              <div>
+                <Label htmlFor="appSecret">App Secret</Label>
+                <Input id="appSecret" type="password" aria-invalid={!!errors.appSecret} {...register('appSecret')} />
+                {errors.appSecret && <p className="mt-1 text-sm text-danger">{errors.appSecret.message}</p>}
+              </div>
             </>
           )}
 
@@ -123,6 +165,11 @@ export function ChannelCredentialsDialog({
                 <Label htmlFor="instanceName">Nome da instância</Label>
                 <Input id="instanceName" aria-invalid={!!errors.instanceName} {...register('instanceName')} />
                 {errors.instanceName && <p className="mt-1 text-sm text-danger">{errors.instanceName.message}</p>}
+              </div>
+              <div>
+                <Label htmlFor="webhookToken">Token do webhook</Label>
+                <Input id="webhookToken" type="password" aria-invalid={!!errors.webhookToken} {...register('webhookToken')} />
+                {errors.webhookToken && <p className="mt-1 text-sm text-danger">{errors.webhookToken.message}</p>}
               </div>
             </>
           )}
