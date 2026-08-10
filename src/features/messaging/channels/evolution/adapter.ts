@@ -1,5 +1,5 @@
 import { ZodError } from 'zod';
-import type { ChannelAdapter, HealthResult, SendInput, SendResult } from '../types';
+import type { ChannelAdapter, HealthResult, InboundMessage, SendInput, SendResult } from '../types';
 import { ChannelCredentialsInvalidError } from '../types';
 import { evolutionCredentialsSchema, type EvolutionCredentials } from './schema';
 
@@ -57,6 +57,48 @@ async function healthCheck(rawCredentials: unknown): Promise<HealthResult> {
   }
 }
 
+function verifyWebhookSignature(rawBody: string, headers: Headers, rawCredentials: unknown): boolean {
+  const credentials = parseCredentials(rawCredentials);
+  const header = headers.get('apikey');
+  return header === credentials.webhookToken;
+}
+
+// ⚠️ Formato do payload de webhook do Evolution não confirmado contra a doc
+// oficial nesta spec — best-effort, mesma ressalva do adapter de envio.
+// Assumido: `{ event: 'messages.upsert', data: { key: { remoteJid, fromMe }, message: { conversation } } }`.
+function parseInboundWebhook(rawBody: string): InboundMessage[] | null {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
+
+  if (typeof payload !== 'object' || payload === null) return null;
+  const data = (payload as { data?: unknown }).data;
+  if (typeof data !== 'object' || data === null) return null;
+
+  const key = (data as { key?: unknown }).key;
+  if (typeof key !== 'object' || key === null) return null;
+
+  const fromMe = (key as { fromMe?: unknown }).fromMe;
+  if (fromMe === true) return null;
+
+  const remoteJid = (key as { remoteJid?: unknown }).remoteJid;
+  if (typeof remoteJid !== 'string') return null;
+
+  const message = (data as { message?: unknown }).message;
+  if (typeof message !== 'object' || message === null) return null;
+
+  const conversation = (message as { conversation?: unknown }).conversation;
+  if (typeof conversation !== 'string') return null;
+
+  const fromPhone = remoteJid.split('@')[0];
+  if (!fromPhone) return null;
+
+  return [{ fromPhone, text: conversation }];
+}
+
 export const evolutionAdapter: ChannelAdapter = {
   provider: 'EVOLUTION',
   capabilities: {
@@ -69,4 +111,6 @@ export const evolutionAdapter: ChannelAdapter = {
   },
   send,
   healthCheck,
+  verifyWebhookSignature,
+  parseInboundWebhook,
 };

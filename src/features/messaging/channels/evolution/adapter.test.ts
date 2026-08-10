@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { evolutionAdapter } from './adapter';
 import { ChannelCredentialsInvalidError } from '../types';
 
-const CREDENTIALS = { baseUrl: 'https://evo.cliente.com', apiKey: 'key', instanceName: 'principal' };
+const CREDENTIALS = {
+  baseUrl: 'https://evo.cliente.com',
+  apiKey: 'key',
+  instanceName: 'principal',
+  webhookToken: 'token-teste',
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -58,6 +63,65 @@ describe('evolutionAdapter.send', () => {
     await expect(
       evolutionAdapter.send({ toPhone: '+5511999998888', body: 'Olá!' }, { baseUrl: '' }),
     ).rejects.toThrow(ChannelCredentialsInvalidError);
+  });
+});
+
+describe('evolutionAdapter.verifyWebhookSignature', () => {
+  it('aceita quando o header apikey bate com webhookToken', () => {
+    const headers = new Headers({ apikey: 'token-teste' });
+    expect(evolutionAdapter.verifyWebhookSignature('{}', headers, CREDENTIALS)).toBe(true);
+  });
+
+  it('rejeita token errado ou ausente', () => {
+    expect(evolutionAdapter.verifyWebhookSignature('{}', new Headers({ apikey: 'errado' }), CREDENTIALS)).toBe(false);
+    expect(evolutionAdapter.verifyWebhookSignature('{}', new Headers(), CREDENTIALS)).toBe(false);
+  });
+});
+
+describe('evolutionAdapter.parseInboundWebhook', () => {
+  it('extrai telefone e texto de messages.upsert', () => {
+    const payload = JSON.stringify({
+      event: 'messages.upsert',
+      data: { key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: false }, message: { conversation: 'PARE' } },
+    });
+    expect(evolutionAdapter.parseInboundWebhook(payload)).toEqual([{ fromPhone: '5511999998888', text: 'PARE' }]);
+  });
+
+  it('ignora mensagem eco (fromMe: true)', () => {
+    const payload = JSON.stringify({
+      event: 'messages.upsert',
+      data: { key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: true }, message: { conversation: 'oi' } },
+    });
+    expect(evolutionAdapter.parseInboundWebhook(payload)).toBeNull();
+  });
+
+  it('payload malformado retorna null, não lança', () => {
+    expect(evolutionAdapter.parseInboundWebhook('not json')).toBeNull();
+  });
+
+  it('payload com formato inesperado retorna null, não lança', () => {
+    expect(evolutionAdapter.parseInboundWebhook(JSON.stringify({ event: 'messages.upsert' }))).toBeNull();
+    expect(evolutionAdapter.parseInboundWebhook(JSON.stringify({ data: null }))).toBeNull();
+    expect(evolutionAdapter.parseInboundWebhook(JSON.stringify({ data: { key: 'not-an-object' } }))).toBeNull();
+    expect(
+      evolutionAdapter.parseInboundWebhook(JSON.stringify({ data: { key: { remoteJid: 123, fromMe: false } } })),
+    ).toBeNull();
+    expect(
+      evolutionAdapter.parseInboundWebhook(
+        JSON.stringify({ data: { key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: false }, message: 'not-an-object' } }),
+      ),
+    ).toBeNull();
+    expect(
+      evolutionAdapter.parseInboundWebhook(
+        JSON.stringify({
+          data: {
+            key: { remoteJid: '5511999998888@s.whatsapp.net', fromMe: false },
+            message: { conversation: 42 },
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(evolutionAdapter.parseInboundWebhook(JSON.stringify('not-an-object'))).toBeNull();
   });
 });
 
