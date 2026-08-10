@@ -1,5 +1,6 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ZodError } from 'zod';
-import type { ChannelAdapter, HealthResult, SendInput, SendResult } from '../types';
+import type { ChannelAdapter, HealthResult, InboundMessage, SendInput, SendResult } from '../types';
 import { ChannelCredentialsInvalidError } from '../types';
 import { metaCloudCredentialsSchema, type MetaCloudCredentials } from './schema';
 
@@ -78,6 +79,45 @@ async function healthCheck(rawCredentials: unknown): Promise<HealthResult> {
   }
 }
 
+function verifyWebhookSignature(rawBody: string, headers: Headers, rawCredentials: unknown): boolean {
+  const credentials = parseCredentials(rawCredentials);
+  const header = headers.get('x-hub-signature-256');
+  if (!header?.startsWith('sha256=')) return false;
+
+  const expected = createHmac('sha256', credentials.appSecret).update(rawBody).digest('hex');
+  const received = header.slice('sha256='.length);
+
+  const expectedBuf = Buffer.from(expected, 'hex');
+  const receivedBuf = Buffer.from(received, 'hex');
+  if (expectedBuf.length !== receivedBuf.length) return false;
+  return timingSafeEqual(expectedBuf, receivedBuf);
+}
+
+function parseInboundWebhook(rawBody: string): InboundMessage[] | null {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
+  const entries = (payload as { entry?: unknown[] })?.entry ?? [];
+  const messages: InboundMessage[] = [];
+  for (const entry of entries) {
+    const changes = (entry as { changes?: unknown[] })?.changes ?? [];
+    for (const change of changes) {
+      const value = (change as { value?: { messages?: unknown[] } })?.value;
+      for (const msg of value?.messages ?? []) {
+        const from = (msg as { from?: unknown })?.from;
+        const body = (msg as { text?: { body?: unknown } })?.text?.body;
+        if (typeof from === 'string' && typeof body === 'string') {
+          messages.push({ fromPhone: from, text: body });
+        }
+      }
+    }
+  }
+  return messages.length > 0 ? messages : null;
+}
+
 export const metaCloudAdapter: ChannelAdapter = {
   provider: 'META_CLOUD',
   capabilities: {
@@ -90,4 +130,6 @@ export const metaCloudAdapter: ChannelAdapter = {
   },
   send,
   healthCheck,
+  verifyWebhookSignature,
+  parseInboundWebhook,
 };

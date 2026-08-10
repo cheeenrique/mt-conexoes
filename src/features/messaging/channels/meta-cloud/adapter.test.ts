@@ -1,8 +1,14 @@
+import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { metaCloudAdapter } from './adapter';
 import { ChannelCredentialsInvalidError } from '../types';
 
-const CREDENTIALS = { accessToken: 'tok', phoneNumberId: '123', wabaId: '456' };
+const CREDENTIALS = { accessToken: 'tok', phoneNumberId: '123', wabaId: '456', appSecret: 'segredo-teste' };
+const WEBHOOK_CREDENTIALS = CREDENTIALS;
+
+function signBody(body: string, secret: string): string {
+  return 'sha256=' + createHmac('sha256', secret).update(body).digest('hex');
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -108,5 +114,44 @@ describe('metaCloudAdapter.healthCheck', () => {
   it('devolve ok=false quando o fetch rejeita (rede instável)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fetch failed')));
     expect(await metaCloudAdapter.healthCheck(CREDENTIALS)).toEqual({ ok: false, reason: 'fetch failed' });
+  });
+});
+
+describe('metaCloudAdapter.verifyWebhookSignature', () => {
+  it('aceita assinatura correta', () => {
+    const body = '{"entry":[]}';
+    const headers = new Headers({ 'x-hub-signature-256': signBody(body, 'segredo-teste') });
+    expect(metaCloudAdapter.verifyWebhookSignature(body, headers, WEBHOOK_CREDENTIALS)).toBe(true);
+  });
+
+  it('rejeita assinatura errada', () => {
+    const body = '{"entry":[]}';
+    const headers = new Headers({ 'x-hub-signature-256': signBody(body, 'segredo-errado') });
+    expect(metaCloudAdapter.verifyWebhookSignature(body, headers, WEBHOOK_CREDENTIALS)).toBe(false);
+  });
+
+  it('rejeita header ausente', () => {
+    const headers = new Headers();
+    expect(metaCloudAdapter.verifyWebhookSignature('{}', headers, WEBHOOK_CREDENTIALS)).toBe(false);
+  });
+});
+
+describe('metaCloudAdapter.parseInboundWebhook', () => {
+  it('extrai telefone e texto de um payload de mensagem', () => {
+    const payload = JSON.stringify({
+      entry: [{ changes: [{ value: { messages: [{ from: '5511999998888', text: { body: 'PARE' } }] } }] }],
+    });
+    expect(metaCloudAdapter.parseInboundWebhook(payload)).toEqual([{ fromPhone: '5511999998888', text: 'PARE' }]);
+  });
+
+  it('ignora payload de delivery receipt (statuses, sem messages)', () => {
+    const payload = JSON.stringify({
+      entry: [{ changes: [{ value: { statuses: [{ id: 'wamid.x', status: 'delivered' }] } }] }],
+    });
+    expect(metaCloudAdapter.parseInboundWebhook(payload)).toBeNull();
+  });
+
+  it('payload malformado (JSON inválido) retorna null, não lança', () => {
+    expect(metaCloudAdapter.parseInboundWebhook('not json')).toBeNull();
   });
 });
