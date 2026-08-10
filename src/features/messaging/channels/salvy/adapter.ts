@@ -70,4 +70,7 @@ export const salvyAdapter: ChannelAdapter = {
   },
   send,
   healthCheck,
+  // ⚠️ Webhook do Salvy fora de escopo desta spec — sempre recusa/ignora.
+  verifyWebhookSignature: () => false,
+  parseInboundWebhook: () => null,
 };
