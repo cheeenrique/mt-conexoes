@@ -15,24 +15,27 @@ export async function processInboundMessage(input: {
   const settings = await getSettings();
   const scheduledDate = localDateOnly(input.now, settings.timezone);
 
-  await db.message.create({
-    data: {
-      customerId: customer.id,
-      channelId: input.channelId,
-      kind: 'INBOUND',
-      status: 'RECEIVED',
-      toPhone: input.fromPhone,
-      body: input.text,
-      scheduledFor: input.now,
-      scheduledDate,
-    },
-  });
-
   const matchedKeyword = matchOptOutKeyword(input.text);
-  if (matchedKeyword && !customer.optedOut) {
-    await db.customer.update({
-      where: { id: customer.id },
-      data: { optedOut: true, optedOutAt: input.now, optedOutReason: `Palavra-chave: ${matchedKeyword}` },
+
+  await db.$transaction(async (tx) => {
+    await tx.message.create({
+      data: {
+        customerId: customer.id,
+        channelId: input.channelId,
+        kind: 'INBOUND',
+        status: 'RECEIVED',
+        toPhone: input.fromPhone,
+        body: input.text,
+        scheduledFor: input.now,
+        scheduledDate,
+      },
     });
-  }
+
+    if (matchedKeyword && !customer.optedOut) {
+      await tx.customer.update({
+        where: { id: customer.id },
+        data: { optedOut: true, optedOutAt: input.now, optedOutReason: `Palavra-chave: ${matchedKeyword}` },
+      });
+    }
+  });
 }
