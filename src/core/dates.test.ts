@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { daysBetweenLocalDates, endOfLocalDay, firstDueDate, localDateOnly, monthBoundsUtc, nextDueDate, resolveDueDay } from './dates';
+import {
+  daysBetweenLocalDates,
+  endOfLocalDay,
+  firstDueDate,
+  isWithinLocalHourRange,
+  localDateOnly,
+  monthBoundsUtc,
+  nextDueDate,
+  resolveDueDay,
+} from './dates';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -155,5 +164,34 @@ describe('localDateOnly', () => {
     } finally {
       process.env.TZ = original;
     }
+  });
+});
+
+describe('isWithinLocalHourRange', () => {
+  it('dentro da janela (10h local, janela 8-20)', () => {
+    const instant = new Date('2026-08-08T13:00:00Z'); // 10h em America/Sao_Paulo (UTC-3)
+    expect(isWithinLocalHourRange(instant, 8, 20, TZ)).toBe(true);
+  });
+
+  it('antes da janela (07h local, janela 8-20)', () => {
+    const instant = new Date('2026-08-08T10:00:00Z'); // 07h local
+    expect(isWithinLocalHourRange(instant, 8, 20, TZ)).toBe(false);
+  });
+
+  it('depois da janela (21h local, janela 8-20)', () => {
+    const instant = new Date('2026-08-09T00:00:00Z'); // 21h local (dia anterior em UTC)
+    expect(isWithinLocalHourRange(instant, 8, 20, TZ)).toBe(false);
+  });
+
+  it('na borda inicial (08h00 local, janela 8-20) conta como dentro', () => {
+    const instant = new Date('2026-08-08T11:00:00Z'); // 08h local
+    expect(isWithinLocalHourRange(instant, 8, 20, TZ)).toBe(true);
+  });
+
+  it('na borda final (19h59 local, janela 8-20) conta como dentro; 20h00 conta como fora', () => {
+    const inside = new Date('2026-08-08T22:59:00Z'); // 19h59 local
+    const outside = new Date('2026-08-08T23:00:00Z'); // 20h00 local
+    expect(isWithinLocalHourRange(inside, 8, 20, TZ)).toBe(true);
+    expect(isWithinLocalHourRange(outside, 8, 20, TZ)).toBe(false);
   });
 });

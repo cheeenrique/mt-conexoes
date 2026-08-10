@@ -27,3 +27,9 @@ export class UnauthorizedError extends DomainError {
     super('Sessão expirada. Entre novamente.', 'UNAUTHORIZED', { cause });
   }
 }
+
+export class UnknownTemplateVariableError extends DomainError {
+  constructor(message: string, cause?: unknown) {
+    super(message, 'UNKNOWN_TEMPLATE_VARIABLE', { cause });
+  }
+}

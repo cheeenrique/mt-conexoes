@@ -129,6 +129,7 @@ model Customer {
 
   subscriptions Subscription[]
   charges       Charge[]
+  messages      Message[]
 
   @@unique([phone])
   @@index([name])
@@ -212,6 +213,7 @@ model Charge {
   customer     Customer     @relation(fields: [customerId], references: [id])
   supplier     Supplier?    @relation(fields: [supplierId], references: [id])
   payments     Payment[]
+  messages     Message[]
 
   @@unique([subscriptionId, periodStart])
   @@index([status, dueAt])
@@ -260,6 +262,8 @@ model ChannelConfig {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
+  messages       Message[]
+
   @@map("channel_configs")
 }
 
@@ -301,4 +305,46 @@ model DunningStep {
 
   @@unique([ruleId, offsetDays])
   @@map("dunning_steps")
+}
+
+enum MessageKind {
+  DUNNING
+  MANUAL
+  TEST
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+  SKIPPED
+}
+
+model Message {
+  id            String         @id @default(uuid(7))
+  customerId    String
+  chargeId      String?
+  channelId     String?
+  kind          MessageKind    @default(DUNNING)
+  status        MessageStatus  @default(PENDING)
+
+  toPhone       String
+  body          String
+  scheduledFor  DateTime
+  scheduledDate DateTime       @db.Date
+  sentAt        DateTime?
+  externalId    String?
+  attempts      Int            @default(0)
+  failReason    String?
+  cancelReason  String?
+  createdAt     DateTime       @default(now())
+
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  charge        Charge?        @relation(fields: [chargeId], references: [id])
+  channel       ChannelConfig? @relation(fields: [channelId], references: [id])
+
+  @@index([status, scheduledFor])
+  @@index([customerId, createdAt])
+  @@map("messages")
 }

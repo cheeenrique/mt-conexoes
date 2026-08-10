@@ -31,6 +31,13 @@ export function startOfLocalDay(year: number, month: number, day: number, timezo
   return new Date(local.getTime());
 }
 
+/** Verifica se o instante cai dentro de [startHour, endHour) no fuso local. */
+export function isWithinLocalHourRange(instant: Date, startHour: number, endHour: number, timezone: string): boolean {
+  const local = new TZDate(instant, timezone);
+  const hour = local.getHours() + local.getMinutes() / 60;
+  return hour >= startHour && hour < endHour;
+}
+
 function computeDueDate(referenceLocal: TZDate, cycle: BillingCycle, timezone: string): Date {
   const target = addMonths(startOfMonth(referenceLocal), CYCLE_MONTHS[cycle]);
   const day = resolveDueDay(referenceLocal.getDate(), target.getFullYear(), target.getMonth());
