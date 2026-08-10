@@ -154,4 +154,18 @@ describe('metaCloudAdapter.parseInboundWebhook', () => {
   it('payload malformado (JSON inválido) retorna null, não lança', () => {
     expect(metaCloudAdapter.parseInboundWebhook('not json')).toBeNull();
   });
+
+  it('entry com tipo errado (não-array) retorna null, não lança', () => {
+    expect(metaCloudAdapter.parseInboundWebhook('{"entry": 5}')).toBeNull();
+  });
+
+  it('changes com tipo errado (não-array) retorna null, não lança', () => {
+    expect(metaCloudAdapter.parseInboundWebhook('{"entry":[{"changes":"x"}]}')).toBeNull();
+  });
+
+  it('messages com tipo errado (não-array) retorna null, não lança', () => {
+    expect(
+      metaCloudAdapter.parseInboundWebhook('{"entry":[{"changes":[{"value":{"messages":5}}]}]}'),
+    ).toBeNull();
+  });
 });

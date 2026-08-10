@@ -100,13 +100,14 @@ function parseInboundWebhook(rawBody: string): InboundMessage[] | null {
   } catch {
     return null;
   }
-  const entries = (payload as { entry?: unknown[] })?.entry ?? [];
+  const entries = (payload as { entry?: unknown })?.entry;
   const messages: InboundMessage[] = [];
-  for (const entry of entries) {
-    const changes = (entry as { changes?: unknown[] })?.changes ?? [];
-    for (const change of changes) {
-      const value = (change as { value?: { messages?: unknown[] } })?.value;
-      for (const msg of value?.messages ?? []) {
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const changes = (entry as { changes?: unknown })?.changes;
+    for (const change of Array.isArray(changes) ? changes : []) {
+      const value = (change as { value?: { messages?: unknown } })?.value;
+      const msgs = value?.messages;
+      for (const msg of Array.isArray(msgs) ? msgs : []) {
         const from = (msg as { from?: unknown })?.from;
         const body = (msg as { text?: { body?: unknown } })?.text?.body;
         if (typeof from === 'string' && typeof body === 'string') {
