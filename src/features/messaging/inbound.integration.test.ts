@@ -62,6 +62,19 @@ describe('processInboundMessage', () => {
     expect(messages).toHaveLength(1);
   });
 
+  it('fromPhone sem "+" (formato entregue pelos adapters de webhook) casa com Customer.phone E.164', async () => {
+    const channel = await seedChannel();
+    const customer = await db.customer.create({ data: { name: 'Inbound Teste', phone: '+5511999990014' } });
+
+    await processInboundMessage({ channelId: channel.id, fromPhone: '5511999990014', text: 'PARE', now: NOW });
+
+    const refreshed = await db.customer.findUniqueOrThrow({ where: { id: customer.id } });
+    expect(refreshed.optedOut).toBe(true);
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(1);
+    expect(messages[0].toPhone).toBe('+5511999990014');
+  });
+
   it('telefone sem Customer correspondente: não grava Message, não lança', async () => {
     const channel = await seedChannel();
     await expect(

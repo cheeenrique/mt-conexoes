@@ -40,7 +40,8 @@ describe('POST /api/webhooks/evolution', () => {
 
   it('mensagem válida processa e devolve 200', async () => {
     await seedChannel();
-    await db.customer.create({ data: { name: 'Webhook Evo Teste', phone: '5511999990030' } });
+    // Customer.phone é E.164 com "+" (schema Zod); o remoteJid da Evolution manda o número sem "+".
+    await db.customer.create({ data: { name: 'Webhook Evo Teste', phone: '+5511999990030' } });
     const body = JSON.stringify({ data: { key: { remoteJid: '5511999990030@s.whatsapp.net', fromMe: false }, message: { conversation: 'Oi' } } });
     const req = new Request('http://localhost/api/webhooks/evolution', {
       method: 'POST', body, headers: { apikey: WEBHOOK_TOKEN },
@@ -49,6 +50,20 @@ describe('POST /api/webhooks/evolution', () => {
     expect(res.status).toBe(200);
     const messages = await db.message.findMany({ where: { customer: { name: 'Webhook Evo Teste' } } });
     expect(messages).toHaveLength(1);
+    await db.message.deleteMany({ where: { customer: { name: 'Webhook Evo Teste' } } });
+  });
+
+  it('mensagem "PARE" marca opt-out do customer mesmo com telefone em formatos diferentes', async () => {
+    await seedChannel();
+    await db.customer.create({ data: { name: 'Webhook Evo Teste', phone: '+5511999990031' } });
+    const body = JSON.stringify({ data: { key: { remoteJid: '5511999990031@s.whatsapp.net', fromMe: false }, message: { conversation: 'PARE' } } });
+    const req = new Request('http://localhost/api/webhooks/evolution', {
+      method: 'POST', body, headers: { apikey: WEBHOOK_TOKEN },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const customer = await db.customer.findFirstOrThrow({ where: { name: 'Webhook Evo Teste', phone: '+5511999990031' } });
+    expect(customer.optedOut).toBe(true);
     await db.message.deleteMany({ where: { customer: { name: 'Webhook Evo Teste' } } });
   });
 });

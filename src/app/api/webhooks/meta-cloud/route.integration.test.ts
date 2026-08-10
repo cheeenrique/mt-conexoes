@@ -47,7 +47,8 @@ describe('POST /api/webhooks/meta-cloud', () => {
 
   it('mensagem válida processa e devolve 200', async () => {
     await seedChannel();
-    await db.customer.create({ data: { name: 'Webhook Teste', phone: '5511999990020' } });
+    // Customer.phone é E.164 com "+" (schema Zod); o webhook da Meta manda o "from" sem "+".
+    await db.customer.create({ data: { name: 'Webhook Teste', phone: '+5511999990020' } });
     const body = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ from: '5511999990020', text: { body: 'Oi' } }] } }] }] });
     const req = new Request('http://localhost/api/webhooks/meta-cloud', {
       method: 'POST', body, headers: { 'x-hub-signature-256': sign(body) },
@@ -56,6 +57,20 @@ describe('POST /api/webhooks/meta-cloud', () => {
     expect(res.status).toBe(200);
     const messages = await db.message.findMany({ where: { customer: { name: 'Webhook Teste' } } });
     expect(messages).toHaveLength(1);
+    await db.message.deleteMany({ where: { customer: { name: 'Webhook Teste' } } });
+  });
+
+  it('mensagem "PARE" marca opt-out do customer mesmo com telefone em formatos diferentes', async () => {
+    await seedChannel();
+    await db.customer.create({ data: { name: 'Webhook Teste', phone: '+5511999990021' } });
+    const body = JSON.stringify({ entry: [{ changes: [{ value: { messages: [{ from: '5511999990021', text: { body: 'PARE' } }] } }] }] });
+    const req = new Request('http://localhost/api/webhooks/meta-cloud', {
+      method: 'POST', body, headers: { 'x-hub-signature-256': sign(body) },
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const customer = await db.customer.findFirstOrThrow({ where: { name: 'Webhook Teste', phone: '+5511999990021' } });
+    expect(customer.optedOut).toBe(true);
     await db.message.deleteMany({ where: { customer: { name: 'Webhook Teste' } } });
   });
 });
