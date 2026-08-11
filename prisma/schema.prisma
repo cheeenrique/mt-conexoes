@@ -347,7 +347,7 @@ model Message {
   customer      Customer       @relation(fields: [customerId], references: [id])
   charge        Charge?        @relation(fields: [chargeId], references: [id])
   channel       ChannelConfig? @relation(fields: [channelId], references: [id])
-  execution     DunningExecution?
+  executions    DunningExecution[]
 
   @@index([status, scheduledFor])
   @@index([customerId, createdAt])
@@ -366,7 +366,7 @@ model DunningExecution {
   stepId    String
   outcome   ExecutionOutcome
   reason    String?
-  messageId String?          @unique
+  messageId String?
   createdAt DateTime         @default(now())
 
   charge    Charge           @relation(fields: [chargeId], references: [id], onDelete: Cascade)
@@ -374,5 +374,6 @@ model DunningExecution {
   message   Message?         @relation(fields: [messageId], references: [id])
 
   @@unique([chargeId, stepId])
+  @@index([messageId])
   @@map("dunning_executions")
 }
