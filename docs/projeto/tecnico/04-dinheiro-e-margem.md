@@ -86,27 +86,29 @@ Duas leituras diferentes de "receita", e a UI precisa nomear qual está mostrand
 
 ## Painel por cliente
 
-```sql
--- src/features/reports/sql/customer-pnl.sql
-SELECT
-  MIN(ch.issued_at)                                            AS since,
-  COALESCE(SUM(ch.principal_cents - ch.discount_cents), 0)     AS billed_cents,
-  COALESCE(SUM(ch.discount_cents), 0)                          AS discount_cents,
-  COALESCE(SUM(ch.cost_cents), 0)                              AS cost_cents,
-  COUNT(*)                                                     AS charges_count,
-  COUNT(*) FILTER (WHERE ch.status = 'PAID')                   AS paid_count,
-  COUNT(*) FILTER (WHERE ch.status = 'OVERDUE')                AS overdue_count
-FROM charges ch
-WHERE ch.customer_id = $1
-  AND ch.status <> 'CANCELLED';
-```
+`since` já vem de `subscriptions` em outro ponto da página, e `discount_cents` não aparece no painel — por isso não entram nesta query.
 
 ```sql
--- recebido, em query separada — vive em payments
-SELECT COALESCE(SUM(p.amount_cents), 0) AS received_cents
+-- src/features/reports/sql/customer-pnl.sql
+-- Faturado, custo e contagem por status, excluindo cobrança cancelada.
+SELECT
+  COALESCE(SUM("principalCents" - "discountCents"), 0)::text AS "billedCents",
+  COALESCE(SUM("costCents"), 0)::text                        AS "costCents",
+  COUNT(*)::int                                               AS "chargesCount",
+  COUNT(*) FILTER (WHERE status = 'PAID')::int                AS "paidCount",
+  COUNT(*) FILTER (WHERE status = 'OVERDUE')::int              AS "overdueCount",
+  COUNT(*) FILTER (WHERE status IN ('OPEN', 'PARTIALLY_PAID'))::int AS "openCount"
+FROM charges
+WHERE "customerId" = $1
+  AND status <> 'CANCELLED';
+
+-- Recebido: soma de pagamentos de todas as cobranças do cliente (join, não coluna em charges).
+-- Sem filtro de status: cobrança com pagamento registrado nunca é cancelada (regra dura do domínio),
+-- então incluir CANCELLED aqui não muda o resultado — mas deixamos explícito pra não parecer omissão.
+SELECT COALESCE(SUM(p."amountCents"), 0)::text AS "receivedCents"
 FROM payments p
-JOIN charges ch ON ch.id = p.charge_id
-WHERE ch.customer_id = $1;
+JOIN charges ch ON ch.id = p."chargeId"
+WHERE ch."customerId" = $1;
 ```
 
 Rende o painel do topo da ficha:

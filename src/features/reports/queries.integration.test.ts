@@ -122,4 +122,17 @@ describe('getCustomerPnl', () => {
     expect(result.overdueCount).toBe(1);
     expect(result.openCount).toBe(2);
   });
+
+  it('soma acima de Number.MAX_SAFE_INTEGER sobrevive ao ::text como string exata', async () => {
+    const { customer, subscription, supplier } = await seedCustomerWithCharges();
+    const principalCents = 9_007_199_254_740_993n; // 2^53 + 1, fora da faixa segura de number
+
+    await createCharge(subscription.id, customer.id, supplier.id, {
+      periodStart: new Date('2026-01-01'), principalCents, discountCents: 0n, costCents: 0n, status: 'PAID',
+    });
+
+    const result = await getCustomerPnl(customer.id);
+
+    expect(result.billedCents).toBe('9007199254740993');
+  });
 });
