@@ -32,20 +32,20 @@ afterEach(async () => {
 describe('evaluateDunningRule', () => {
   it('régua em REVIEW gera PENDING_REVIEW, zero Message', async () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'REVIEW' } });
-    const { charge } = await seedFixture();
+    const { customer, charge } = await seedFixture();
 
     await evaluateDunningRule(NOW);
 
     const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
     expect(executions).toHaveLength(1);
     expect(executions[0].outcome).toBe('PENDING_REVIEW');
-    const messages = await db.message.findMany({ where: { chargeId: charge.id } });
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
     expect(messages).toHaveLength(0);
   });
 
   it('régua ACTIVE, cliente optedOut: SKIPPED reason=opted_out, zero Message', async () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
-    const { charge } = await seedFixture({ optedOut: true });
+    const { customer, charge } = await seedFixture({ optedOut: true });
 
     await evaluateDunningRule(NOW);
 
@@ -53,6 +53,8 @@ describe('evaluateDunningRule', () => {
     expect(executions).toHaveLength(1);
     expect(executions[0].outcome).toBe('SKIPPED');
     expect(executions[0].reason).toBe('opted_out');
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(0);
   });
 
   it('régua ACTIVE, sem telefone: SKIPPED reason=no_phone', async () => {
@@ -106,14 +108,37 @@ describe('evaluateDunningRule', () => {
 
   it('passo SUSPEND transiciona Subscription.status, sem Message', async () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
-    const { subscription, charge } = await seedFixture();
+    const { customer, subscription, charge } = await seedFixture();
     await db.charge.update({ where: { id: charge.id }, data: { dueAt: new Date('2026-08-05T23:59:59-03:00') } });
 
     await evaluateDunningRule(new Date('2026-08-10T12:00:00-03:00'));
 
     const refreshedSub = await db.subscription.findUniqueOrThrow({ where: { id: subscription.id } });
     expect(refreshedSub.status).toBe('SUSPENDED');
-    const messages = await db.message.findMany({ where: { chargeId: charge.id } });
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
     expect(messages).toHaveLength(0);
+  });
+
+  it('T7: customer já mensageado hoje — passo novo vira DunningExecution SKIPPED reason=daily_dedupe', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { customer, charge } = await seedFixture();
+    await db.message.create({
+      data: {
+        customerId: customer.id,
+        kind: 'DUNNING',
+        status: 'PENDING',
+        toPhone: customer.phone as string,
+        body: 'Mensagem já enviada hoje.',
+        scheduledFor: NOW,
+        scheduledDate: new Date('2026-08-10T00:00:00.000Z'),
+      },
+    });
+
+    await evaluateDunningRule(NOW);
+
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+    expect(executions).toHaveLength(1);
+    expect(executions[0].outcome).toBe('SKIPPED');
+    expect(executions[0].reason).toBe('daily_dedupe');
   });
 });
