@@ -5,6 +5,11 @@ import type { MessageDTO } from '../queries';
 
 const STATUS_ICON: Record<string, string> = { SENT: '✓', FAILED: '✗', SKIPPED: '⊘', CANCELLED: '⊘', PENDING: '…', RECEIVED: '↩' };
 const KIND_LABEL: Record<string, string> = { INBOUND: 'Recebida' };
+const CANCEL_REASON_LABEL: Record<string, string> = {
+  stale: 'mensagem parada há mais de 24h',
+  opted_out: 'cliente pediu pra sair',
+  charge_closed: 'cobrança já paga ou cancelada',
+};
 
 export function MessageTimeline({ messages, timezone }: { messages: MessageDTO[]; timezone: string }) {
   if (messages.length === 0) {
@@ -27,6 +32,11 @@ export function MessageTimeline({ messages, timezone }: { messages: MessageDTO[]
           </div>
           <p className="mt-1 line-clamp-2 text-sm text-foreground">{msg.body}</p>
           {msg.failReason && <p className="mt-1 text-xs text-danger">{msg.failReason}</p>}
+          {msg.cancelReason && (
+            <p className="mt-1 text-xs text-danger">
+              Cancelada: {CANCEL_REASON_LABEL[msg.cancelReason] ?? msg.cancelReason}
+            </p>
+          )}
         </div>
       ))}
     </div>

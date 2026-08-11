@@ -29,6 +29,7 @@ export interface MessageDTO {
   body: string;
   sentAt: string | null;
   failReason: string | null;
+  cancelReason: string | null;
   createdAt: string;
 }
 
@@ -44,6 +45,7 @@ export async function listMessagesForCustomer(customerId: string): Promise<Messa
     body: row.body,
     sentAt: row.sentAt?.toISOString() ?? null,
     failReason: row.failReason,
+    cancelReason: row.cancelReason,
     createdAt: row.createdAt.toISOString(),
   }));
 }

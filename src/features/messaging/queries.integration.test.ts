@@ -84,4 +84,21 @@ describe('listMessagesForCustomer', () => {
     await db.message.deleteMany({ where: { customerId: customer.id } });
     await db.customer.delete({ where: { id: customer.id } });
   });
+
+  it('inclui cancelReason quando a mensagem foi cancelada', async () => {
+    const customer = await db.customer.create({ data: { name: 'Timeline Teste', phone: '+5511999990004' } });
+    await db.message.create({
+      data: {
+        customerId: customer.id, kind: 'DUNNING', status: 'CANCELLED', cancelReason: 'stale',
+        toPhone: customer.phone!, body: 'Oi', scheduledFor: new Date(), scheduledDate: new Date(),
+      },
+    });
+
+    const rows = await listMessagesForCustomer(customer.id);
+
+    expect(rows[0].cancelReason).toBe('stale');
+
+    await db.message.deleteMany({ where: { customerId: customer.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
 });
