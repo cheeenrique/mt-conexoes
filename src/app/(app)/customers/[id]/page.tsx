@@ -7,6 +7,7 @@ import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
 import { getSettings } from '@/features/settings/queries';
 import { getChargesForCustomer } from '@/features/charges/queries';
 import { listMessagesForCustomer } from '@/features/messaging/queries';
+import { getCustomerPnl } from '@/features/reports/queries';
 import { CustomerProfileHeader } from '@/features/customers/components/customer-profile-header';
 import { CustomerTabs } from '@/features/customers/components/customer-tabs';
 import { BackButton } from '@/features/customers/components/back-button';
@@ -32,13 +33,14 @@ export default async function CustomerProfilePage({
   const customer = await getCustomer(id);
   if (!customer) notFound();
 
-  const [subscriptions, plans, suppliers, settings, charges, messages] = await Promise.all([
+  const [subscriptions, plans, suppliers, settings, charges, messages, pnl] = await Promise.all([
     listSubscriptionsForCustomer(id),
     listActivePlansForSelect(),
     listActiveSuppliersForSelect(),
     getSettings(),
     getChargesForCustomer(id),
     listMessagesForCustomer(id),
+    getCustomerPnl(id),
   ]);
 
   const activeSub = subscriptions.find((s) => s.status === 'ACTIVE');
@@ -57,6 +59,7 @@ export default async function CustomerProfilePage({
         supplierName={activeSub?.supplierName ?? null}
         since={since}
         active={!!activeSub}
+        pnl={pnl}
       />
       <div className="mt-6">
         <CustomerTabs customerId={id} aba={aba}>
