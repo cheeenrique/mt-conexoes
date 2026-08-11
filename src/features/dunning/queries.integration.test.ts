@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import {
   getDefaultRuleWithSteps,
@@ -6,6 +6,15 @@ import {
   listRecentChargesForPreview,
   listReviewPreview,
 } from './queries';
+
+afterEach(async () => {
+  await db.dunningExecution.deleteMany({ where: { charge: { customer: { name: 'Preview Cliente' } } } });
+  await db.charge.deleteMany({ where: { customer: { name: 'Preview Cliente' } } });
+  await db.subscription.deleteMany({ where: { customer: { name: 'Preview Cliente' } } });
+  await db.customer.deleteMany({ where: { name: 'Preview Cliente' } });
+  await db.plan.deleteMany({ where: { name: 'Preview Plano' } });
+  await db.supplier.deleteMany({ where: { name: 'Preview Fornecedor' } });
+});
 
 describe('getDefaultRuleWithSteps', () => {
   it('devolve a régua padrão seedada com os passos ordenados por offsetDays', async () => {
@@ -45,13 +54,6 @@ describe('listReviewPreview', () => {
 
     const entry = preview.find((p) => p.stepId === step.id);
     expect(entry?.count).toBeGreaterThanOrEqual(1);
-
-    await db.dunningExecution.deleteMany({ where: { chargeId: charge.id } });
-    await db.charge.delete({ where: { id: charge.id } });
-    await db.subscription.delete({ where: { id: subscription.id } });
-    await db.customer.delete({ where: { id: customer.id } });
-    await db.plan.delete({ where: { id: plan.id } });
-    await db.supplier.delete({ where: { id: supplier.id } });
   });
 });
 
