@@ -5,7 +5,7 @@ SELECT
 FROM charges ch
 JOIN subscriptions sub ON sub.id = ch."subscriptionId"
 JOIN plans p ON p.id = sub."planId"
-WHERE ch."dueAt" >= $1 AND ch."dueAt" < $2
+WHERE ch."dueAt" >= ${from} AND ch."dueAt" < ${to}
   AND ch.status <> 'CANCELLED'
 GROUP BY p.id, p.name
 ORDER BY (SUM(ch."principalCents" - ch."discountCents") - SUM(ch."costCents")) DESC;

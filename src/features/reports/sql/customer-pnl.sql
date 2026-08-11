@@ -7,7 +7,7 @@ SELECT
   COUNT(*) FILTER (WHERE status = 'OVERDUE')::int              AS "overdueCount",
   COUNT(*) FILTER (WHERE status IN ('OPEN', 'PARTIALLY_PAID'))::int AS "openCount"
 FROM charges
-WHERE "customerId" = $1
+WHERE "customerId" = ${customerId}
   AND status <> 'CANCELLED';
 
 -- Recebido: soma de pagamentos de todas as cobranças do cliente (join, não coluna em charges).
@@ -16,4 +16,4 @@ WHERE "customerId" = $1
 SELECT COALESCE(SUM(p."amountCents"), 0)::text AS "receivedCents"
 FROM payments p
 JOIN charges ch ON ch.id = p."chargeId"
-WHERE ch."customerId" = $1;
+WHERE ch."customerId" = ${customerId};

@@ -155,6 +155,7 @@ async function seedMonthlyFixture() {
 }
 
 afterEach(async () => {
+  await db.payment.deleteMany({ where: { charge: { customer: { name: 'Mês Teste' } } } });
   await db.charge.deleteMany({ where: { customer: { name: 'Mês Teste' } } });
   await db.subscription.deleteMany({ where: { customer: { name: 'Mês Teste' } } });
   await db.customer.deleteMany({ where: { name: 'Mês Teste' } });
@@ -201,6 +202,20 @@ describe('getMonthlySummary', () => {
     const result = await getMonthlySummary(from, to);
 
     expect(result.billedCents).toBe('6000');
+  });
+
+  it('receivedCents soma só pagamentos com paidAt dentro do mês', async () => {
+    const { customer, supplierA, subA } = await seedMonthlyFixture();
+    const { from, to } = monthBoundsUtc(2026, 7, TZ); // agosto
+    const chargeInMonth = await db.charge.create({ data: { subscriptionId: subA.id, customerId: customer.id, supplierId: supplierA.id, principalCents: 6000n, costCents: 1000n, periodStart: new Date('2026-08-01'), periodEnd: new Date('2026-08-01'), dueAt: new Date('2026-08-15T23:59:59-03:00'), status: 'PAID' } });
+    const chargeOtherMonth = await db.charge.create({ data: { subscriptionId: subA.id, customerId: customer.id, supplierId: supplierA.id, principalCents: 6000n, costCents: 1000n, periodStart: new Date('2026-09-01'), periodEnd: new Date('2026-09-01'), dueAt: new Date('2026-09-15T23:59:59-03:00'), status: 'PAID' } });
+    await db.payment.create({ data: { chargeId: chargeInMonth.id, amountCents: 6000n, paidAt: new Date('2026-08-10T12:00:00Z') } });
+    // Pagamento fora do mês testado — não deve entrar na soma.
+    await db.payment.create({ data: { chargeId: chargeOtherMonth.id, amountCents: 6000n, paidAt: new Date('2026-09-10T12:00:00Z') } });
+
+    const result = await getMonthlySummary(from, to);
+
+    expect(result.receivedCents).toBe('6000');
   });
 });
 
