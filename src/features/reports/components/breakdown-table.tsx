@@ -28,7 +28,7 @@ export function BreakdownTable({ rows, emptyLabel }: { rows: BreakdownRowDTO[]; 
             const profitCents = billedCents - costCents;
             const margin = marginPercent(billedCents, costCents);
             return (
-              <tr key={row.id} className="border-b border-border font-mono tabular-mono last:border-0">
+              <tr key={row.id ?? row.name} className="border-b border-border font-mono tabular-mono last:border-0">
                 <td className="p-3 font-sans text-foreground">{row.name}</td>
                 <td className="p-3 text-right text-foreground">{formatCents(row.billedCents)}</td>
                 <td className="p-3 text-right text-foreground">{formatCents(row.costCents)}</td>

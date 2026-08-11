@@ -4,6 +4,10 @@ import { db } from '@/lib/db';
 import { monthBoundsUtc } from '@/core/dates';
 import { getCustomerPnl, getMonthlySummary, getSupplierBreakdown, getPlanBreakdown, getCustomerBreakdown, getMonthlyTrend } from './queries';
 
+function sumBilledCents(rows: { billedCents: string }[]): bigint {
+  return rows.reduce((acc, r) => acc + BigInt(r.billedCents), 0n);
+}
+
 const TZ = 'America/Sao_Paulo';
 
 async function seedCustomerWithCharges() {
@@ -247,6 +251,45 @@ describe('getPlanBreakdown', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe(planA.id);
     expect(rows[0].billedCents).toBe('6000');
+  });
+});
+
+describe('reconciliação: soma das quebras bate com o painel geral', () => {
+  afterEach(async () => {
+    await db.charge.deleteMany({ where: { customer: { name: 'Reconciliação Teste' } } });
+    await db.subscription.deleteMany({ where: { customer: { name: 'Reconciliação Teste' } } });
+    await db.customer.deleteMany({ where: { name: 'Reconciliação Teste' } });
+    await db.plan.deleteMany({ where: { name: 'Plano Reconciliação' } });
+    await db.supplier.deleteMany({ where: { name: 'Fornecedor Reconciliação' } });
+  });
+
+  it('sum(getSupplierBreakdown.billedCents) e sum(getPlanBreakdown.billedCents) batem com getMonthlySummary.billedCents mesmo com cobrança sem fornecedor/plano', async () => {
+    const supplier = await db.supplier.create({ data: { name: 'Fornecedor Reconciliação', unitCostCents: 1000n } });
+    const plan = await db.plan.create({ data: { name: 'Plano Reconciliação', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });
+    const customer = await db.customer.create({ data: { name: 'Reconciliação Teste', phone: '+5511998880999' } });
+    const { from, to } = monthBoundsUtc(2026, 7, TZ); // agosto
+
+    // Assinatura COM fornecedor e plano.
+    const subWithSupplier = await db.subscription.create({
+      data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: new Date('2026-01-01T12:00:00Z'), nextDueAt: new Date('2026-02-01T12:00:00Z') },
+    });
+    await db.charge.create({ data: { subscriptionId: subWithSupplier.id, customerId: customer.id, supplierId: supplier.id, principalCents: 6000n, costCents: 1000n, periodStart: new Date('2026-08-01'), periodEnd: new Date('2026-08-01'), dueAt: new Date('2026-08-15T23:59:59-03:00'), status: 'PAID' } });
+
+    // Assinatura SEM fornecedor nem plano — grava supplierId/planId null como acontece de verdade (subscriptions/service.ts).
+    const subWithoutSupplier = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: new Date('2026-01-01T12:00:00Z'), nextDueAt: new Date('2026-02-01T12:00:00Z') },
+    });
+    await db.charge.create({ data: { subscriptionId: subWithoutSupplier.id, customerId: customer.id, principalCents: 6000n, costCents: 1000n, periodStart: new Date('2026-08-02'), periodEnd: new Date('2026-08-02'), dueAt: new Date('2026-08-16T23:59:59-03:00'), status: 'OPEN' } });
+
+    const summary = await getMonthlySummary(from, to);
+    const supplierRows = await getSupplierBreakdown(from, to);
+    const planRows = await getPlanBreakdown(from, to);
+
+    expect(summary.billedCents).toBe('12000');
+    expect(sumBilledCents(supplierRows)).toBe(BigInt(summary.billedCents));
+    expect(sumBilledCents(planRows)).toBe(BigInt(summary.billedCents));
+    expect(supplierRows.some((r) => r.id === null && r.name === 'Sem fornecedor')).toBe(true);
+    expect(planRows.some((r) => r.id === null && r.name === 'Sem plano')).toBe(true);
   });
 });
 

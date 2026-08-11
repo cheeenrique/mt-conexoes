@@ -52,7 +52,7 @@ Cada linha: nome (fornecedor/plano), faturado, custo, lucro, margem (calculada n
 
 ### Quebra — cliente (top/bottom 20)
 
-Uma query só, `GROUP BY charges."customerId"`, `ORDER BY (SUM(principal-discount) - SUM(cost)) DESC`, sem `LIMIT` — na escala do projeto (até 1.000 clientes) trazer tudo e fatiar em `queries.ts` (`rows.slice(0, 20)` e `rows.slice(-20).reverse()`) é mais simples que duas queries com `ORDER BY` invertido, e o doc já registra que otimização não é necessária nessa escala.
+Uma query só, `GROUP BY charges."customerId"`, `ORDER BY (SUM(principal-discount) - SUM(cost)) DESC`, sem `LIMIT` — na escala do projeto (até 1.000 clientes) trazer tudo e fatiar em `queries.ts` (`rows.slice(0, 20)` e `rows.slice(-20)`) é mais simples que duas queries com `ORDER BY` invertido, e o doc já registra que otimização não é necessária nessa escala. `bottom` fica ordenado do mesmo jeito que as outras tabelas (desc por lucro, pior no fim) — sem `.reverse()`, por consistência com `top`.
 
 **Ambiguidade resolvida:** com menos de 40 clientes com cobrança no mês, `top` e `bottom` colidem (ex.: 25 clientes → top 20 e bottom 20 compartilham 15). Decisão: se `rows.length <= 40`, `bottom` é `rows.slice(20)` (só o que sobrou depois do top, sem repetir ninguém) em vez de `rows.slice(-20)` — nunca mostra o mesmo cliente duas vezes na tela.
 

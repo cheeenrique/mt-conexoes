@@ -8,9 +8,9 @@ vi.mock('@/features/auth/service', async (importOriginal) => {
 });
 
 afterEach(async () => {
-  await db.charge.deleteMany({ where: { customer: { name: 'Export Teste' } } });
-  await db.subscription.deleteMany({ where: { customer: { name: 'Export Teste' } } });
-  await db.customer.deleteMany({ where: { name: 'Export Teste' } });
+  await db.charge.deleteMany({ where: { customer: { name: { startsWith: 'Export Teste' } } } });
+  await db.subscription.deleteMany({ where: { customer: { name: { startsWith: 'Export Teste' } } } });
+  await db.customer.deleteMany({ where: { name: { startsWith: 'Export Teste' } } });
   await db.plan.deleteMany({ where: { name: 'Plano Export' } });
   await db.supplier.deleteMany({ where: { name: 'Fornecedor Export' } });
 });
@@ -50,11 +50,45 @@ describe('GET /api/reports/export', () => {
     expect(body).toContain('R$ 60,00');
   });
 
-  it('type=customer devolve linhas de top e bottom com coluna "grupo"', async () => {
+  it('type=customer exporta todos os clientes do mês, sem truncar em top/bottom 20 nem coluna "Grupo"', async () => {
+    const plan = await db.plan.create({ data: { name: 'Plano Export', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });
+    const customerCount = 45;
+    for (let i = 0; i < customerCount; i++) {
+      const customer = await db.customer.create({ data: { name: `Export Teste ${i}`, phone: `+551199900${String(i).padStart(4, '0')}` } });
+      const sub = await db.subscription.create({
+        data: {
+          customerId: customer.id,
+          planId: plan.id,
+          priceCents: 6000n,
+          costCents: 1000n,
+          cycle: 'MONTHLY',
+          status: 'ACTIVE',
+          startedAt: new Date('2026-01-01T12:00:00Z'),
+          nextDueAt: new Date('2026-02-01T12:00:00Z'),
+        },
+      });
+      await db.charge.create({
+        data: {
+          subscriptionId: sub.id,
+          customerId: customer.id,
+          principalCents: 6000n,
+          costCents: 1000n,
+          periodStart: new Date('2026-08-01'),
+          periodEnd: new Date('2026-08-01'),
+          dueAt: new Date('2026-08-15T23:59:59-03:00'),
+          status: 'OPEN',
+        },
+      });
+    }
+
     const req = new Request('http://localhost/api/reports/export?type=customer&year=2026&month=8');
     const res = await GET(req);
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body.split('\r\n')[0]).toContain('Grupo');
+    const lines = body.split('\r\n');
+
+    expect(lines[0]).not.toContain('Grupo');
+    // header + uma linha por cliente — prova que não trunca em top/bottom 20 (40 linhas)
+    expect(lines.length).toBeGreaterThan(customerCount);
   });
 });

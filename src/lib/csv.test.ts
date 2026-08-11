@@ -33,4 +33,9 @@ describe('toCsv', () => {
     const csv = toCsv(['Fórmula'], [['=A1,B2']]);
     expect(csv).toBe('Fórmula\r\n"\'=A1,B2"');
   });
+
+  it('envolve em aspas célula com \\r isolado, sem quebrar a linha do CSV', () => {
+    const csv = toCsv(['Nota'], [['linha1\rlinha2']]);
+    expect(csv).toBe('Nota\r\n"linha1\rlinha2"');
+  });
 });

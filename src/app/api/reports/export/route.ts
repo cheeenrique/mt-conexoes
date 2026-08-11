@@ -3,20 +3,19 @@ import { requireSession } from '@/features/auth/service';
 import { toCsv } from '@/lib/csv';
 import { monthBoundsUtc } from '@/core/dates';
 import { getSettings } from '@/features/settings/queries';
-import { getSupplierBreakdown, getPlanBreakdown, getCustomerBreakdown, type BreakdownRowDTO } from '@/features/reports/queries';
+import { getSupplierBreakdown, getPlanBreakdown, getAllCustomerBreakdown, type BreakdownRowDTO } from '@/features/reports/queries';
 import { formatCents } from '@/lib/format';
 import { marginPercent } from '@/core/money';
 
-function rowsToCsv(rows: BreakdownRowDTO[], extraColumn?: (row: BreakdownRowDTO) => string): string {
-  const headers = extraColumn ? ['Grupo', 'Nome', 'Faturado', 'Custo', 'Lucro', 'Margem'] : ['Nome', 'Faturado', 'Custo', 'Lucro', 'Margem'];
+function rowsToCsv(rows: BreakdownRowDTO[]): string {
+  const headers = ['Nome', 'Faturado', 'Custo', 'Lucro', 'Margem'];
   const dataRows = rows.map((row) => {
     const billedCents = BigInt(row.billedCents);
     const costCents = BigInt(row.costCents);
     const profitCents = billedCents - costCents;
     const margin = marginPercent(billedCents, costCents);
     const marginText = margin === null ? '—' : `${margin.toFixed(0)}%`;
-    const base = [row.name, formatCents(row.billedCents), formatCents(row.costCents), formatCents(profitCents), marginText];
-    return extraColumn ? [extraColumn(row), ...base] : base;
+    return [row.name, formatCents(row.billedCents), formatCents(row.costCents), formatCents(profitCents), marginText];
   });
   return toCsv(headers, dataRows);
 }
@@ -46,10 +45,7 @@ export async function GET(req: Request): Promise<Response> {
   } else if (type === 'plan') {
     csv = rowsToCsv(await getPlanBreakdown(from, to));
   } else {
-    const { top, bottom } = await getCustomerBreakdown(from, to);
-    const top20 = top.map((r) => ({ ...r, __group: 'top' as const }));
-    const bottom20 = bottom.map((r) => ({ ...r, __group: 'bottom' as const }));
-    csv = rowsToCsv([...top20, ...bottom20], (row) => (row as unknown as { __group: string }).__group);
+    csv = rowsToCsv(await getAllCustomerBreakdown(from, to));
   }
 
   return new NextResponse(csv, {

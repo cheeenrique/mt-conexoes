@@ -5,7 +5,7 @@ export function escapeCsvCell(value: string): string {
 
 function escapeField(value: string): string {
   const escaped = escapeCsvCell(value);
-  return /[",\n]/.test(escaped) ? `"${escaped.replace(/"/g, '""')}"` : escaped;
+  return /[",\r\n]/.test(escaped) ? `"${escaped.replace(/"/g, '""')}"` : escaped;
 }
 
 /** Serializa em CSV (RFC 4180, CRLF), com escape de fórmula em toda célula. */

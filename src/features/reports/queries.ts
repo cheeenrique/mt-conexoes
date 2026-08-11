@@ -69,7 +69,7 @@ export interface MonthlySummaryDTO {
 }
 
 export interface BreakdownRowDTO {
-  id: string;
+  id: string | null;
   name: string;
   billedCents: string;
   costCents: string;
@@ -107,14 +107,14 @@ export async function getMonthlySummary(from: Date, to: Date): Promise<MonthlySu
 export async function getSupplierBreakdown(from: Date, to: Date): Promise<BreakdownRowDTO[]> {
   return db.$queryRaw<BreakdownRowDTO[]>`
     SELECT
-      s.id AS "id", s.name AS "name",
+      ch."supplierId" AS "id", COALESCE(s.name, 'Sem fornecedor') AS "name",
       COALESCE(SUM(ch."principalCents" - ch."discountCents"), 0)::text AS "billedCents",
       COALESCE(SUM(ch."costCents"), 0)::text                            AS "costCents"
     FROM charges ch
-    JOIN suppliers s ON s.id = ch."supplierId"
+    LEFT JOIN suppliers s ON s.id = ch."supplierId"
     WHERE ch."dueAt" >= ${from} AND ch."dueAt" < ${to}
       AND ch.status <> 'CANCELLED'
-    GROUP BY s.id, s.name
+    GROUP BY ch."supplierId", s.name
     ORDER BY (SUM(ch."principalCents" - ch."discountCents") - SUM(ch."costCents")) DESC
   `;
 }
@@ -122,15 +122,15 @@ export async function getSupplierBreakdown(from: Date, to: Date): Promise<Breakd
 export async function getPlanBreakdown(from: Date, to: Date): Promise<BreakdownRowDTO[]> {
   return db.$queryRaw<BreakdownRowDTO[]>`
     SELECT
-      p.id AS "id", p.name AS "name",
+      sub."planId" AS "id", COALESCE(p.name, 'Sem plano') AS "name",
       COALESCE(SUM(ch."principalCents" - ch."discountCents"), 0)::text AS "billedCents",
       COALESCE(SUM(ch."costCents"), 0)::text                            AS "costCents"
     FROM charges ch
     JOIN subscriptions sub ON sub.id = ch."subscriptionId"
-    JOIN plans p ON p.id = sub."planId"
+    LEFT JOIN plans p ON p.id = sub."planId"
     WHERE ch."dueAt" >= ${from} AND ch."dueAt" < ${to}
       AND ch.status <> 'CANCELLED'
-    GROUP BY p.id, p.name
+    GROUP BY sub."planId", p.name
     ORDER BY (SUM(ch."principalCents" - ch."discountCents") - SUM(ch."costCents")) DESC
   `;
 }
@@ -140,8 +140,8 @@ export interface CustomerBreakdownDTO {
   bottom: BreakdownRowDTO[];
 }
 
-export async function getCustomerBreakdown(from: Date, to: Date): Promise<CustomerBreakdownDTO> {
-  const rows = await db.$queryRaw<BreakdownRowDTO[]>`
+async function queryCustomerBreakdownRows(from: Date, to: Date): Promise<BreakdownRowDTO[]> {
+  return db.$queryRaw<BreakdownRowDTO[]>`
     SELECT
       c.id AS "id", c.name AS "name",
       COALESCE(SUM(ch."principalCents" - ch."discountCents"), 0)::text AS "billedCents",
@@ -153,11 +153,20 @@ export async function getCustomerBreakdown(from: Date, to: Date): Promise<Custom
     GROUP BY c.id, c.name
     ORDER BY (SUM(ch."principalCents" - ch."discountCents") - SUM(ch."costCents")) DESC
   `;
+}
+
+export async function getCustomerBreakdown(from: Date, to: Date): Promise<CustomerBreakdownDTO> {
+  const rows = await queryCustomerBreakdownRows(from, to);
 
   const top = rows.slice(0, 20);
   // Com <=40 linhas, bottom é "o que sobrou depois do top" — nunca repete cliente na tela.
   const bottom = rows.length <= 40 ? rows.slice(20) : rows.slice(-20);
   return { top, bottom };
+}
+
+/** Todos os clientes do período, sem fatiar top/bottom — usado só pelo export CSV. */
+export async function getAllCustomerBreakdown(from: Date, to: Date): Promise<BreakdownRowDTO[]> {
+  return queryCustomerBreakdownRows(from, to);
 }
 
 export interface MonthlyTrendRowDTO {
