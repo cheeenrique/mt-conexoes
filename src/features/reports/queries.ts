@@ -36,6 +36,8 @@ export async function getCustomerPnl(customerId: string): Promise<CustomerPnlDTO
         AND status <> 'CANCELLED'
     `,
     db.$queryRaw<ReceivedRow[]>`
+      -- Sem filtro de status: cobrança com pagamento registrado nunca é cancelada (regra dura do domínio),
+      -- então incluir CANCELLED aqui não muda o resultado — mas deixamos explícito pra não parecer omissão.
       SELECT COALESCE(SUM(p."amountCents"), 0)::text AS "receivedCents"
       FROM payments p
       JOIN charges ch ON ch.id = p."chargeId"
