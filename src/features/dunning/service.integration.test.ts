@@ -1,11 +1,33 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
-import { createStep, updateStep, deleteStep, UnknownTemplateVariableError, DuplicateStepOffsetError } from './service';
+import { createStep, updateStep, deleteStep, activateDunningRule, UnknownTemplateVariableError, DuplicateStepOffsetError } from './service';
 
 let ruleId: string;
+let activateTestSubscriptionId: string | undefined;
+let activateTestCustomerId: string | undefined;
+let activateTestPlanId: string | undefined;
+let activateTestSupplierId: string | undefined;
 
 afterEach(async () => {
   await db.dunningStep.deleteMany({ where: { offsetDays: { in: [42, 43] } } });
+
+  if (activateTestSubscriptionId) {
+    await db.charge.deleteMany({ where: { subscriptionId: activateTestSubscriptionId } });
+    await db.subscription.delete({ where: { id: activateTestSubscriptionId } });
+    activateTestSubscriptionId = undefined;
+  }
+  if (activateTestCustomerId) {
+    await db.customer.delete({ where: { id: activateTestCustomerId } });
+    activateTestCustomerId = undefined;
+  }
+  if (activateTestPlanId) {
+    await db.plan.delete({ where: { id: activateTestPlanId } });
+    activateTestPlanId = undefined;
+  }
+  if (activateTestSupplierId) {
+    await db.supplier.delete({ where: { id: activateTestSupplierId } });
+    activateTestSupplierId = undefined;
+  }
 });
 
 describe('createStep', () => {
@@ -62,5 +84,64 @@ describe('deleteStep', () => {
 
     const found = await db.dunningStep.findUnique({ where: { id: step.id } });
     expect(found).toBeNull();
+  });
+});
+
+describe('activateDunningRule', () => {
+  it('send-all: muda status pra ACTIVE, mantém PENDING_REVIEW existentes', async () => {
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    await db.dunningRule.update({ where: { id: rule.id }, data: { status: 'REVIEW' } });
+
+    await activateDunningRule('send-all');
+
+    const refreshed = await db.dunningRule.findUniqueOrThrow({ where: { id: rule.id } });
+    expect(refreshed.status).toBe('ACTIVE');
+  });
+
+  it('ignore-retroactive: apaga PENDING_REVIEW existentes, mantém QUEUED/SKIPPED, ativa a régua', async () => {
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    const step = await db.dunningStep.findFirstOrThrow({ where: { ruleId: rule.id } });
+    await db.dunningRule.update({ where: { id: rule.id }, data: { status: 'REVIEW' } });
+
+    const supplier = await db.supplier.create({ data: { name: 'Ativa Fornecedor', unitCostCents: 1000n } });
+    const plan = await db.plan.create({ data: { name: 'Ativa Plano', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });
+    const customer = await db.customer.create({ data: { name: 'Ativa Cliente' } });
+    const subscription = await db.subscription.create({
+      data: {
+        customerId: customer.id,
+        planId: plan.id,
+        supplierId: supplier.id,
+        priceCents: 6000n,
+        costCents: 1000n,
+        cycle: 'MONTHLY',
+        status: 'ACTIVE',
+        startedAt: new Date(),
+        nextDueAt: new Date(),
+      },
+    });
+    activateTestSupplierId = supplier.id;
+    activateTestPlanId = plan.id;
+    activateTestCustomerId = customer.id;
+    activateTestSubscriptionId = subscription.id;
+
+    const chargeReview = await db.charge.create({
+      data: { subscriptionId: subscription.id, customerId: customer.id, supplierId: supplier.id, principalCents: 6000n, periodStart: new Date('2026-01-01'), periodEnd: new Date('2026-01-31'), dueAt: new Date(), status: 'OPEN' },
+    });
+    const chargeQueued = await db.charge.create({
+      data: { subscriptionId: subscription.id, customerId: customer.id, supplierId: supplier.id, principalCents: 6000n, periodStart: new Date('2026-02-01'), periodEnd: new Date('2026-02-28'), dueAt: new Date(), status: 'PAID' },
+    });
+    const executionReview = await db.dunningExecution.create({ data: { chargeId: chargeReview.id, stepId: step.id, outcome: 'PENDING_REVIEW', reason: 'review' } });
+    const executionQueued = await db.dunningExecution.create({ data: { chargeId: chargeQueued.id, stepId: step.id, outcome: 'QUEUED', reason: 'queued' } });
+
+    await activateDunningRule('ignore-retroactive');
+
+    const refreshedRule = await db.dunningRule.findUniqueOrThrow({ where: { id: rule.id } });
+    expect(refreshedRule.status).toBe('ACTIVE');
+
+    const stillThere = await db.dunningExecution.findUnique({ where: { id: executionReview.id } });
+    expect(stillThere).toBeNull();
+
+    const queuedStillThere = await db.dunningExecution.findUnique({ where: { id: executionQueued.id } });
+    expect(queuedStillThere).not.toBeNull();
   });
 });

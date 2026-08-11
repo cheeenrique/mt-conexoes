@@ -214,6 +214,7 @@ model Charge {
   supplier     Supplier?    @relation(fields: [supplierId], references: [id])
   payments     Payment[]
   messages     Message[]
+  executions   DunningExecution[]
 
   @@unique([subscriptionId, periodStart])
   @@index([status, dueAt])
@@ -302,6 +303,7 @@ model DunningStep {
   isActive     Boolean       @default(true)
 
   rule         DunningRule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  executions   DunningExecution[]
 
   @@unique([ruleId, offsetDays])
   @@map("dunning_steps")
@@ -345,8 +347,33 @@ model Message {
   customer      Customer       @relation(fields: [customerId], references: [id])
   charge        Charge?        @relation(fields: [chargeId], references: [id])
   channel       ChannelConfig? @relation(fields: [channelId], references: [id])
+  executions    DunningExecution[]
 
   @@index([status, scheduledFor])
   @@index([customerId, createdAt])
   @@map("messages")
+}
+
+enum ExecutionOutcome {
+  QUEUED
+  SKIPPED
+  PENDING_REVIEW
+}
+
+model DunningExecution {
+  id        String           @id @default(uuid(7))
+  chargeId  String
+  stepId    String
+  outcome   ExecutionOutcome
+  reason    String?
+  messageId String?
+  createdAt DateTime         @default(now())
+
+  charge    Charge           @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  step      DunningStep      @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  message   Message?         @relation(fields: [messageId], references: [id])
+
+  @@unique([chargeId, stepId])
+  @@index([messageId])
+  @@map("dunning_executions")
 }

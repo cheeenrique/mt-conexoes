@@ -49,6 +49,19 @@ export async function deleteStep(id: string) {
   await db.dunningStep.delete({ where: { id } });
 }
 
+export async function activateDunningRule(mode: 'send-all' | 'ignore-retroactive'): Promise<void> {
+  const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+
+  if (mode === 'ignore-retroactive') {
+    const steps = await db.dunningStep.findMany({ where: { ruleId: rule.id }, select: { id: true } });
+    await db.dunningExecution.deleteMany({
+      where: { stepId: { in: steps.map((s) => s.id) }, outcome: 'PENDING_REVIEW' },
+    });
+  }
+
+  await db.dunningRule.update({ where: { id: rule.id }, data: { status: 'ACTIVE' } });
+}
+
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
 }
