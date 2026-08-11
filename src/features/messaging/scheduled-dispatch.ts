@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { decrypt } from '@/lib/crypto';
-import { isWithinLocalHourRange, nextQuietHourStart } from '@/core/dates';
+import { isWithinLocalHourRange, nextQuietHourStart, localDateOnly } from '@/core/dates';
 import { resolveAdapter } from './channels/registry';
 import type { ChannelAdapter } from './channels/types';
 import { logger } from '@/lib/logger';
@@ -12,11 +12,12 @@ export type DispatchResult = {
   cancelledStale: number;
   cancelledOptedOut: number;
   cancelledPaid: number;
+  cancelledDedupe: number;
   rescheduled: number;
 };
 
 function emptyResult(): DispatchResult {
-  return { sent: 0, failed: 0, cancelledStale: 0, cancelledOptedOut: 0, cancelledPaid: 0, rescheduled: 0 };
+  return { sent: 0, failed: 0, cancelledStale: 0, cancelledOptedOut: 0, cancelledPaid: 0, cancelledDedupe: 0, rescheduled: 0 };
 }
 
 const BATCH_SIZE = 60;
@@ -25,6 +26,10 @@ const MAX_ATTEMPTS = 3;
 const OPEN_CHARGE_STATUSES = new Set(['OPEN', 'OVERDUE', 'PARTIALLY_PAID']);
 
 type PendingMessage = Prisma.MessageGetPayload<{ include: { customer: { select: { optedOut: true } } } }>;
+
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
+}
 
 /** Todas as cobranças ligadas a esta Message (via DunningExecution) já foram pagas/canceladas?
  *  Sem nenhuma ligação (mensagem manual, ou dado inconsistente), não cancela — segue pro envio. */
@@ -39,9 +44,32 @@ async function isFullyPaidOrCancelled(messageId: string): Promise<boolean> {
 
 type Outcome = keyof DispatchResult | 'none';
 
+/** Reagenda pra fora da quiet hour (T6), atualizando `scheduledDate` junto — é a coluna que sustenta
+ *  o dedupe diário (T7). Se a virada de dia colidir com uma Message já existente pro novo dia, a mensagem
+ *  de hoje perde a corrida: cancela com `daily_dedupe` em vez de deixar o erro do banco subir. */
+async function rescheduleOutOfQuietHours(
+  msg: PendingMessage,
+  now: Date,
+  settings: { quietHourStart: number; quietHourEnd: number; timezone: string },
+): Promise<Outcome> {
+  const scheduledFor = nextQuietHourStart(now, settings.quietHourStart, settings.quietHourEnd, settings.timezone);
+  const scheduledDate = localDateOnly(scheduledFor, settings.timezone);
+  try {
+    await db.message.update({ where: { id: msg.id }, data: { scheduledFor, scheduledDate } });
+    return 'rescheduled';
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'daily_dedupe' } });
+      return 'cancelledDedupe';
+    }
+    throw err;
+  }
+}
+
 async function processMessage(
   msg: PendingMessage,
   now: Date,
+  isWithinQuietHours: boolean,
   settings: { quietHourStart: number; quietHourEnd: number; timezone: string },
   channelId: string,
   credentials: unknown,
@@ -52,10 +80,8 @@ async function processMessage(
     return 'cancelledStale';
   }
 
-  if (!isWithinLocalHourRange(now, settings.quietHourStart, settings.quietHourEnd, settings.timezone)) {
-    const scheduledFor = nextQuietHourStart(now, settings.quietHourStart, settings.quietHourEnd, settings.timezone);
-    await db.message.update({ where: { id: msg.id }, data: { scheduledFor } });
-    return 'rescheduled';
+  if (!isWithinQuietHours) {
+    return rescheduleOutOfQuietHours(msg, now, settings);
   }
 
   if (msg.customer.optedOut) {
@@ -68,13 +94,22 @@ async function processMessage(
     return 'cancelledPaid';
   }
 
+  // Claim atômico: só quem consegue incrementar `attempts` a partir do valor lido pode enviar.
+  // Uma segunda execução concorrente (retry do Scheduler, disparo manual, lote lento sobreposto)
+  // encontra `attempts` já mudado e `count === 0` — pula sem contar em nenhum contador.
+  const claim = await db.message.updateMany({
+    where: { id: msg.id, status: 'PENDING', attempts: msg.attempts },
+    data: { attempts: msg.attempts + 1 },
+  });
+  if (claim.count === 0) return 'none';
+
   const result = await adapter.send({ toPhone: msg.toPhone, body: msg.body }, credentials);
   const attempts = msg.attempts + 1;
 
   if (result.ok) {
     await db.message.update({
       where: { id: msg.id },
-      data: { status: 'SENT', sentAt: now, externalId: result.externalId, channelId, attempts },
+      data: { status: 'SENT', sentAt: new Date(), externalId: result.externalId, channelId },
     });
     return 'sent';
   }
@@ -82,12 +117,12 @@ async function processMessage(
   if (!result.retryable || attempts >= MAX_ATTEMPTS) {
     await db.message.update({
       where: { id: msg.id },
-      data: { status: 'FAILED', failReason: result.reason, attempts, channelId },
+      data: { status: 'FAILED', failReason: result.reason, channelId },
     });
     return 'failed';
   }
 
-  await db.message.update({ where: { id: msg.id }, data: { attempts } });
+  // attempts já subiu no claim acima — nada mais a persistir, PENDING segue pra próxima passada.
   return 'none';
 }
 
@@ -119,10 +154,11 @@ export async function dispatchPendingMessages(now: Date): Promise<DispatchResult
   });
 
   const result = emptyResult();
+  const isWithinQuietHours = isWithinLocalHourRange(now, settings.quietHourStart, settings.quietHourEnd, settings.timezone);
 
   for (const msg of messages) {
     try {
-      const outcome = await processMessage(msg, now, settings, channelRow.id, credentials, adapter);
+      const outcome = await processMessage(msg, now, isWithinQuietHours, settings, channelRow.id, credentials, adapter);
       if (outcome !== 'none') result[outcome]++;
     } catch (err) {
       logger.error({ job: 'messages-dispatch', messageId: msg.id, error: String(err) });

@@ -94,7 +94,7 @@ describe('dispatchPendingMessages', () => {
 
     const result = await dispatchPendingMessages(IN_HOURS_NOW);
 
-    expect(result).toEqual({ sent: 0, failed: 0, cancelledStale: 0, cancelledOptedOut: 0, cancelledPaid: 0, rescheduled: 0 });
+    expect(result).toEqual({ sent: 0, failed: 0, cancelledStale: 0, cancelledOptedOut: 0, cancelledPaid: 0, cancelledDedupe: 0, rescheduled: 0 });
     const reloaded = await db.message.findUnique({ where: { id: msg.id } });
     expect(reloaded?.status).toBe('PENDING');
   });
@@ -126,7 +126,11 @@ describe('dispatchPendingMessages', () => {
   it('mensagem fora da quiet hour é reagendada pro início da próxima janela, não descartada (T6)', async () => {
     await seedActiveDefaultChannel();
     const customer = await seedCustomer();
-    const msg = await seedPendingMessage(customer.id, { createdAt: OUT_OF_HOURS_NOW, scheduledFor: OUT_OF_HOURS_NOW });
+    const msg = await seedPendingMessage(customer.id, {
+      createdAt: OUT_OF_HOURS_NOW,
+      scheduledFor: OUT_OF_HOURS_NOW,
+      scheduledDate: new Date('2026-08-08'),
+    });
 
     const result = await dispatchPendingMessages(OUT_OF_HOURS_NOW);
 
@@ -134,6 +138,33 @@ describe('dispatchPendingMessages', () => {
     const reloaded = await db.message.findUnique({ where: { id: msg.id } });
     expect(reloaded?.status).toBe('PENDING');
     expect(reloaded?.scheduledFor.toISOString()).toBe(new Date('2026-08-09T11:00:00Z').toISOString()); // 08h local do dia seguinte
+    // scheduledDate acompanha o novo dia — é a coluna que sustenta o dedupe diário (T7).
+    expect(reloaded?.scheduledDate.toISOString()).toBe(new Date('2026-08-09').toISOString());
+  });
+
+  it('reagendamento por T6 que colide com Message já existente no novo dia cancela a mensagem de hoje, motivo daily_dedupe (T7)', async () => {
+    await seedActiveDefaultChannel();
+    const customer = await seedCustomer();
+    const msg = await seedPendingMessage(customer.id, {
+      createdAt: OUT_OF_HOURS_NOW,
+      scheduledFor: OUT_OF_HOURS_NOW,
+      scheduledDate: new Date('2026-08-08'),
+    });
+    // já ocupa o slot diário do customer pro dia alvo do reagendamento (2026-08-09) —
+    // scheduledFor no futuro distante pra não entrar no lote desta passada.
+    await seedPendingMessage(customer.id, {
+      createdAt: OUT_OF_HOURS_NOW,
+      scheduledFor: new Date('2026-08-20T11:00:00Z'),
+      scheduledDate: new Date('2026-08-09'),
+    });
+
+    const result = await dispatchPendingMessages(OUT_OF_HOURS_NOW);
+
+    expect(result.rescheduled).toBe(0);
+    expect(result.cancelledDedupe).toBe(1);
+    const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+    expect(reloaded?.status).toBe('CANCELLED');
+    expect(reloaded?.cancelReason).toBe('daily_dedupe');
   });
 
   it('customer.optedOut cancela o envio, motivo opted_out (T5)', async () => {
@@ -191,6 +222,26 @@ describe('dispatchPendingMessages', () => {
     expect(reloaded?.externalId).toBe('wamid-ok');
     expect(reloaded?.channelId).toBe(channel.id);
     expect(reloaded?.sentAt).not.toBeNull();
+  });
+
+  it('claim atômico previne double-send em duas execuções concorrentes do cron', async () => {
+    const channel = await seedActiveDefaultChannel();
+    const customer = await seedCustomer();
+    const msg = await seedPendingMessage(customer.id);
+    const send = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ key: { id: 'wamid-race' } }) });
+    vi.stubGlobal('fetch', send);
+
+    const [resultA, resultB] = await Promise.all([
+      dispatchPendingMessages(IN_HOURS_NOW),
+      dispatchPendingMessages(IN_HOURS_NOW),
+    ]);
+
+    expect(resultA.sent + resultB.sent).toBe(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+    expect(reloaded?.status).toBe('SENT');
+    expect(reloaded?.attempts).toBe(1);
+    expect(reloaded?.channelId).toBe(channel.id);
   });
 
   it('falha retryable incrementa attempts; na terceira tentativa vira FAILED', async () => {

@@ -115,7 +115,7 @@ Busca messages PENDING com scheduledFor <= agora, ordem de criação, lote de 60
    ├─ mensagem com mais de 24h de idade? ... CANCELLED, reason stale
    ├─ fora da quiet hour agora? ............ reagenda para a próxima janela  (T6)
    ├─ customer.optedOut agora? ............. CANCELLED, reason opted_out     (T5)
-   ├─ cobrança já paga ou cancelada? ....... CANCELLED, reason payment_received
+   ├─ cobrança já paga ou cancelada? ....... CANCELLED, reason charge_closed
    │
    └─ adapter.send(...)
         ├─ ok    → SENT, grava externalId
