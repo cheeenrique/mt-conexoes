@@ -44,9 +44,9 @@ Agosto/2026
 
 ### Quebras — fornecedor e plano
 
-Mesma query-base do painel (`SUM`/`FILTER` por status), `GROUP BY`:
-- Fornecedor: `charges.supplierId` direto (`Charge.supplierId` já existe, denormalizado — não precisa de JOIN).
-- Plano: `charges` → `JOIN subscriptions ON subscriptions.id = charges."subscriptionId"`, `GROUP BY subscriptions."planId"`.
+Mesma query-base do painel (`SUM`/`FILTER` por status), `GROUP BY`. `Charge.supplierId` e `Subscription.planId` são nullable — `LEFT JOIN` (nunca `JOIN`), com `COALESCE(nome, 'Sem fornecedor'/'Sem plano')`, senão cobrança sem fornecedor/plano some da quebra sem aviso enquanto continua contando no painel geral (bug real achado na review final, corrigido antes do merge):
+- Fornecedor: `charges` `LEFT JOIN suppliers ON suppliers.id = charges."supplierId"`, `GROUP BY charges."supplierId", suppliers.name`.
+- Plano: `charges` → `JOIN subscriptions ON subscriptions.id = charges."subscriptionId"` (subscriptionId não é nullable) → `LEFT JOIN plans ON plans.id = subscriptions."planId"`, `GROUP BY subscriptions."planId", plans.name`.
 
 Cada linha: nome (fornecedor/plano), faturado, custo, lucro, margem (calculada no componente via `core/money`, mesmo padrão de 4c-1 — nunca duplicada na query).
 
@@ -81,14 +81,14 @@ export function escapeCsvCell(value: string): string {
 export function toCsv(headers: string[], rows: string[][]): string {
   const escapeField = (v: string) => {
     const escaped = escapeCsvCell(v);
-    return /[",\n]/.test(escaped) ? `"${escaped.replace(/"/g, '""')}"` : escaped;
+    return /[",\r\n]/.test(escaped) ? `"${escaped.replace(/"/g, '""')}"` : escaped;
   };
   const lines = [headers, ...rows].map((row) => row.map(escapeField).join(','));
   return lines.join('\r\n');
 }
 ```
 
-`type=customer` exporta as 40 linhas (20+20) numa tabela só, com coluna extra indicando "top"/"bottom" — evita duplicar a rota pra dois exports quase idênticos.
+`type=customer` exporta **todos** os clientes com cobrança no mês (não só top/bottom 20 da tela) — decisão da review final: um export que trunca silenciosamente clientes é o tipo de coisa que não reconcilia com o total, e o próprio objetivo de exportar é reconciliar fora do sistema. `getCustomerBreakdown` (tela) e `getAllCustomerBreakdown` (export) compartilham a mesma query interna, uma fatia top/bottom 20, a outra devolve tudo — sem coluna "Grupo", sem truncar.
 
 ## Erros
 
