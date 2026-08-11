@@ -6,7 +6,7 @@ Um cliente, R$ 5.000 fechado, 10 semanas, código-fonte entregue.
 
 ## Estado atual
 
-Etapa 0 (fundação) concluída: Next.js + Prisma + auth + design system base. Próximo passo é a Etapa 1 de [`docs/projeto/tecnico/07-plano-de-entrega.md`](docs/projeto/tecnico/07-plano-de-entrega.md).
+Ver [`CLAUDE.md`](CLAUDE.md#estado-atual) — este README fica desatualizado facilmente porque várias etapas são desenvolvidas em paralelo (um worktree por etapa) e mergeadas direto em `main`. Histórico real de cada etapa: [`docs/superpowers/specs/`](docs/superpowers/specs/) e [`docs/superpowers/plans/`](docs/superpowers/plans/).
 
 ## Duas aplicações
 

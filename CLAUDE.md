@@ -4,9 +4,11 @@ Guia para o Claude Code neste repositório.
 
 ## Estado atual
 
-**Só existe `docs/`.** Não há código, `package.json`, lockfile, CI nem migrations. Não invente comandos de build/lint/test nem alegue ter rodado algum.
+Aplicação real em desenvolvimento, não só spec. Next.js + Prisma + Postgres, com testes, lint, typecheck e build de verdade — `pnpm test`, `pnpm test:integration`, `pnpm lint`, `pnpm typecheck`, `pnpm build` todos rodam contra código real. `pnpm dev` sobe o painel.
 
-A especificação está fechada. O próximo passo é a Etapa 0 de [`docs/projeto/tecnico/07-plano-de-entrega.md`](docs/projeto/tecnico/07-plano-de-entrega.md).
+Histórico de cada etapa entregue (design → plano → implementação) fica em [`docs/superpowers/specs/`](docs/superpowers/specs/) e [`docs/superpowers/plans/`](docs/superpowers/plans/), um par de arquivos datado por etapa/feature — é a fonte mais confiável do que já foi implementado.
+
+⚠️ **Este arquivo e o `README.md` já ficaram desatualizados antes** — chegaram a dizer "só existe docs/, sem código" com o app inteiro já implementado e rodando, porque múltiplas sessões trabalham em paralelo neste repo (worktrees por etapa) e ninguém atualizou esta seção depois do merge. Antes de assumir o que existe ou não: `git log --oneline -30`, ou olhar `src/features/` e `prisma/schema.prisma` direto. Não repetir esse erro — se implementar algo novo, atualizar este parágrafo no mesmo PR.
 
 Idioma: **pt-BR** em docs, UI e mensagem de erro ao usuário final. Código, identificadores e commits em inglês.
 
