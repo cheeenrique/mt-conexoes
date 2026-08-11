@@ -17,7 +17,7 @@ export function BreakdownTable({ rows, emptyLabel }: { rows: BreakdownRowDTO[]; 
             <th className="p-3">Nome</th>
             <th className="p-3 text-right">Faturado</th>
             <th className="p-3 text-right">Custo</th>
-            <th className="p-3 text-right">Lucro</th>
+            <th className="p-3 text-right">Lucro bruto</th>
             <th className="p-3 text-right">Margem</th>
           </tr>
         </thead>
