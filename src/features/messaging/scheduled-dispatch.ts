@@ -64,7 +64,7 @@ async function processMessage(
   }
 
   if (await isFullyPaidOrCancelled(msg.id)) {
-    await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'payment_received' } });
+    await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'charge_closed' } });
     return 'cancelledPaid';
   }
 
@@ -101,8 +101,15 @@ export async function dispatchPendingMessages(now: Date): Promise<DispatchResult
     return emptyResult();
   }
 
-  const adapter = resolveAdapter(channelRow.provider);
-  const credentials = JSON.parse(decrypt(channelRow.credentials, 'channel.credentials'));
+  let adapter: ChannelAdapter;
+  let credentials: unknown;
+  try {
+    adapter = resolveAdapter(channelRow.provider);
+    credentials = JSON.parse(decrypt(channelRow.credentials, 'channel.credentials'));
+  } catch (err) {
+    logger.error({ job: 'messages-dispatch', reason: 'channel_credentials_invalid', error: String(err) });
+    return emptyResult();
+  }
 
   const messages = await db.message.findMany({
     where: { status: 'PENDING', scheduledFor: { lte: now } },

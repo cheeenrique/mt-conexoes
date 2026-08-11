@@ -149,7 +149,7 @@ describe('dispatchPendingMessages', () => {
     expect(reloaded?.cancelReason).toBe('opted_out');
   });
 
-  it('mensagem com única cobrança ligada já paga é cancelada, motivo payment_received', async () => {
+  it('mensagem com única cobrança ligada já paga é cancelada, motivo charge_closed', async () => {
     await seedActiveDefaultChannel();
     const customer = await seedCustomer();
     const msg = await seedPendingMessage(customer.id);
@@ -160,7 +160,7 @@ describe('dispatchPendingMessages', () => {
     expect(result.cancelledPaid).toBe(1);
     const reloaded = await db.message.findUnique({ where: { id: msg.id } });
     expect(reloaded?.status).toBe('CANCELLED');
-    expect(reloaded?.cancelReason).toBe('payment_received');
+    expect(reloaded?.cancelReason).toBe('charge_closed');
   });
 
   it('mensagem consolidada com uma cobrança paga e outra ainda aberta NÃO cancela, tenta enviar', async () => {
