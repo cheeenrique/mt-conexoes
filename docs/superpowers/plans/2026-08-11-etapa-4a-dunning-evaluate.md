@@ -317,7 +317,7 @@ async function seedFixture(overrides: { optedOut?: boolean; phone?: string | nul
   const plan = await db.plan.create({ data: { name: 'Plano Teste', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });
   const customer = await db.customer.create({ data: { name: 'Dunning Teste', phone: overrides.phone ?? '+5511999990100', optedOut: overrides.optedOut ?? false } });
   const subscription = await db.subscription.create({
-    data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: NOW, accessScreens: 1 },
+    data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: NOW, nextDueAt: NOW },
   });
   // vence hoje (offsetDays 0 no seed padrão)
   const charge = await db.charge.create({
@@ -693,7 +693,7 @@ describe('listReviewPreview', () => {
     const supplier = await db.supplier.create({ data: { name: 'Preview Fornecedor', unitCostCents: 1000n } });
     const plan = await db.plan.create({ data: { name: 'Preview Plano', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });
     const customer = await db.customer.create({ data: { name: 'Preview Cliente' } });
-    const subscription = await db.subscription.create({ data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: new Date(), accessScreens: 1 } });
+    const subscription = await db.subscription.create({ data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: new Date(), nextDueAt: new Date() } });
     const charge = await db.charge.create({ data: { subscriptionId: subscription.id, customerId: customer.id, supplierId: supplier.id, principalCents: 6000n, periodStart: new Date(), periodEnd: new Date(), dueAt: new Date(), status: 'OPEN' } });
     await db.dunningExecution.create({ data: { chargeId: charge.id, stepId: step.id, outcome: 'PENDING_REVIEW', reason: 'review' } });
 
@@ -831,7 +831,7 @@ describe('activateDunningRule', () => {
     const supplier = await db.supplier.create({ data: { name: 'Ativa Fornecedor', unitCostCents: 1000n } });
     const plan = await db.plan.create({ data: { name: 'Ativa Plano', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });
     const customer = await db.customer.create({ data: { name: 'Ativa Cliente' } });
-    const subscription = await db.subscription.create({ data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: new Date(), accessScreens: 1 } });
+    const subscription = await db.subscription.create({ data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: new Date(), nextDueAt: new Date() } });
     const chargeReview = await db.charge.create({ data: { subscriptionId: subscription.id, customerId: customer.id, supplierId: supplier.id, principalCents: 6000n, periodStart: new Date(), periodEnd: new Date(), dueAt: new Date(), status: 'OPEN' } });
     const chargeQueued = await db.charge.create({ data: { subscriptionId: subscription.id, customerId: customer.id, supplierId: supplier.id, principalCents: 6000n, periodStart: new Date(), periodEnd: new Date(), dueAt: new Date(), status: 'OPEN' } });
     const executionReview = await db.dunningExecution.create({ data: { chargeId: chargeReview.id, stepId: step.id, outcome: 'PENDING_REVIEW', reason: 'review' } });
