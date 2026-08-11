@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ChargeStatus } from '@prisma/client';
 import { db } from '@/lib/db';
 import { monthBoundsUtc } from '@/core/dates';
-import { getCustomerPnl, getMonthlySummary, getSupplierBreakdown, getPlanBreakdown } from './queries';
+import { getCustomerPnl, getMonthlySummary, getSupplierBreakdown, getPlanBreakdown, getCustomerBreakdown, getMonthlyTrend } from './queries';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -247,5 +247,75 @@ describe('getPlanBreakdown', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe(planA.id);
     expect(rows[0].billedCents).toBe('6000');
+  });
+});
+
+describe('getCustomerBreakdown', () => {
+  it('top e bottom não se sobrepõem quando há poucos clientes', async () => {
+    const { supplierA, planA } = await seedMonthlyFixture();
+    const { from, to } = monthBoundsUtc(2026, 7, TZ);
+    const customers = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => db.customer.create({ data: { name: `Mês Teste Cliente ${i}`, phone: `+551199888${1000 + i}` } })),
+    );
+    for (const [i, c] of customers.entries()) {
+      const sub = await db.subscription.create({ data: { customerId: c.id, planId: planA.id, supplierId: supplierA.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: new Date('2026-01-01T12:00:00Z'), nextDueAt: new Date('2026-02-01T12:00:00Z') } });
+      await db.charge.create({ data: { subscriptionId: sub.id, customerId: c.id, supplierId: supplierA.id, principalCents: BigInt((i + 1) * 1000), costCents: 100n, periodStart: new Date('2026-08-01'), periodEnd: new Date('2026-08-01'), dueAt: new Date('2026-08-15T23:59:59-03:00'), status: 'OPEN' } });
+    }
+
+    const result = await getCustomerBreakdown(from, to);
+
+    const topIds = result.top.map((r) => r.id);
+    const bottomIds = result.bottom.map((r) => r.id);
+    expect(topIds.filter((id) => bottomIds.includes(id))).toHaveLength(0);
+    expect(topIds.length + bottomIds.length).toBe(5);
+
+    await db.charge.deleteMany({ where: { customerId: { in: customers.map((c) => c.id) } } });
+    await db.subscription.deleteMany({ where: { customerId: { in: customers.map((c) => c.id) } } });
+    await db.customer.deleteMany({ where: { id: { in: customers.map((c) => c.id) } } });
+  });
+
+  it('top tem no máximo 20 e bottom tem no máximo 20', async () => {
+    const { supplierA, planA } = await seedMonthlyFixture();
+    const { from, to } = monthBoundsUtc(2026, 7, TZ);
+    const customers = await Promise.all(
+      Array.from({ length: 45 }, (_, i) => db.customer.create({ data: { name: `Mês Teste Muitos ${i}`, phone: `+551188877${1000 + i}` } })),
+    );
+    for (const [i, c] of customers.entries()) {
+      const sub = await db.subscription.create({ data: { customerId: c.id, planId: planA.id, supplierId: supplierA.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: new Date('2026-01-01T12:00:00Z'), nextDueAt: new Date('2026-02-01T12:00:00Z') } });
+      await db.charge.create({ data: { subscriptionId: sub.id, customerId: c.id, supplierId: supplierA.id, principalCents: BigInt((i + 1) * 100), costCents: 50n, periodStart: new Date('2026-08-01'), periodEnd: new Date('2026-08-01'), dueAt: new Date('2026-08-15T23:59:59-03:00'), status: 'OPEN' } });
+    }
+
+    const result = await getCustomerBreakdown(from, to);
+
+    expect(result.top).toHaveLength(20);
+    expect(result.bottom).toHaveLength(20);
+    const topIds = result.top.map((r) => r.id);
+    const bottomIds = result.bottom.map((r) => r.id);
+    expect(topIds.filter((id) => bottomIds.includes(id))).toHaveLength(0);
+
+    await db.charge.deleteMany({ where: { customerId: { in: customers.map((c) => c.id) } } });
+    await db.subscription.deleteMany({ where: { customerId: { in: customers.map((c) => c.id) } } });
+    await db.customer.deleteMany({ where: { id: { in: customers.map((c) => c.id) } } });
+  });
+});
+
+describe('getMonthlyTrend', () => {
+  it('devolve 12 meses em ordem cronológica, cruzando virada de ano', async () => {
+    // year=2026, month=1 (fevereiro, 0-indexed) → de março/2025 até fevereiro/2026.
+    const rows = await getMonthlyTrend(2026, 1, TZ);
+
+    expect(rows).toHaveLength(12);
+    expect(rows[0]).toEqual(expect.objectContaining({ year: 2025, month: 2 })); // março/2025
+    expect(rows[11]).toEqual(expect.objectContaining({ year: 2026, month: 1 })); // fevereiro/2026
+  });
+
+  it('cada mês soma billedCents/costCents do próprio mês', async () => {
+    const { customer, supplierA, subA } = await seedMonthlyFixture();
+    await db.charge.create({ data: { subscriptionId: subA.id, customerId: customer.id, supplierId: supplierA.id, principalCents: 6000n, costCents: 1000n, periodStart: new Date('2026-08-01'), periodEnd: new Date('2026-08-01'), dueAt: new Date('2026-08-15T23:59:59-03:00'), status: 'OPEN' } });
+
+    const rows = await getMonthlyTrend(2026, 7, TZ); // termina em agosto/2026
+
+    const august = rows.find((r) => r.year === 2026 && r.month === 7);
+    expect(august?.billedCents).toBe('6000');
   });
 });

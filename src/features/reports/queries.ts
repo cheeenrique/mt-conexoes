@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { monthBoundsUtc } from '@/core/dates';
 
 export interface CustomerPnlDTO {
   billedCents: string;
@@ -132,4 +133,67 @@ export async function getPlanBreakdown(from: Date, to: Date): Promise<BreakdownR
     GROUP BY p.id, p.name
     ORDER BY (SUM(ch."principalCents" - ch."discountCents") - SUM(ch."costCents")) DESC
   `;
+}
+
+export interface CustomerBreakdownDTO {
+  top: BreakdownRowDTO[];
+  bottom: BreakdownRowDTO[];
+}
+
+export async function getCustomerBreakdown(from: Date, to: Date): Promise<CustomerBreakdownDTO> {
+  const rows = await db.$queryRaw<BreakdownRowDTO[]>`
+    SELECT
+      c.id AS "id", c.name AS "name",
+      COALESCE(SUM(ch."principalCents" - ch."discountCents"), 0)::text AS "billedCents",
+      COALESCE(SUM(ch."costCents"), 0)::text                            AS "costCents"
+    FROM charges ch
+    JOIN customers c ON c.id = ch."customerId"
+    WHERE ch."dueAt" >= ${from} AND ch."dueAt" < ${to}
+      AND ch.status <> 'CANCELLED'
+    GROUP BY c.id, c.name
+    ORDER BY (SUM(ch."principalCents" - ch."discountCents") - SUM(ch."costCents")) DESC
+  `;
+
+  const top = rows.slice(0, 20);
+  // Com <=40 linhas, bottom é "o que sobrou depois do top" — nunca repete cliente na tela.
+  const bottom = rows.length <= 40 ? rows.slice(20) : rows.slice(-20);
+  return { top, bottom };
+}
+
+export interface MonthlyTrendRowDTO {
+  year: number;
+  month: number; // 0-indexed
+  label: string;
+  billedCents: string;
+  costCents: string;
+}
+
+const MONTH_ABBR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+type TrendRow = { billedCents: string; costCents: string };
+
+export async function getMonthlyTrend(year: number, month: number, timezone: string): Promise<MonthlyTrendRowDTO[]> {
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const offset = month - (11 - i);
+    const y = year + Math.floor(offset / 12);
+    const m = ((offset % 12) + 12) % 12;
+    return { year: y, month: m };
+  });
+
+  const rows = await Promise.all(
+    months.map(async ({ year: y, month: m }) => {
+      const { from, to } = monthBoundsUtc(y, m, timezone);
+      const result = await db.$queryRaw<TrendRow[]>`
+        SELECT
+          COALESCE(SUM("principalCents" - "discountCents"), 0)::text AS "billedCents",
+          COALESCE(SUM("costCents"), 0)::text                        AS "costCents"
+        FROM charges
+        WHERE "dueAt" >= ${from} AND "dueAt" < ${to}
+          AND status <> 'CANCELLED'
+      `;
+      return { year: y, month: m, label: `${MONTH_ABBR[m]}/${String(y).slice(-2)}`, ...result[0] };
+    }),
+  );
+
+  return rows;
 }

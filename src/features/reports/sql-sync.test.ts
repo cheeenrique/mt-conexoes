@@ -11,7 +11,7 @@ function normalize(sql: string): string {
   return sql.replace(/\s+/g, ' ').trim();
 }
 
-const SQL_FILES = ['customer-pnl.sql', 'monthly-summary.sql', 'supplier-breakdown.sql', 'plan-breakdown.sql'];
+const SQL_FILES = ['customer-pnl.sql', 'monthly-summary.sql', 'supplier-breakdown.sql', 'plan-breakdown.sql', 'customer-breakdown.sql'];
 
 describe('sincronização dos .sql de referência com queries.ts', () => {
   it.each(SQL_FILES)('%s: cada statement aparece em queries.ts', (filename) => {
