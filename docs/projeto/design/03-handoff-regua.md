@@ -1,199 +1,122 @@
 # 03 — Handoff de design · Régua de cobrança
 
-> Cole isto no Claude Design **junto com** [`02-handoff-painel.md`](./02-handoff-painel.md) — aquele tem os tokens visuais (cor, tipografia, forma) que valem aqui também. Este documento só existe porque a régua tem estado, transição e trava demais pra caber como uma subseção do handoff geral, e é a área do sistema mais fácil de desenhar errado.
-> Fonte técnica: [`../tecnico/06-regua-e-canais.md`](../tecnico/06-regua-e-canais.md) e [`../tecnico/02-modelo-de-dados.md`](../tecnico/02-modelo-de-dados.md). Se uma dúvida não estiver respondida aqui, a resposta está nesses dois — não inventar.
+> Cole isto no Claude Design **junto com** [`02-handoff-painel.md`](./02-handoff-painel.md) — aquele tem os tokens visuais (cor, tipografia, forma) que valem aqui também.
+> ⚠️ **A tela já existe e está no ar** (`/regua`, componentes em `src/features/dunning/components/`). Este documento descreve o que **realmente foi construído**, verificado direto no código em 2026-08-11 — não é mais um design especulativo. Pedido de ajuste visual incremental parte daqui. Pedido de feature nova (lista de réguas, template Meta, pausar por régua — ver seção final) é decisão de escopo, não de design, e precisa de brainstorm antes de virar tela.
 
-## Por que essa tela é diferente de um CRUD comum
+## O que existe hoje
 
-Régua não é uma lista com formulário de editar. É uma **máquina de estado com efeito real e irreversível** — ativar errado manda cobrança pra quem já pagou e queima o número de WhatsApp do cliente. Toda decisão de UI aqui existe pra tornar o estado atual óbvio e pra tornar impossível ativar sem ver o que vai sair.
+Uma única régua (`DunningRule`), sempre a mesma — não há tela de lista, não há "criar régua nova", não há "trocar qual é a padrão". `getDefaultRuleWithSteps()` busca a única régua marcada `isDefault` e é isso que a página `/regua` renderiza. O schema tem campo `isDefault` e suportaria mais de uma régua em tese, mas **não existe nenhuma ação no código pra criar uma segunda ou trocar qual está ativa** — a capacidade "múltiplas réguas por situação" não foi construída.
 
-Três entidades, uma dentro da outra:
+## A tela `/regua`
 
-```
-DunningRule (a régua)
-  └── DunningStep[] (os passos, um por deslocamento de dia)
-        └── DunningExecution[] (o que rodou, por cobrança — histórico, não se edita)
-```
-
----
-
-## As quatro telas
-
-```
-Lista de réguas ──> Editor de régua ──> Editor de passo (dialog)
-                          │
-                          └──> Tela de revisão (ao mudar de RASCUNHO/EM REVISÃO pra ATIVA)
-```
-
-### Tela 1 — Lista de réguas
-
-Rota `/regua`. Tabela: nome · estado (badge) · "padrão" (marcador binário) · nº de passos ativos.
-
-- Pode existir mais de uma régua cadastrada, mas **só uma tem `isDefault = true`** — é ela, e só ela, que o motor de avaliação diária usa.
-- Ação principal da tela: **Nova régua**. Abre o editor (tela 2) com uma régua vazia em `RASCUNHO`.
-- Ação por linha, só quando a régua não é a padrão: **Tornar padrão**. Confirmação nomeada: *"Definir '[nome]' como régua padrão? A régua ativa hoje é '[nome atual]' — a partir de amanhã 07:00 é essa que vai rodar."* Não é "tem certeza?" genérico — troca de padrão muda o que sai amanhã de manhã.
-- Régua excluída: só permitido se `status = RASCUNHO` e nunca foi ativada (sem `DunningExecution` associada a nenhum dos seus passos). Régua que já rodou não se apaga — no máximo pausa.
-
-### Tela 2 — Editor de uma régua
-
-Rota `/regua/[id]`. Header com nome (editável inline) e badge de estado grande, no topo — é a primeira coisa que o operador vê ao entrar.
+Página única, top-to-bottom, sem sub-rotas:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Régua padrão                          [ EM REVISÃO ]    │
-│  ⚠ 12 mensagens sairiam hoje se ativada                  │
-│  [ Ver lista e ativar ]                                   │
+│  Régua de cobrança                                        │
+│  Régua padrão   [ Em revisão ]                            │
 ├──────────────────────────────────────────────────────────┤
-│  D-5 ──── D-2 ──── D0 ──── D+1 ──── D+3 ──── D+5          │
-│   ✉        ✉        ✉        ✉        ✉        ⏸        │
-│                                          [+ Adicionar]     │
+│  ⚠ Régua em revisão — 12 execução(ões) pendente(s)        │
+│  D-5 (Enviar mensagem): 5                                 │
+│  D+1 (Enviar mensagem): 4                                 │
+│  D+5 (Suspender assinatura): 3                             │
+│  [ Ignorar retroativos e ativar ]  [ Enviar todas ]        │
+├──────────────────────────────────────────────────────────┤
+│                                       [ + Novo passo ]     │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ D-5 — Enviar mensagem            [Ativo] [✎] [🗑]  │  │
+│  │ Olá {{cliente.primeiro_nome}}! Sua renovação...     │  │
+│  └────────────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ D+5 — Suspender assinatura       [Ativo] [✎] [🗑]  │  │
+│  └────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────┘
 ```
 
-- O eixo é a navegação principal: cada ícone é um passo cadastrado, clicável, abre o editor de passo (tela 3) preenchido.
-- Espaço vazio no eixo entre dois passos existentes, ou nas pontas, é onde **Adicionar passo** aparece ao passar o mouse/tocar — não é um botão fixo distante do eixo.
-- Ícone por ação: `✉` mandar mensagem, `⏸` suspender, `🔔` avisar o dono (usar os mesmos ícones em toda a tela, inclusive na timeline do cliente).
-- Passo desativado (`isActive = false`) aparece esmaecido no eixo, não desaparece.
-- Régua nova (sem nenhum passo) mostra o eixo vazio com um único CTA central: **"Começar com a régua padrão sugerida"** (pré-carrega D-5/D-2/D0/D+1/D+3/D+5 da tabela abaixo) **ou** "Montar do zero".
+- Header: nome da régua + badge de estado. **Não** é um eixo/linha do tempo — é texto simples ao lado do nome.
+- Faixa de revisão aparece **só quando `status = REVIEW`**, some sozinha assim que a régua vira `ACTIVE`.
+- Lista de passos é uma **lista vertical de cards**, um por passo, sem representação gráfica de "antes/depois do vencimento" nem eixo horizontal. Cada card mostra: `D{sinal}{offsetDays} — {ação}`, uma linha do texto (truncada), badge Ativo/Inativo, botões editar e remover.
+- Sem seção de "estado da régua" separada do header — é o mesmo badge.
 
-#### Passos da régua padrão entregue (referência pra pré-carregar)
+### Estados e badge
 
-| Deslocamento | Ação | Texto |
+| `status` | Rótulo mostrado | Tom do badge |
 |---|---|---|
-| D-5 | Enviar mensagem | lembrete de renovação próxima |
-| D-2 | Enviar mensagem | lembrete com chave Pix |
-| D0 | Enviar mensagem | vence hoje |
-| D+1 | Enviar mensagem | aviso de atraso |
-| D+3 | Enviar mensagem | último aviso |
-| D+5 | Suspender assinatura | — muda status e avisa o dono, não envia mensagem própria |
+| `DRAFT` | Rascunho | neutro/aviso |
+| `REVIEW` | Em revisão | aviso |
+| `ACTIVE` | Ativa | sucesso |
+| `PAUSED` | Pausada | aviso |
 
-### Tela 3 — Editor de um passo (dialog, sobre a tela 2)
+⚠️ **`PAUSED` existe no banco mas não tem ação nenhuma que leve até lá.** Não existe botão "pausar régua" em lugar nenhum da tela. O único controle de pausa real do sistema é o **kill switch global** (`Settings.sendingPaused`, botão fixo na sidebar — ver `02-handoff-painel.md`). Se pedir uma ação de "pausar esta régua" pro Claude Design, está pedindo uma feature nova, não descrevendo a tela atual.
 
-Abre ao clicar "Adicionar passo" ou num ícone existente no eixo.
+### Ativação (faixa de revisão)
 
-| Campo | Tipo | Comportamento |
+Só aparece com `status = REVIEW`. Mostra, por passo, quantas execuções pendentes existem (`D{offset} ({ação}): {contagem}`) — é uma lista agregada por passo, **não** uma lista nominal de clientes com texto renderizado por pessoa.
+
+Dois botões, cada um abre um `ConfirmDialog` com o texto exato:
+
+| Botão | Texto de confirmação |
+|---|---|
+| **Ignorar retroativos e ativar** | "As execuções pendentes de revisão serão descartadas e a régua passa a valer só pra frente." |
+| **Enviar todas** | "A régua fica ativa. As execuções pendentes de revisão continuam registradas, sem reprocessamento automático." |
+
+⚠️ Note a diferença do que a spec técnica original descrevia: "Enviar todas" aqui **não** dispara as mensagens pendentes retroativamente — só ativa a régua e deixa as execuções pendentes registradas sem reprocessar. Nenhum dos dois caminhos manda mensagem pro passado. Se o texto da tela sugerir "enviar todas" = disparo retroativo de fato, está descrevendo algo que o botão não faz.
+
+### Passo — dialog de criar/editar
+
+Um dialog (`StepDrawer`), quatro campos, nessa ordem:
+
+| Campo | Tipo real | Nota |
 |---|---|---|
-| Deslocamento | número + toggle "antes / depois do vencimento" | Vira `offsetDays` negativo (antes) ou positivo (depois), nunca zero-antes-de-vencer ambíguo — dia do vencimento em si é sempre "depois, 0". Não pode repetir um deslocamento já usado nessa régua (`@@unique([ruleId, offsetDays])`) — o formulário bloqueia no `onBlur`, mensagem: *"Já existe um passo em D-5. Edite o existente ou escolha outro dia."* |
-| Ação | select: **Enviar mensagem** / **Suspender assinatura** / **Avisar o dono** | Muda quais campos abaixo aparecem — ver tabela de visibilidade condicional logo adiante. |
-| Texto da mensagem | textarea, só visível se ação = Enviar mensagem | Chips de variável clicáveis acima do textarea (inserem `{{...}}` no cursor) — nunca pedir pro operador digitar a sintaxe de memória. Lista completa de variáveis na seção seguinte. |
-| Template aprovado (Meta) | dois campos extras — nome do template + mapeamento de parâmetros — só visíveis se ação = Enviar mensagem **e** o canal padrão ativo agora é Meta Cloud | Sem preencher isso, esse passo com esse canal ativo não sai como mensagem — vira `SKIPPED` no motor. O dialog mostra um aviso inline, não deixa descobrir isso só depois de ativar. |
-| Passo ativo | toggle, padrão ligado | Desligar não apaga o passo nem o texto — só faz o motor pular ele. |
+| Deslocamento | `input type="number"`, com rótulo "Deslocamento (dias, negativo = antes do vencimento)" | Um campo numérico com sinal — **não** é um par toggle+número. Operador digita `-5` ou `5` direto. |
+| Ação | `select` com as 3 opções abaixo | — |
+| Texto | `textarea`, rótulo "Texto (com variáveis {{...}})" | Textarea simples. **Não tem chips clicáveis de variável** — operador digita a sintaxe `{{...}}` de próprio punho. |
+| Passo ativo | checkbox | — |
 
-**Validação ao salvar**: toda variável usada no texto precisa existir na lista conhecida (próxima seção). Variável desconhecida ou digitada errada (`{{cliente.primerio_nome}}`) **bloqueia o salvar**, com a linha do erro apontada — nunca falha silenciosamente na hora de enviar. `{{assinatura.senha}}` e qualquer variável de credencial **não aparecem na lista de chips e são recusadas** se digitadas — não é uma opção que existe e foi esquecida, é proibida por design.
+Ações do select, rótulo exato:
 
-**Excluir passo**: se o passo nunca rodou (nenhuma `DunningExecution`), remove direto. Se já rodou pra alguma cobrança, pede confirmação nomeando o impacto: *"Este passo já disparou 8 vezes. Removê-lo não afeta o que já foi enviado, só impede novas execuções."*
+| Valor | Rótulo |
+|---|---|
+| `SEND_MESSAGE` | Enviar mensagem |
+| `SUSPEND` | Suspender assinatura |
+| `NOTIFY_OWNER` | Notificar operador |
 
-#### Variáveis disponíveis no texto
+Sempre que há texto no campo, uma **prévia ao vivo** aparece abaixo (`TemplatePreview`), renderizada com dados de uma cobrança real recente — isso bateu com o handoff original e continua valendo.
+
+⚠️ Passo com ação "Suspender assinatura" **não corta o acesso técnico** (streaming continua funcionando) — só muda `Subscription.status` pra `SUSPENDED`. Confirmado no motor (`evaluate.ts`).
+
+### Validação
+
+- Variável desconhecida no texto (`{{cliente.primerio_nome}}`) → erro aparece **no campo de texto**, via `setError('templateBody', ...)`, disparado pela resposta da Server Action — não é bloqueio client-side antes de tentar salvar.
+- Dois passos com o mesmo deslocamento → erro só aparece **depois de tentar salvar** (`DuplicateStepOffsetError`, vira toast) — não há checagem prévia no formulário nem lista de deslocamentos já usados visível no dialog.
+- Excluir passo sempre pede confirmação nomeada ("Tem certeza que quer remover o passo D{offset}? Essa ação não pode ser desfeita.") — não tem distinção entre passo que já rodou e passo que nunca rodou, a confirmação é igual pra qualquer passo.
+
+### Variáveis disponíveis no texto
+
+Confirmado batendo 100% com `src/core/dunning-template.ts`:
 
 | Variável | Vira |
 |---|---|
 | `{{cliente.primeiro_nome}}` | João |
 | `{{cliente.nome}}` | João Silva |
-| `{{cobranca.valor}}` | R$ 60,00 |
+| `{{cobranca.valor}}` | R$ 60,00 (valor **restante**, já descontando pagamento parcial) |
 | `{{cobranca.vencimento}}` | 10/08 |
 | `{{cobranca.dias_atraso}}` | 3 |
 | `{{pix.chave}}` | a chave configurada em Ajustes |
 | `{{negocio.nome}}` | o nome do negócio configurado em Ajustes |
 
-Nenhuma outra variável existe. Em especial: nenhuma variável de credencial de acesso do assinante.
-
-### Tela 4 — Revisão e ativação
-
-Só existe como caminho a partir do estado `EM REVISÃO`. Não é uma tela separada na navegação — é o que abre ao clicar **"Ver lista e ativar"** no header da tela 2.
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  12 mensagens sairiam hoje se a régua fosse ativada agora │
-├──────────────────────────────────────────────────────────┤
-│  Cliente         Passo        Texto real                  │
-│  João Silva      D-2          "Olá João! Sua renovação..."│
-│  Maria Souza     D+1          "Olá Maria! Sua renovação..."│
-│  ...                                                        │
-├──────────────────────────────────────────────────────────┤
-│  [ Enviar todas ]  [ Ignorar retroativos e ativar ]  [ Manter em revisão ] │
-└──────────────────────────────────────────────────────────┘
-```
-
-⚠️ **A lista é sempre a lista real, com o texto real de cada mensagem já renderizado com os dados do cliente** — nunca um número sozinho ("12 mensagens"), nunca placeholder (`{{cliente.primeiro_nome}}` cru). Ativar sem ver quem recebe o quê é o erro mais caro do sistema — é como mandar cobrança pra quem já pagou.
-
-Três botões, três resultados diferentes — nomear exatamente isso, não "Confirmar" genérico:
-
-| Botão | O que faz | Quando usar |
-|---|---|---|
-| **Enviar todas** | Cria `DunningExecution` + `Message` pra tudo que está na lista, régua vira `ATIVA` | Base nova, sem histórico duvidoso |
-| **Ignorar retroativos e ativar** | Marca as cobranças já vencidas antes de hoje como `OVERDUE` **sem agendar passo nenhum** pra elas, régua vira `ATIVA`, só passos futuros disparam dali pra frente | **Pré-selecionado.** É a opção certa na entrega — base importada quase sempre tem histórico incerto, e disparar cobrança retroativa pra quem já pagou queima a relação no primeiro dia |
-| **Manter em revisão** | Não muda nada, fecha a tela | Operador quer ajustar mais um passo antes de decidir |
-
-Acima de 100 mensagens na lista, "Enviar todas" exige digitar o número pra confirmar (mesma trava de ação em massa do resto do sistema).
+Nenhuma outra existe. Em especial, nenhuma variável de credencial de acesso do assinante — o validador (`assertKnownVariables`) recusa qualquer coisa fora dessa lista.
 
 ---
 
-## Estados da régua — diagrama e quem aciona cada transição
+## O que este documento descrevia antes e **não existe** — não redesenhar em cima disso sem decisão explícita
 
-```
-RASCUNHO ──(Enviar para revisão)──> EM REVISÃO ──(Enviar todas /
-                                          │           Ignorar retroativos e ativar)──> ATIVA
-                                          └──(Manter em revisão)──> EM REVISÃO (sem mudança)
+A versão anterior deste handoff (escrita antes de eu ler o código real) inventou as seguintes telas/campos, que **não têm nenhum suporte no backend hoje**:
 
-ATIVA ──(Pausar régua, botão na tela 2)──> PAUSADA
-PAUSADA ──(Retomar)──> ATIVA
-```
+- **Lista de réguas** com "Nova régua" e "Tornar padrão" — não existe ação de criar régua nem de trocar qual é a padrão. Só existe uma régua, sempre.
+- **Campos de template aprovado da Meta** (`metaTemplateName`, `metaTemplateParams`) — o schema de `DunningStep` só tem `templateBody`. O motor de despacho não faz nenhuma checagem de canal exigir template aprovado; ele manda o `body` renderizado direto pro adapter, seja qual for o canal.
+- **Botão de pausar/retomar por régua**, distinto do kill switch — não existe.
+- **Eixo horizontal D-5…D+5** como elemento visual da tela de régua — a tela real é uma lista vertical de cards, sem esse desenho.
+- **Chips de variável clicáveis** no editor de passo — o campo é textarea simples.
 
-| Estado | Cor da badge | O motor faz | Ação disponível na tela |
-|---|---|---|---|
-| `RASCUNHO` | cinza | Nada. Não avalia, não conta mensagem. | Editar passos livremente. Botão "Enviar para revisão". |
-| `EM REVISÃO` | `--warn` | Calcula tudo (`DunningExecution` com `outcome = PENDING_REVIEW`), **não cria nenhuma `Message`**. | "Ver lista e ativar" (tela 4). Ainda dá pra editar passo. |
-| `ATIVA` | `--ok`, discreta — não é o estado que precisa gritar | Avalia e despacha normalmente, todo dia. | Editar passo continua liberado (edição não desativa a régua). Botão "Pausar régua". |
-| `PAUSADA` | `--flame` | Motor de despacho não envia nada novo (kill switch separado do da régua — ver nota abaixo). Avaliação continua rodando e enfileirando, mas nada sai. | Botão "Retomar". |
-
-⚠️ **Régua nasce em `RASCUNHO` por padrão do sistema, mas a régua que a MT Conexões recebe pronta é entregue em `EM REVISÃO`** — a base importada tem histórico incerto, e o operador precisa decidir na frente da lista real antes de qualquer coisa sair. Não pular esse estado no fluxo de onboarding da tela.
-
-⚠️ **"Pausar régua" (por régua) é diferente do kill switch global (`Settings.sendingPaused`, botão fixo na sidebar).** Kill switch para **todo** envio do sistema, de qualquer origem, na hora. Pausar uma régua específica só afeta os passos dessa régua. Se existir só uma régua, o efeito prático é parecido, mas a tela não pode tratar os dois como o mesmo botão — são dois controles com dois donos de estado diferentes (`DunningRule.status` vs `Settings.sendingPaused`).
-
----
-
-## Envio manual assistido — parente da régua, tela separada
-
-Fica em **Mensagens**, não em Régua — mas usa o mesmo motor de template e as mesmas travas (exceto a dedupe diária, que aqui é escolha consciente do operador, não bloqueio automático).
-
-Fluxo: filtrar clientes (em atraso / vencem hoje / por fornecedor / por plano) → prévia com o **texto real** de cada um (mesma regra da tela de revisão — nunca placeholder) → disparar em lote, cria `Message` com `kind = MANUAL` → acima de 100, confirmação por digitação do número.
-
-Não tem estado próprio (`RASCUNHO`/`ATIVA`/etc) — é ação pontual, não uma régua configurável.
-
----
-
-## O que a tela precisa recusar, não só validar
-
-Casos que já foram identificados como fonte de erro de desenho — a tela bloqueia **antes** de deixar o operador tentar, não deixa o servidor recusar depois:
-
-1. **Ativar régua sem nenhum passo ativo.** Botão de ativação (tela 4) fica desabilitado com o motivo: *"Nenhum passo ativo — a régua não faria nada."*
-2. **Dois passos com o mesmo deslocamento.** Bloqueado no editor de passo (tela 3), não no salvar da régua inteira.
-3. **Passo "Enviar mensagem" com canal ativo Meta Cloud e sem template aprovado preenchido.** Aviso no próprio dialog do passo (tela 3), reforçado como alerta persistente no editor da régua (tela 2) se o canal padrão mudar pra Meta depois que o passo já existia sem template.
-4. **Variável de template desconhecida ou de credencial.** Bloqueia salvar o passo (tela 3), nunca deixa chegar a enviar vazio ou a expor senha.
-5. **Editar/excluir uma `Message` ou `DunningExecution` já disparada.** Não existe — histórico é só leitura, aparece na timeline (ver `02-handoff-painel.md`, seção Mensagens), nunca com botão de editar.
-6. **Trocar régua padrão sem aviso do que muda amanhã.** Confirmação nomeada, não "tem certeza?" (ver tela 1).
-
----
-
-## Travas — o que aparece na tela quando cada uma age
-
-Redundante com `02-handoff-painel.md` de propósito — aqui é o detalhe de cada uma, lá é o resumo.
-
-| Trava | O que a tela mostra quando ela age |
-|---|---|
-| **T5 — opt-out** | Cliente com opt-out não aparece na lista de destinatários da tela de revisão. Na timeline do cliente, execução pulada mostra `⊘ Pulado` com motivo "cliente pediu para sair". |
-| **T6 — quiet hours** | Mensagem fora de 08h–20h não aparece como "enviada" na timeline até a próxima janela — status `PENDING`, sem alarme, ela vai sair. |
-| **T7 — uma por dia** | Cliente com 3 cobranças vencidas no mesmo dia aparece **uma vez** na lista da tela de revisão, com o total consolidado — nunca 3 linhas pro mesmo cliente no mesmo dia. |
-| **T8 — kill switch** | Faixa fina `--flame` no topo de toda tela do sistema (não só régua) enquanto pausado — ver `02-handoff-painel.md`, seção Kill switch. Mensagem parada mais de 24h reaparece na timeline como `✕` cancelada, motivo "atrasada". |
-
----
-
-## Checklist de revisão antes de entregar a tela pro operador
-
-- [ ] Nenhum botão de ativação fica habilitado sem mostrar a lista real primeiro
-- [ ] Estado da régua (badge) é a primeira coisa visível ao abrir qualquer tela de régua
-- [ ] Texto de cada botão de ativação diz exatamente o que ele faz, sem "Confirmar" genérico
-- [ ] Editor de passo nunca deixa salvar variável desconhecida ou de credencial
-- [ ] Nenhuma tela permite editar histórico já executado
-- [ ] Kill switch global e "pausar régua" são visualmente e funcionalmente distintos
-- [ ] Ação acima de 100 mensagens (ativação ou envio manual) exige digitar o número
+Se alguma dessas é algo que você quer de verdade (por exemplo: enviar via Meta Cloud exige template aprovado por regra do WhatsApp, então esse gap é potencialmente um bug de produto, não só um exagero de design) — isso é decisão de escopo. Antes de pedir pro Claude Design desenhar de novo, para e decide: é ajuste visual da tela que existe, ou é feature nova que precisa de brainstorm + schema + service antes de virar tela?

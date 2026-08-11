@@ -117,9 +117,9 @@ Vencimento é `23:59:59` local. "Hoje", "atraso" e corte de relatório de mês s
 
 ### Régua — estados e travas que a tela precisa expor, não esconder
 
-- Estado da régua: `DRAFT` (rascunho) → `REVIEW` (calcula tudo, não envia nada) → `ACTIVE` → `PAUSED`. **A régua é entregue em `REVIEW`.** Ativar exige o operador ver a lista real de quem receberia — não só um número.
-- Ativar a partir de `REVIEW` tem três caminhos: **enviar todas**, **ignorar retroativos e ativar** (pré-selecionado — marca cobranças anteriores como `OVERDUE` sem agendar nada), **manter em revisão**.
-- Kill switch (`Settings.sendingPaused`) para tudo, na hora. Mensagem parada mais de 24h vira `CANCELLED` com motivo "atrasada" quando o envio é retomado — não dispara tudo de uma vez.
+- Estado da régua: `DRAFT` (rascunho) → `REVIEW` (calcula tudo, não envia nada) → `ACTIVE`. `PAUSED` existe no enum mas **não tem ação nenhuma que leve até lá** — não confundir com o kill switch abaixo, que é o controle de pausa real.
+- Ativar a partir de `REVIEW` tem dois botões: **Ignorar retroativos e ativar** (descarta as execuções `PENDING_REVIEW` e a régua passa a valer só pra frente) e **Enviar todas** (ativa mantendo as execuções pendentes registradas, sem reprocessamento automático — não dispara nada retroativo). Fechar sem clicar em nenhum dos dois é a terceira opção, não precisa de botão próprio.
+- Kill switch (`Settings.sendingPaused`) para tudo, na hora. Mensagem parada mais de 24h vira `CANCELLED` com motivo `stale` — não dispara tudo de uma vez quando o envio é retomado.
 - Opt-out (cliente pediu pra sair) bloqueia envio em **todos** os canais, sempre.
 - Quiet hours (padrão 08h–20h local): fora da janela, a mensagem **reagenda**, nunca é descartada.
 - Um cliente recebe no máximo uma mensagem de cobrança por dia — mesmo com três cobranças vencidas, uma mensagem consolidada com o total.
@@ -130,8 +130,8 @@ Vencimento é `23:59:59` local. "Hoje", "atraso" e corte de relatório de mês s
 
 Três canais possíveis (`META_CLOUD`, `EVOLUTION`, `SALVY`), um ativo por vez via "canal padrão". Diferenças que aparecem na tela:
 
-- **Meta Cloud** só entrega **template pré-aprovado** fora de uma conversa iniciada pelo cliente — que é sempre o caso da régua. Passo sem template aprovado configurado não sai como texto livre; ele fica `SKIPPED` e a tela da régua mostra o aviso.
 - **Evolution** roda num servidor do próprio cliente (VPS dele, fora do controle do sistema) e viola os Termos do WhatsApp — a tela de configuração desse canal mostra o aviso e registra o aceite.
+- ⚠️ **Meta Cloud exige template pré-aprovado fora da janela de 24h por regra do WhatsApp, mas o sistema hoje não trata isso** — o motor de despacho manda o texto livre do passo direto pro adapter, sem checar se o canal exige template aprovado. Isso é um risco real de produto se a Meta Cloud virar canal padrão, não só um detalhe de tela. Não desenhar uma tela que finge que esse tratamento existe.
 - Nenhum canal falha em silêncio: erro do provider aparece sanitizado (sem token) e a mensagem que não pôde sair mostra o motivo na timeline, nunca some sem explicação.
 - Credencial de canal **nunca** volta pra tela, nem mascarada — mostra só "configurado em DD/MM" e um botão de substituir.
 
@@ -295,49 +295,9 @@ Mensagem pode ser da régua automática (`DUNNING`) ou disparo manual assistido 
 
 ### Régua
 
-> Resumo abaixo. Detalhe completo de estados, transições, editor de passo campo a campo e travas está em [`03-handoff-regua.md`](./03-handoff-regua.md) — cole os dois juntos no Claude Design.
+⚠️ **A tela já existe e está no ar** (`/regua`). Não é mais uma tela pra desenhar do zero — é documentação do que foi construído, em [`03-handoff-regua.md`](./03-handoff-regua.md). Cole os dois handoffs juntos no Claude Design antes de pedir qualquer ajuste nessa área.
 
-Editor de passos no eixo do vencimento, mesma linguagem da linha de vencimento do início:
-
-```
-  D-5 ──── D-2 ──── D0 ──── D+1 ──── D+3 ──── D+5
-   ✉        ✉        ✉        ✉        ✉        ⏸
-```
-
-Estado da régua no topo, como faixa:
-
-| Estado | Tratamento |
-|---|---|
-| `RASCUNHO` | cinza |
-| `EM REVISÃO` | `--warn`, com "X mensagens sairiam hoje" e as três opções de ativação |
-| `ATIVA` | `--ok`, discreta |
-| `PAUSADA` | `--flame` |
-
-⚠️ A tela de revisão mostra **a lista real** de quem receberia, não só o número. Ativar sem ver a lista é como se manda cobrança para quem já pagou.
-
-#### Cadastro — como a régua nasce e é editada
-
-**Nível 1 — lista de réguas.** Pode existir mais de uma régua cadastrada (`DunningRule`), mas só **uma** é a padrão (`isDefault`) — é ela que o motor de avaliação usa todo dia. Tela de lista: nome · estado (badge da tabela acima) · "padrão" (marcador, só uma linha tem) · quantos passos. Ação principal: **Nova régua**. Ação por linha: **Tornar padrão** (só aparece se não for a padrão atual, pede confirmação porque troca qual régua roda amanhã de manhã).
-
-**Nível 2 — editor de uma régua.** Abre no eixo `D-5 ── D-2 ── D0 ── D+1 ── D+3 ── D+5` (mock acima). Cada marca no eixo é um passo já cadastrado; espaço vazio no eixo é onde **Adicionar passo** entra. Régua nasce em `RASCUNHO`, sem nenhum passo — o operador monta do zero ou parte da régua padrão pré-carregada (D-5/D-2/D0/D+1/D+3/D+5 da tabela do topo desta seção).
-
-**Nível 3 — formulário de um passo** (dialog ou painel lateral, abre ao clicar "Adicionar passo" ou num passo existente no eixo):
-
-| Campo | Tipo | Regra |
-|---|---|---|
-| Deslocamento | número + antes/depois do vencimento | Vira `offsetDays` negativo (antes) ou positivo (depois). Não pode repetir um deslocamento já usado nessa régua — **um passo por dia do eixo** (`@@unique([ruleId, offsetDays])`). Tentar salvar um segundo D-5 é erro de validação, não sobrescreve o existente. |
-| Ação | select: **Enviar mensagem** / **Suspender assinatura** / **Avisar o dono** | Define quais campos abaixo aparecem. |
-| Texto da mensagem | textarea, só quando ação = Enviar mensagem | Variáveis em português digitadas como `{{cliente.primeiro_nome}}` — lista completa em [`../tecnico/06-regua-e-canais.md`](../tecnico/06-regua-e-canais.md). Editor mostra a lista de variáveis disponíveis ao lado (chips clicáveis que inserem no cursor), não deixa o operador adivinhar a sintaxe. |
-| Template aprovado (Meta) | campo extra, só quando ação = Enviar mensagem **e** o canal padrão ativo é Meta Cloud | Nome do template já aprovado na Meta + mapeamento das variáveis posicionais. Sem isso preenchido, esse passo não sai como mensagem quando o canal ativo é Meta — vira `SKIPPED` no motor (ver "Canais" acima). A tela avisa isso no próprio formulário do passo, não só depois de ativar. |
-| Passo ativo | toggle | Passo desligado fica visível no eixo (esmaecido) mas o motor pula ele — forma de desativar um degrau sem apagar o texto já escrito. |
-
-Botão salvar do passo só habilita depois que toda variável usada no texto existe na lista conhecida — variável digitada errada (`{{cliente.primerio_nome}}`) bloqueia o salvar com a linha e o erro apontados, não deixa passar pra falhar no envio. `{{assinatura.senha}}` nunca é uma opção oferecida nem aceita — não existe na lista de variáveis, ponto.
-
-**Reordenar/remover passo**: arrastar no eixo ou excluir pelo formulário do passo. Excluir pede confirmação só se o passo já tiver `DunningExecution` associada (já rodou pra alguma cobrança) — passo nunca executado remove direto.
-
-⚠️ Passo com ação "Suspender assinatura" **não corta o acesso técnico** (streaming continua funcionando) — só muda a situação da assinatura no painel e avisa o operador. O texto da tela não pode sugerir que a suspensão é automática no serviço.
-
-**Salvar a régua inteira** não muda o estado (`RASCUNHO` continua `RASCUNHO`) — mudar de estado é ação separada e explícita: botão **Enviar para revisão** leva a `RASCUNHO → EM REVISÃO`; as três opções da faixa de revisão (enviar todas / ignorar retroativos e ativar / manter em revisão) levam a `ATIVA` ou de volta pra fila.
+Resumo do que existe de verdade: uma única régua (sem lista, sem "nova régua", sem trocar qual é padrão), header com nome + badge de estado, faixa de revisão quando `EM REVISÃO` com dois botões de ativação, e uma lista vertical de cards de passo — **não** um eixo horizontal D-5…D+5. Detalhe campo a campo, o que existe e o que não existe, está todo no handoff dedicado.
 
 ### Canais
 
