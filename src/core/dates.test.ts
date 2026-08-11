@@ -7,6 +7,7 @@ import {
   localDateOnly,
   monthBoundsUtc,
   nextDueDate,
+  nextQuietHourStart,
   resolveDueDay,
 } from './dates';
 
@@ -193,5 +194,31 @@ describe('isWithinLocalHourRange', () => {
     const outside = new Date('2026-08-08T23:00:00Z'); // 20h00 local
     expect(isWithinLocalHourRange(inside, 8, 20, TZ)).toBe(true);
     expect(isWithinLocalHourRange(outside, 8, 20, TZ)).toBe(false);
+  });
+});
+
+describe('nextQuietHourStart', () => {
+  it('antes da janela (07h local): retorna hoje às startHour', () => {
+    const now = new Date('2026-08-08T10:00:00Z'); // 07h local
+    const result = nextQuietHourStart(now, 8, 20, TZ);
+    expect(result.toISOString()).toBe(new Date('2026-08-08T11:00:00Z').toISOString()); // 08h local do mesmo dia
+  });
+
+  it('depois da janela (21h local): retorna amanhã às startHour', () => {
+    const now = new Date('2026-08-09T00:00:00Z'); // 21h local (08/08)
+    const result = nextQuietHourStart(now, 8, 20, TZ);
+    expect(result.toISOString()).toBe(new Date('2026-08-09T11:00:00Z').toISOString()); // 08h local de 09/08
+  });
+
+  it('exatamente no fim da janela (20h00 local): retorna amanhã às startHour', () => {
+    const now = new Date('2026-08-08T23:00:00Z'); // 20h00 local
+    const result = nextQuietHourStart(now, 8, 20, TZ);
+    expect(result.toISOString()).toBe(new Date('2026-08-09T11:00:00Z').toISOString());
+  });
+
+  it('atravessa virada de mês corretamente', () => {
+    const now = new Date('2026-09-01T00:00:00Z'); // 21h local de 31/08
+    const result = nextQuietHourStart(now, 8, 20, TZ);
+    expect(result.toISOString()).toBe(new Date('2026-09-01T11:00:00Z').toISOString()); // 08h local de 01/09
   });
 });

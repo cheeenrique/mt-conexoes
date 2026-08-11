@@ -1,4 +1,4 @@
-import { addMonths, startOfMonth } from 'date-fns';
+import { addDays, addMonths, startOfMonth } from 'date-fns';
 import { TZDate } from '@date-fns/tz';
 
 export type BillingCycle = 'MONTHLY' | 'QUARTERLY' | 'SEMIANNUAL' | 'ANNUAL';
@@ -36,6 +36,17 @@ export function isWithinLocalHourRange(instant: Date, startHour: number, endHour
   const local = new TZDate(instant, timezone);
   const hour = local.getHours() + local.getMinutes() / 60;
   return hour >= startHour && hour < endHour;
+}
+
+/** Próximo instante dentro de [startHour, endHour) no fuso local, a partir de `now`.
+ *  Se `now` já está dentro da janela, retorna o início do dia SEGUINTE — T6 só reagenda pra frente,
+ *  nunca é chamada com um `now` dentro da janela em uso normal (ver isWithinLocalHourRange no chamador). */
+export function nextQuietHourStart(now: Date, startHour: number, endHour: number, timezone: string): Date {
+  const local = new TZDate(now, timezone);
+  const hourFraction = local.getHours() + local.getMinutes() / 60;
+  const base = hourFraction < startHour ? local : addDays(local, 1);
+  const target = new TZDate(base.getFullYear(), base.getMonth(), base.getDate(), startHour, 0, 0, 0, timezone);
+  return new Date(target.getTime());
 }
 
 function computeDueDate(referenceLocal: TZDate, cycle: BillingCycle, timezone: string): Date {
