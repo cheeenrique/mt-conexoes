@@ -110,7 +110,10 @@ git commit -m "feat(db): add DunningExecution model with per-step idempotency co
   `PendingStep = { customerId: string; toPhone: string; chargeId: string; stepId:
   string; offsetDays: number; templateBody: string; netCents: string; context:
   TemplateContext }`; tipo `ConsolidatedMessage = { customerId: string; toPhone:
-  string; body: string; stepIds: string[]; chargeIds: string[] }`;
+  string; body: string; extraCount: number; extraCents: string; stepIds: string[];
+  chargeIds: string[] }` (`body` só o template base renderizado, sem sufixo — quem
+  chama formata `extraCents` via `formatCents` e monta o sufixo, já que `core/` não
+  formata dinheiro nem I/O);
   `consolidate(pending: PendingStep[], timezone: string): ConsolidatedMessage[]`.
 
 - [ ] **Step 1: Escrever o teste (falho)**
@@ -437,6 +440,7 @@ import { daysFromDue, consolidate, type PendingStep } from '@/core/dunning-rules
 import { getDefaultRuleWithSteps } from './queries';
 import { getSettings } from '@/features/settings/queries';
 import { localDateOnly } from '@/core/dates';
+import { formatCents } from '@/lib/format';
 import { logger } from '@/lib/logger';
 import type { TemplateContext } from '@/core/dunning-template';
 
@@ -539,13 +543,16 @@ export async function evaluateDunningRule(now: Date): Promise<{
     try {
       await db.$transaction(async (tx) => {
         const scheduledDate = localDateOnly(now, settings.timezone);
+        const body = msg.extraCount > 0
+          ? `${msg.body}\n\n+ mais ${msg.extraCount} cobrança(s), totalizando ${formatCents(msg.extraCents)}`
+          : msg.body;
         const created = await tx.message.create({
           data: {
             customerId: msg.customerId,
             kind: 'DUNNING',
             status: 'PENDING',
             toPhone: msg.toPhone,
-            body: msg.body,
+            body,
             scheduledFor: now,
             scheduledDate,
           },
