@@ -58,3 +58,78 @@ export async function getCustomerPnl(customerId: string): Promise<CustomerPnlDTO
     openCount: b.openCount,
   };
 }
+
+export interface MonthlySummaryDTO {
+  billedCents: string;
+  costCents: string;
+  receivedCents: string;
+  openCents: string;
+  costAtRiskCents: string;
+}
+
+export interface BreakdownRowDTO {
+  id: string;
+  name: string;
+  billedCents: string;
+  costCents: string;
+}
+
+type SummaryRow = { billedCents: string; costCents: string; openCents: string; costAtRiskCents: string };
+
+export async function getMonthlySummary(from: Date, to: Date): Promise<MonthlySummaryDTO> {
+  const [summaryRows, receivedAgg] = await Promise.all([
+    db.$queryRaw<SummaryRow[]>`
+      SELECT
+        COALESCE(SUM("principalCents" - "discountCents"), 0)::text AS "billedCents",
+        COALESCE(SUM("costCents"), 0)::text                        AS "costCents",
+        COALESCE(SUM("principalCents" - "discountCents")
+                 FILTER (WHERE status IN ('OPEN', 'OVERDUE', 'PARTIALLY_PAID')), 0)::text AS "openCents",
+        COALESCE(SUM("costCents")
+                 FILTER (WHERE status IN ('OPEN', 'OVERDUE', 'PARTIALLY_PAID')), 0)::text AS "costAtRiskCents"
+      FROM charges
+      WHERE "dueAt" >= ${from} AND "dueAt" < ${to}
+        AND status <> 'CANCELLED'
+    `,
+    db.payment.aggregate({ where: { paidAt: { gte: from, lt: to } }, _sum: { amountCents: true } }),
+  ]);
+
+  const s = summaryRows[0];
+  return {
+    billedCents: s.billedCents,
+    costCents: s.costCents,
+    openCents: s.openCents,
+    costAtRiskCents: s.costAtRiskCents,
+    receivedCents: (receivedAgg._sum.amountCents ?? 0n).toString(),
+  };
+}
+
+export async function getSupplierBreakdown(from: Date, to: Date): Promise<BreakdownRowDTO[]> {
+  return db.$queryRaw<BreakdownRowDTO[]>`
+    SELECT
+      s.id AS "id", s.name AS "name",
+      COALESCE(SUM(ch."principalCents" - ch."discountCents"), 0)::text AS "billedCents",
+      COALESCE(SUM(ch."costCents"), 0)::text                            AS "costCents"
+    FROM charges ch
+    JOIN suppliers s ON s.id = ch."supplierId"
+    WHERE ch."dueAt" >= ${from} AND ch."dueAt" < ${to}
+      AND ch.status <> 'CANCELLED'
+    GROUP BY s.id, s.name
+    ORDER BY (SUM(ch."principalCents" - ch."discountCents") - SUM(ch."costCents")) DESC
+  `;
+}
+
+export async function getPlanBreakdown(from: Date, to: Date): Promise<BreakdownRowDTO[]> {
+  return db.$queryRaw<BreakdownRowDTO[]>`
+    SELECT
+      p.id AS "id", p.name AS "name",
+      COALESCE(SUM(ch."principalCents" - ch."discountCents"), 0)::text AS "billedCents",
+      COALESCE(SUM(ch."costCents"), 0)::text                            AS "costCents"
+    FROM charges ch
+    JOIN subscriptions sub ON sub.id = ch."subscriptionId"
+    JOIN plans p ON p.id = sub."planId"
+    WHERE ch."dueAt" >= ${from} AND ch."dueAt" < ${to}
+      AND ch.status <> 'CANCELLED'
+    GROUP BY p.id, p.name
+    ORDER BY (SUM(ch."principalCents" - ch."discountCents") - SUM(ch."costCents")) DESC
+  `;
+}
