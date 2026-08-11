@@ -28,9 +28,13 @@ export type SendResult =
 
 export type HealthResult = { ok: true } | { ok: false; reason: string };
 
+export type InboundMessage = { fromPhone: string; text: string };
+
 export interface ChannelAdapter {
   readonly provider: ChannelProvider;
   readonly capabilities: ChannelCapabilities;
   send(input: SendInput, credentials: unknown): Promise<SendResult>;
   healthCheck(credentials: unknown): Promise<HealthResult>;
+  verifyWebhookSignature(rawBody: string, headers: Headers, credentials: unknown): boolean;
+  parseInboundWebhook(rawBody: string): InboundMessage[] | null;
 }

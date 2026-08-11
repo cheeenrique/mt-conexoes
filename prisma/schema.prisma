@@ -311,6 +311,7 @@ enum MessageKind {
   DUNNING
   MANUAL
   TEST
+  INBOUND
 }
 
 enum MessageStatus {
@@ -319,6 +320,7 @@ enum MessageStatus {
   FAILED
   CANCELLED
   SKIPPED
+  RECEIVED
 }
 
 model Message {

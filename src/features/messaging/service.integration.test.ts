@@ -20,8 +20,8 @@ afterEach(async () => {
 
 describe('saveChannelCredentials', () => {
   it('salva e cripta — chamar duas vezes não duplica a linha', async () => {
-    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
-    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a2', phoneNumberId: 'b', wabaId: 'c' } });
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } });
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a2', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } });
 
     const rows = await db.channelConfig.findMany({ where: { provider: 'META_CLOUD' } });
     expect(rows).toHaveLength(1);
@@ -32,7 +32,7 @@ describe('saveChannelCredentials', () => {
     await expect(
       saveChannelCredentials({
         provider: 'EVOLUTION',
-        credentials: { baseUrl: 'https://x.com', apiKey: 'k', instanceName: 'i' },
+        credentials: { baseUrl: 'https://x.com', apiKey: 'k', instanceName: 'i', webhookToken: 't' },
         riskAccepted: true,
       } as never),
     ).resolves.toBeUndefined();
@@ -40,18 +40,18 @@ describe('saveChannelCredentials', () => {
     await db.channelConfig.deleteMany({ where: { provider: 'EVOLUTION' } });
 
     // @ts-expect-error -- omitindo riskAccepted de propósito pra testar a trava do service
-    await expect(saveChannelCredentials({ provider: 'EVOLUTION', credentials: { baseUrl: 'https://x.com', apiKey: 'k', instanceName: 'i' } }))
+    await expect(saveChannelCredentials({ provider: 'EVOLUTION', credentials: { baseUrl: 'https://x.com', apiKey: 'k', instanceName: 'i', webhookToken: 't' } }))
       .rejects.toThrow(EvolutionRiskNotAcceptedError);
   });
 
   it('desativa o canal ao trocar as credenciais, mesmo que estivesse ativo', async () => {
-    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 'b' }) }));
     await testChannelConnection('META_CLOUD');
     vi.unstubAllGlobals();
     await setChannelActive('META_CLOUD', true);
 
-    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a2', phoneNumberId: 'b', wabaId: 'c' } });
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a2', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } });
 
     const row = await db.channelConfig.findUniqueOrThrow({ where: { provider: 'META_CLOUD' } });
     expect(row.isActive).toBe(false);
@@ -60,7 +60,7 @@ describe('saveChannelCredentials', () => {
 
 describe('testChannelConnection', () => {
   it('grava lastCheckOk=true e retorna ok quando o adapter confirma', async () => {
-    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 'b' }) }));
 
     const result = await testChannelConnection('META_CLOUD');
@@ -72,7 +72,7 @@ describe('testChannelConnection', () => {
   });
 
   it('grava lastError quando o adapter falha', async () => {
-    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: { message: 'token inválido' } }) }));
 
     const result = await testChannelConnection('META_CLOUD');
@@ -91,7 +91,7 @@ describe('testChannelConnection', () => {
 
 describe('setChannelActive', () => {
   it('rejeita ativar canal nunca testado', async () => {
-    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } });
     await expect(setChannelActive('META_CLOUD', true)).rejects.toThrow(ChannelNotVerifiedError);
   });
 
@@ -100,7 +100,7 @@ describe('setChannelActive', () => {
   });
 
   it('permite ativar depois de um teste com sucesso', async () => {
-    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 'b' }) }));
     await testChannelConnection('META_CLOUD');
     vi.unstubAllGlobals();
@@ -117,8 +117,8 @@ describe('setDefaultChannel', () => {
     for (const provider of ['META_CLOUD', 'EVOLUTION'] as const) {
       await saveChannelCredentials(
         provider === 'META_CLOUD'
-          ? { provider, credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } }
-          : { provider, credentials: { baseUrl: 'https://x.com', apiKey: 'k', instanceName: 'i' }, riskAccepted: true },
+          ? { provider, credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } }
+          : { provider, credentials: { baseUrl: 'https://x.com', apiKey: 'k', instanceName: 'i', webhookToken: 't' }, riskAccepted: true },
       );
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: 'b', instance: { state: 'open' } }) }));
       await testChannelConnection(provider);
@@ -139,7 +139,7 @@ describe('setDefaultChannel', () => {
   });
 
   it('rejeita definir como padrão canal configurado mas ainda não ativado', async () => {
-    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c' } });
+    await saveChannelCredentials({ provider: 'META_CLOUD', credentials: { accessToken: 'a', phoneNumberId: 'b', wabaId: 'c', appSecret: 's' } });
 
     await expect(setDefaultChannel('META_CLOUD')).rejects.toThrow(ChannelNotActiveError);
   });
