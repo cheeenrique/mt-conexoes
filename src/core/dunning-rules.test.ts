@@ -46,6 +46,7 @@ describe('consolidate', () => {
     expect(result[0].customerId).toBe('c1');
     expect(result[0].toPhone).toBe('+5511999990000');
     expect(result[0].body).toBe('Olá João, R$ 60,00');
+    expect(result[0].extraCount).toBe(0);
     expect(result[0].chargeIds).toEqual(['ch1']);
   });
 
@@ -57,9 +58,10 @@ describe('consolidate', () => {
     ];
     const result = consolidate(pending, 'America/Sao_Paulo');
     expect(result).toHaveLength(1);
-    // usa o template do passo de maior offsetDays (mais atrasado) como base
-    expect(result[0].body).toContain('ÚLTIMO AVISO João, R$ 50,00 atrasada');
-    expect(result[0].body).toContain('mais 2 cobrança(s)');
+    // usa o template do passo de maior offsetDays (mais atrasado) como base, sem sufixo — caller formata
+    expect(result[0].body).toBe('ÚLTIMO AVISO João, R$ 50,00 atrasada');
+    expect(result[0].extraCount).toBe(2);
+    expect(result[0].extraCents).toBe('10000'); // ch1 (6000) + ch3 (4000)
     expect(result[0].chargeIds.sort()).toEqual(['ch1', 'ch2', 'ch3']);
     expect(result[0].stepIds.sort()).toEqual(['s1', 's2', 's3']);
   });

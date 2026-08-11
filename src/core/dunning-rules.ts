@@ -23,14 +23,12 @@ export type PendingStep = {
 export type ConsolidatedMessage = {
   customerId: string;
   toPhone: string;
-  body: string;
+  body: string; // só o template base renderizado, sem sufixo
+  extraCount: number; // 0 quando só há 1 passo pendente pro cliente
+  extraCents: string; // soma bruta em centavos dos passos "extras", BigInt.toString()
   stepIds: string[];
   chargeIds: string[];
 };
-
-function formatBRL(cents: bigint): string {
-  return (Number(cents) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 /** Agrupa passos pendentes por cliente — no máximo 1 mensagem por customerId. */
 export function consolidate(pending: PendingStep[], _timezone: string): ConsolidatedMessage[] {
@@ -45,17 +43,15 @@ export function consolidate(pending: PendingStep[], _timezone: string): Consolid
   for (const [customerId, group] of byCustomer) {
     const sorted = [...group].sort((a, b) => b.offsetDays - a.offsetDays);
     const base = sorted[0];
-    let body = renderTemplate(base.templateBody, base.context);
-
-    if (sorted.length > 1) {
-      const othersCents = sorted.slice(1).reduce((sum, s) => sum + BigInt(s.netCents), 0n);
-      body += `\n\n+ mais ${sorted.length - 1} cobrança(s), totalizando ${formatBRL(othersCents)}`;
-    }
+    const others = sorted.slice(1);
+    const extraCents = others.reduce((sum, s) => sum + BigInt(s.netCents), 0n);
 
     results.push({
       customerId,
       toPhone: base.toPhone,
-      body,
+      body: renderTemplate(base.templateBody, base.context),
+      extraCount: others.length,
+      extraCents: extraCents.toString(),
       stepIds: group.map((s) => s.stepId),
       chargeIds: group.map((s) => s.chargeId),
     });
