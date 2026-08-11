@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { dunningStepSchema } from './schema';
-import { createStep, updateStep, deleteStep } from './service';
+import { createStep, updateStep, deleteStep, activateDunningRule } from './service';
 import { requireSession } from '@/features/auth/service';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -53,6 +53,19 @@ export async function deleteDunningStepAction(id: string): Promise<ActionResult>
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
     logger.error({ route: 'dunning.deleteStep', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+export async function activateDunningRuleAction(mode: 'send-all' | 'ignore-retroactive'): Promise<ActionResult> {
+  try {
+    await requireSession();
+    await activateDunningRule(mode);
+    revalidatePath('/regua');
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'dunning.activateRule', error: String(err), stack: err instanceof Error ? err.stack : undefined });
     return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
   }
 }
