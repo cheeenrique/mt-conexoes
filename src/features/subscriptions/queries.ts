@@ -1,3 +1,5 @@
+import Decimal from 'decimal.js';
+import { classifySubscriptionMargin } from '@/core/money';
 import { db } from '@/lib/db';
 import type { BillingCycle, DiscountType, SubscriptionStatus } from '@prisma/client';
 
@@ -84,4 +86,22 @@ export async function listSubscriptionsForCustomer(customerId: string): Promise<
 export async function getSubscription(id: string): Promise<SubscriptionDTO | null> {
   const row = await db.subscription.findUnique({ where: { id }, include: INCLUDE });
   return row ? toDTO(row) : null;
+}
+
+export type MarginAlertSummary = { negativeCount: number; belowThresholdCount: number };
+
+/** alertPercent entra por parâmetro — esta feature não importa features/settings.
+ *  O caller (page.tsx) já busca Settings pra outra coisa e repassa o valor. */
+export async function getMarginAlertSummary(alertPercent: Decimal): Promise<MarginAlertSummary> {
+  const subscriptions = await db.subscription.findMany({
+    where: { status: 'ACTIVE' },
+    select: { priceCents: true, costCents: true },
+  });
+
+  const statuses = subscriptions.map((s) => classifySubscriptionMargin(s.priceCents, s.costCents, alertPercent));
+
+  return {
+    negativeCount: statuses.filter((s) => s === 'negative').length,
+    belowThresholdCount: statuses.filter((s) => s === 'below_threshold').length,
+  };
 }
