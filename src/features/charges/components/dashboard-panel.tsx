@@ -1,52 +1,40 @@
 import Link from 'next/link';
-import { CalendarClock, CalendarRange, AlertTriangle, Wallet } from 'lucide-react';
 import { formatCents, formatLocalDate } from '@/lib/format';
 import { ChargeStatusBadge } from './charge-status-badge';
-import type { ChargeDTO } from '../queries';
+import { DueDateStrip } from './due-date-strip';
+import type { ChargeDTO, DueDateOverview } from '../queries';
+import type { DueDateBucket } from '@/core/due-date-buckets';
 
-function outstandingCents(rows: ChargeDTO[]): bigint {
-  return rows.reduce((sum, row) => sum + (BigInt(row.netCents) - BigInt(row.paidCents)), 0n);
-}
+const PREVIEW_CAP = 20;
+const OVERDUE_BUCKETS = new Set<DueDateBucket>(['D+1', 'D+3', 'D+5']);
 
-function chargeCountLabel(count: number): string {
-  return `${count} ${count === 1 ? 'cobrança' : 'cobranças'}`;
-}
-
-function SummaryCard({
-  icon: Icon,
-  label,
-  subtitle,
-  amountCents,
-  href,
+function ChargeFilteredList({
+  bucketLabel,
+  rows,
+  timezone,
+  seeMoreHref,
 }: {
-  icon: typeof CalendarClock;
-  label: string;
-  subtitle: string;
-  amountCents: bigint;
-  href: string;
+  bucketLabel: string;
+  rows: (ChargeDTO & { bucket: DueDateBucket })[];
+  timezone: string;
+  seeMoreHref: string;
 }) {
-  return (
-    <Link
-      href={href}
-      className="rounded border border-border bg-surface p-5 transition-colors hover:border-border-strong"
-    >
-      <div className="mb-3 flex items-center gap-2 text-foreground-muted">
-        <Icon size={16} />
-        <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
-      </div>
-      <p className="font-mono text-2xl font-bold tabular-mono text-foreground">{formatCents(amountCents)}</p>
-      <p className="mt-1 text-sm text-foreground-muted">{subtitle}</p>
-    </Link>
-  );
-}
-
-function ChargePreviewList({ title, rows, timezone }: { title: string; rows: ChargeDTO[]; timezone: string }) {
-  const preview = rows.slice(0, 5);
+  const preview = rows.slice(0, PREVIEW_CAP);
   return (
     <div className="rounded border border-border bg-surface p-4">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-foreground-muted">{title}</p>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">{bucketLabel}</p>
+        {rows.length > PREVIEW_CAP && (
+          <p className="text-xs text-foreground-muted">
+            mostrando {PREVIEW_CAP} de {rows.length} —{' '}
+            <Link href={seeMoreHref} className="text-brand hover:underline">
+              ver todas
+            </Link>
+          </p>
+        )}
+      </div>
       {preview.length === 0 ? (
-        <p className="py-2 text-sm text-foreground-muted">Nenhuma cobrança.</p>
+        <p className="py-2 text-sm text-foreground-muted">Nenhuma cobrança neste balde.</p>
       ) : (
         <ul>
           {preview.map((row) => (
@@ -58,7 +46,9 @@ function ChargePreviewList({ title, rows, timezone }: { title: string; rows: Cha
                 <span className="font-mono text-sm tabular-mono text-foreground-muted">
                   {formatLocalDate(row.dueAt, timezone)}
                 </span>
-                <span className="font-mono text-sm tabular-mono text-foreground">{formatCents(row.netCents)}</span>
+                <span className="font-mono text-sm tabular-mono text-foreground">
+                  {formatCents(BigInt(row.netCents) - BigInt(row.paidCents))}
+                </span>
                 <ChargeStatusBadge status={row.status} />
               </div>
             </li>
@@ -70,53 +60,32 @@ function ChargePreviewList({ title, rows, timezone }: { title: string; rows: Cha
 }
 
 export function DashboardPanel({
-  summary,
+  overview,
+  selectedBucket,
   timezone,
 }: {
-  summary: {
-    dueToday: ChargeDTO[];
-    dueNext7Days: ChargeDTO[];
-    overdue: ChargeDTO[];
-    receivedThisMonthCents: string;
-  };
+  overview: DueDateOverview;
+  selectedBucket: DueDateBucket;
   timezone: string;
 }) {
+  const selected = overview.buckets.find((b) => b.key === selectedBucket)!;
+  const filteredCharges = overview.charges.filter((c) => c.bucket === selectedBucket);
+  const seeMoreStatus = OVERDUE_BUCKETS.has(selectedBucket) ? 'OVERDUE' : 'OPEN';
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard
-          icon={CalendarClock}
-          label="Vencem hoje"
-          subtitle={chargeCountLabel(summary.dueToday.length)}
-          amountCents={outstandingCents(summary.dueToday)}
-          href="/charges?status=OPEN"
-        />
-        <SummaryCard
-          icon={CalendarRange}
-          label="Próximos 7 dias"
-          subtitle={chargeCountLabel(summary.dueNext7Days.length)}
-          amountCents={outstandingCents(summary.dueNext7Days)}
-          href="/charges?status=OPEN"
-        />
-        <SummaryCard
-          icon={AlertTriangle}
-          label="Em atraso"
-          subtitle={chargeCountLabel(summary.overdue.length)}
-          amountCents={outstandingCents(summary.overdue)}
-          href="/charges?status=OVERDUE"
-        />
-        <SummaryCard
-          icon={Wallet}
-          label="Recebido no mês"
-          subtitle="Total de pagamentos"
-          amountCents={BigInt(summary.receivedThisMonthCents)}
-          href="/charges?status=PAID"
-        />
-      </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChargePreviewList title="Vencem hoje" rows={summary.dueToday} timezone={timezone} />
-        <ChargePreviewList title="Próximos 7 dias" rows={summary.dueNext7Days} timezone={timezone} />
-        <ChargePreviewList title="Em atraso" rows={summary.overdue} timezone={timezone} />
+      <DueDateStrip buckets={overview.buckets} selected={selectedBucket} />
+      <ChargeFilteredList
+        bucketLabel={selected.label}
+        rows={filteredCharges}
+        timezone={timezone}
+        seeMoreHref={`/charges?status=${seeMoreStatus}`}
+      />
+      <div className="rounded border border-border bg-surface p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">Recebido no mês</p>
+        <p className="mt-1 font-mono text-xl font-bold tabular-mono text-foreground">
+          {formatCents(BigInt(overview.receivedThisMonthCents))}
+        </p>
       </div>
     </div>
   );
