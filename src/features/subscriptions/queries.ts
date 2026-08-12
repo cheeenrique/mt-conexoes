@@ -1,6 +1,7 @@
 import Decimal from 'decimal.js';
 import { classifySubscriptionMargin } from '@/core/money';
 import { db } from '@/lib/db';
+import { computeChargeDiscount } from './service';
 import type { BillingCycle, DiscountType, SubscriptionStatus } from '@prisma/client';
 
 export interface SubscriptionDTO {
@@ -95,10 +96,14 @@ export type MarginAlertSummary = { negativeCount: number; belowThresholdCount: n
 export async function getMarginAlertSummary(alertPercent: Decimal): Promise<MarginAlertSummary> {
   const subscriptions = await db.subscription.findMany({
     where: { status: 'ACTIVE' },
-    select: { priceCents: true, costCents: true },
+    select: { priceCents: true, costCents: true, discountType: true, discountValue: true, discountUntil: true },
   });
 
-  const statuses = subscriptions.map((s) => classifySubscriptionMargin(s.priceCents, s.costCents, alertPercent));
+  const statuses = subscriptions.map((s) => {
+    const rawBilledCents = s.priceCents - computeChargeDiscount(s, new Date());
+    const billedCents = rawBilledCents < 0n ? 0n : rawBilledCents;
+    return classifySubscriptionMargin(billedCents, s.costCents, alertPercent);
+  });
 
   return {
     negativeCount: statuses.filter((s) => s === 'negative').length,

@@ -23,14 +23,14 @@ export function marginPercent(revenueCents: bigint, costCents: bigint): Decimal 
 
 export type MarginStatus = 'negative' | 'below_threshold' | 'ok';
 
-/** priceCents ≤ costCents é sempre 'negative', mesmo quando marginPercent devolveria null
+/** revenueCents ≤ costCents é sempre 'negative', mesmo quando marginPercent devolveria null
  *  (receita zero). alertPercent vem de Settings.marginAlertPercent, nunca hardcoded. */
 export function classifySubscriptionMargin(
-  priceCents: bigint,
+  revenueCents: bigint,
   costCents: bigint,
   alertPercent: Decimal,
 ): MarginStatus {
-  if (priceCents - costCents <= 0n) return 'negative';
-  const margin = marginPercent(priceCents, costCents)!; // priceCents > 0 aqui — nunca null
+  if (revenueCents - costCents <= 0n) return 'negative';
+  const margin = marginPercent(revenueCents, costCents)!; // revenueCents > 0 aqui — nunca null
   return margin.lessThan(alertPercent) ? 'below_threshold' : 'ok';
 }

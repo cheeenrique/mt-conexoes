@@ -92,7 +92,7 @@ export async function createSubscription(customerId: string, input: Subscription
 }
 
 /** Desconto vigente na emissão, em centavos. discountUntil precisa cobrir o início do período. */
-function computeChargeDiscount(
+export function computeChargeDiscount(
   subscription: { priceCents: bigint; discountType: string | null; discountValue: unknown; discountUntil: Date | null },
   periodStart: Date,
 ): bigint {
