@@ -32,6 +32,18 @@ describe('GET /api/reports/export', () => {
     expect(res.status).toBe(400);
   });
 
+  it('year/month ausentes devolve 400', async () => {
+    const req = new Request('http://localhost/api/reports/export?type=supplier');
+    const res = await GET(req);
+    expect(res.status).toBe(400);
+  });
+
+  it('year/month não numéricos devolve 400', async () => {
+    const req = new Request('http://localhost/api/reports/export?type=supplier&year=abc&month=xyz');
+    const res = await GET(req);
+    expect(res.status).toBe(400);
+  });
+
   it('type=supplier devolve CSV com header e Content-Disposition de anexo', async () => {
     const supplier = await db.supplier.create({ data: { name: 'Fornecedor Export', unitCostCents: 1000n } });
     const plan = await db.plan.create({ data: { name: 'Plano Export', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });

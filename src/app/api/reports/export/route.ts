@@ -8,7 +8,7 @@ import { formatCents } from '@/lib/format';
 import { marginPercent } from '@/core/money';
 
 function rowsToCsv(rows: BreakdownRowDTO[]): string {
-  const headers = ['Nome', 'Faturado', 'Custo', 'Lucro', 'Margem'];
+  const headers = ['Nome', 'Faturado', 'Custo', 'Lucro bruto', 'Margem'];
   const dataRows = rows.map((row) => {
     const billedCents = BigInt(row.billedCents);
     const costCents = BigInt(row.costCents);
@@ -29,12 +29,17 @@ export async function GET(req: Request): Promise<Response> {
 
   const url = new URL(req.url);
   const type = url.searchParams.get('type');
-  const year = Number(url.searchParams.get('year'));
-  const month = Number(url.searchParams.get('month')) - 1;
+  const rawYear = url.searchParams.get('year');
+  const rawMonth = url.searchParams.get('month');
+  const hasNumericYear = rawYear !== null && /^\d+$/.test(rawYear);
+  const hasNumericMonth = rawMonth !== null && /^\d+$/.test(rawMonth);
 
-  if (!type || !['supplier', 'plan', 'customer'].includes(type) || !Number.isFinite(year) || !Number.isFinite(month)) {
+  if (!type || !['supplier', 'plan', 'customer'].includes(type) || !hasNumericYear || !hasNumericMonth) {
     return new NextResponse('Parâmetros inválidos', { status: 400 });
   }
+
+  const year = Number(rawYear);
+  const month = Number(rawMonth) - 1;
 
   const settings = await getSettings();
   const { from, to } = monthBoundsUtc(year, month, settings.timezone);
