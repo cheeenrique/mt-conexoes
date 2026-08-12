@@ -14,7 +14,7 @@ const MENU_ITEMS = [
   { href: '/mensagens', label: 'Mensagens', icon: MessageSquare },
   { href: '/regua', label: 'Réguas', icon: GitCommitHorizontal },
   { href: '/leads', label: 'Leads', icon: Inbox },
-  { href: '/relatorios', label: 'Relatórios', icon: ChartNoAxesColumn },
+  { href: '/reports', label: 'Relatórios', icon: ChartNoAxesColumn },
   { href: '/suppliers', label: 'Fornecedores', icon: Truck },
   { href: '/plans', label: 'Planos', icon: Layers },
   { href: '/channels', label: 'Canais', icon: Radio },
