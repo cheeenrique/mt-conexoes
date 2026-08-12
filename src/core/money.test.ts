@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Decimal from 'decimal.js';
-import { applyPercent, divRoundHalfUp, marginPercent } from './money';
+import { applyPercent, divRoundHalfUp, marginPercent, classifySubscriptionMargin } from './money';
 
 describe('divRoundHalfUp', () => {
   it('arredonda 5/2 para cima (half up)', () => {
@@ -40,5 +40,33 @@ describe('marginPercent', () => {
   it('calcula margem em pontos percentuais', () => {
     const margin = marginPercent(10_000n, 6_000n)!;
     expect(margin.toNumber()).toBeCloseTo(40, 5);
+  });
+});
+
+describe('classifySubscriptionMargin', () => {
+  it('price equal to cost is negative, not ok', () => {
+    expect(classifySubscriptionMargin(5_000n, 5_000n, new Decimal('30'))).toBe('negative');
+  });
+
+  it('price below cost is negative', () => {
+    expect(classifySubscriptionMargin(3_000n, 5_000n, new Decimal('30'))).toBe('negative');
+  });
+
+  it('zero price is negative, never divides by zero', () => {
+    expect(classifySubscriptionMargin(0n, 0n, new Decimal('30'))).toBe('negative');
+  });
+
+  it('margin exactly at the threshold is ok, not below_threshold (strict less-than)', () => {
+    // price 10000, cost 7000 → margin exactly 30%
+    expect(classifySubscriptionMargin(10_000n, 7_000n, new Decimal('30'))).toBe('ok');
+  });
+
+  it('margin one point below the threshold is below_threshold', () => {
+    // price 10000, cost 7100 → margin 29%
+    expect(classifySubscriptionMargin(10_000n, 7_100n, new Decimal('30'))).toBe('below_threshold');
+  });
+
+  it('margin well above the threshold is ok', () => {
+    expect(classifySubscriptionMargin(10_000n, 2_000n, new Decimal('30'))).toBe('ok');
   });
 });
