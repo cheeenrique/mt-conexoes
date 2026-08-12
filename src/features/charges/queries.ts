@@ -1,5 +1,7 @@
 import { db } from '@/lib/db';
 import { monthBoundsUtc } from '@/core/dates';
+import { resolveDueDateBucket, DUE_DATE_BUCKETS, type DueDateBucket } from '@/core/due-date-buckets';
+import { DUE_DATE_BUCKET_LABELS } from '@/lib/labels';
 
 export interface PaymentDTO {
   id: string;
@@ -95,25 +97,35 @@ export async function getChargesForCustomer(customerId: string): Promise<ChargeD
   return rows.map(toChargeDTO);
 }
 
-export async function getDashboardSummary(now: Date, timezone: string) {
-  const todayStart = new Date(now); todayStart.setUTCHours(0, 0, 0, 0);
-  const todayEnd = new Date(now); todayEnd.setUTCHours(23, 59, 59, 999);
-  const next7End = new Date(todayEnd.getTime() + 7 * 24 * 60 * 60 * 1000);
+export type DueDateOverview = {
+  buckets: { key: DueDateBucket; label: string; count: number; amountCents: string }[];
+  charges: (ChargeDTO & { bucket: DueDateBucket })[];
+  receivedThisMonthCents: string;
+};
 
-  const [dueTodayRows, dueNext7Rows, overdueRows, monthPayments] = await Promise.all([
-    db.charge.findMany({ where: { dueAt: { gte: todayStart, lte: todayEnd }, status: { in: ['OPEN', 'OVERDUE', 'PARTIALLY_PAID'] } }, include: CHARGE_INCLUDE, orderBy: { dueAt: 'asc' } }),
-    db.charge.findMany({ where: { dueAt: { gt: todayEnd, lte: next7End }, status: { in: ['OPEN', 'OVERDUE', 'PARTIALLY_PAID'] } }, include: CHARGE_INCLUDE, orderBy: { dueAt: 'asc' } }),
-    db.charge.findMany({ where: { status: 'OVERDUE' }, include: CHARGE_INCLUDE, orderBy: { dueAt: 'asc' } }),
+export async function getDueDateOverview(now: Date, timezone: string): Promise<DueDateOverview> {
+  const [rows, monthPayments] = await Promise.all([
+    db.charge.findMany({
+      where: { status: { in: ['OPEN', 'OVERDUE', 'PARTIALLY_PAID'] } },
+      include: CHARGE_INCLUDE,
+      orderBy: { dueAt: 'asc' },
+    }),
     (() => {
       const { from, to } = monthBoundsUtc(now.getUTCFullYear(), now.getUTCMonth(), timezone);
       return db.payment.aggregate({ where: { paidAt: { gte: from, lt: to } }, _sum: { amountCents: true } });
     })(),
   ]);
 
-  return {
-    dueToday: dueTodayRows.map(toChargeDTO),
-    dueNext7Days: dueNext7Rows.map(toChargeDTO),
-    overdue: overdueRows.map(toChargeDTO),
-    receivedThisMonthCents: (monthPayments._sum.amountCents ?? 0n).toString(),
-  };
+  const charges = rows.map((r) => ({
+    ...toChargeDTO(r),
+    bucket: resolveDueDateBucket(r.dueAt, now, timezone),
+  }));
+
+  const buckets = DUE_DATE_BUCKETS.map((key) => {
+    const inBucket = charges.filter((c) => c.bucket === key);
+    const amountCents = inBucket.reduce((sum, c) => sum + (BigInt(c.netCents) - BigInt(c.paidCents)), 0n);
+    return { key, label: DUE_DATE_BUCKET_LABELS[key], count: inBucket.length, amountCents: amountCents.toString() };
+  });
+
+  return { buckets, charges, receivedThisMonthCents: (monthPayments._sum.amountCents ?? 0n).toString() };
 }

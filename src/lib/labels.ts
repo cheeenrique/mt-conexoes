@@ -55,3 +55,12 @@ export const DUNNING_STATUS_LABELS: Record<string, string> = {
   ACTIVE: 'Ativa',
   PAUSED: 'Pausada',
 };
+
+export const DUE_DATE_BUCKET_LABELS: Record<string, string> = {
+  'D-5': 'D-5',
+  'D-2': 'D-2',
+  'D0': 'HOJE',
+  'D+1': 'D+1',
+  'D+3': 'D+3',
+  'D+5': 'D+5+',
+};
