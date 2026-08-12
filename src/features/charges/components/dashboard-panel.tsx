@@ -13,11 +13,13 @@ function ChargeFilteredList({
   rows,
   timezone,
   seeMoreHref,
+  seeMoreLabel,
 }: {
   bucketLabel: string;
   rows: (ChargeDTO & { bucket: DueDateBucket })[];
   timezone: string;
   seeMoreHref: string;
+  seeMoreLabel: string;
 }) {
   const preview = rows.slice(0, PREVIEW_CAP);
   return (
@@ -28,7 +30,7 @@ function ChargeFilteredList({
           <p className="text-xs text-foreground-muted">
             mostrando {PREVIEW_CAP} de {rows.length} —{' '}
             <Link href={seeMoreHref} className="text-brand hover:underline">
-              ver todas
+              {seeMoreLabel}
             </Link>
           </p>
         )}
@@ -70,7 +72,8 @@ export function DashboardPanel({
 }) {
   const selected = overview.buckets.find((b) => b.key === selectedBucket)!;
   const filteredCharges = overview.charges.filter((c) => c.bucket === selectedBucket);
-  const seeMoreStatus = OVERDUE_BUCKETS.has(selectedBucket) ? 'OVERDUE' : 'OPEN';
+  const isOverdueBucket = OVERDUE_BUCKETS.has(selectedBucket);
+  const seeMoreStatus = isOverdueBucket ? 'OVERDUE' : 'OPEN';
 
   return (
     <div className="flex flex-col gap-6">
@@ -80,6 +83,7 @@ export function DashboardPanel({
         rows={filteredCharges}
         timezone={timezone}
         seeMoreHref={`/charges?status=${seeMoreStatus}`}
+        seeMoreLabel={isOverdueBucket ? 'ver cobranças em atraso' : 'ver todas'}
       />
       <div className="rounded border border-border bg-surface p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">Recebido no mês</p>

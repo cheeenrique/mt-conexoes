@@ -4,6 +4,8 @@
 // (05-reuso.md) manda extrair na 3ª ocorrência. `lib/` é o destino correto
 // porque isso é apresentação, sem regra de negócio.
 
+import type { DueDateBucket } from '@/core/due-date-buckets';
+
 export const CYCLE_OPTIONS = [
   { value: 'MONTHLY', label: 'Mensal' },
   { value: 'QUARTERLY', label: 'Trimestral' },
@@ -56,7 +58,7 @@ export const DUNNING_STATUS_LABELS: Record<string, string> = {
   PAUSED: 'Pausada',
 };
 
-export const DUE_DATE_BUCKET_LABELS: Record<string, string> = {
+export const DUE_DATE_BUCKET_LABELS: Record<DueDateBucket, string> = {
   'D-5': 'D-5',
   'D-2': 'D-2',
   'D0': 'HOJE',

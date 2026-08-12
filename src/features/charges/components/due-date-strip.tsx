@@ -27,10 +27,10 @@ export function DueDateStrip({
           return (
             <Link
               key={bucket.key}
-              href={`?bucket=${bucket.key}`}
+              href={`?bucket=${encodeURIComponent(bucket.key)}`}
               aria-current={isSelected ? 'true' : undefined}
-              className={`flex min-w-[120px] flex-1 flex-col gap-1 border-r border-border p-4 last:border-r-0 ${
-                isSelected ? 'bg-surface-raised' : 'hover:bg-surface-raised/50'
+              className={`flex min-w-[120px] flex-1 flex-col gap-1 border-r border-b-2 border-border p-4 last:border-r-0 ${
+                isSelected ? 'border-b-brand bg-surface-elevated' : 'border-b-transparent hover:bg-surface-elevated/50'
               }`}
             >
               <span className={`text-xs font-semibold uppercase tracking-wide ${ZONE_STYLE[bucket.key]}`}>
