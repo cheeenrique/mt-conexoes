@@ -35,16 +35,15 @@ Reaproveita `marginPercent` (já existe, já testado). `alertPercent` decide o l
 // src/features/subscriptions/queries.ts — adiciona
 export type MarginAlertSummary = { negativeCount: number; belowThresholdCount: number };
 
-export async function getMarginAlertSummary(): Promise<MarginAlertSummary> {
-  const [subscriptions, settings] = await Promise.all([
-    db.subscription.findMany({
-      where: { status: 'ACTIVE' },
-      select: { priceCents: true, costCents: true },
-    }),
-    getSettings(),
-  ]);
+/** `alertPercent` entra por parâmetro — subscriptions/ não importa features/settings
+ *  (uma feature não importa de outra). Quem compõe (page.tsx) já chama getSettings()
+ *  pra outra coisa e repassa o valor, mesmo padrão do getDueDateOverview do dashboard. */
+export async function getMarginAlertSummary(alertPercent: Decimal): Promise<MarginAlertSummary> {
+  const subscriptions = await db.subscription.findMany({
+    where: { status: 'ACTIVE' },
+    select: { priceCents: true, costCents: true },
+  });
 
-  const alertPercent = new Decimal(settings.marginAlertPercent);
   const statuses = subscriptions.map((s) => classifySubscriptionMargin(s.priceCents, s.costCents, alertPercent));
 
   return {
@@ -89,7 +88,7 @@ Tokens (`border-danger`/`bg-danger`, `border-warning`/`bg-warning`) já existem 
 
 ### Wiring
 
-`src/app/(app)/page.tsx`: busca `getMarginAlertSummary()` em paralelo com o resto, renderiza `<MarginAlertBanner>` logo antes do `<OperatorAlerts>` (ambos são a seção de alertas, no fim da página).
+`src/app/(app)/page.tsx`: já chama `getSettings()`. Passa `new Decimal(settings.marginAlertPercent)` pra `getMarginAlertSummary(...)`, buscado em paralelo com o resto via `Promise.all`. Renderiza `<MarginAlertBanner>` logo antes do `<OperatorAlerts>` (ambos são a seção de alertas, no fim da página).
 
 ## Testes
 
