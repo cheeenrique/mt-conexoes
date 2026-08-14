@@ -47,3 +47,21 @@ export async function updateSupplier(id: string, input: SupplierInput) {
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
 }
+
+export async function applyBulkPriceAdjustment(supplierId: string): Promise<{ count: number }> {
+  return db.$transaction(async (tx) => {
+    const supplier = await tx.supplier.findUniqueOrThrow({ where: { id: supplierId } });
+    const subscriptions = await tx.subscription.findMany({ where: { supplierId, status: 'ACTIVE' } });
+
+    for (const sub of subscriptions) {
+      const delta = supplier.unitCostCents - sub.costCents;
+      const newPriceCents = sub.priceCents + delta;
+      await tx.subscription.update({
+        where: { id: sub.id },
+        data: { costCents: supplier.unitCostCents, priceCents: newPriceCents < 0n ? 0n : newPriceCents },
+      });
+    }
+
+    return { count: subscriptions.length };
+  });
+}
