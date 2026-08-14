@@ -12,6 +12,12 @@ export class SupplierNameTakenError extends DomainError {
   }
 }
 
+export class BulkAdjustStaleError extends DomainError {
+  constructor(cause?: unknown) {
+    super('O custo do fornecedor mudou desde a última revisão. Feche e abra o reajuste de novo.', 'BULK_ADJUST_STALE', { cause });
+  }
+}
+
 export async function createSupplier(input: SupplierInput) {
   try {
     return await db.supplier.create({
@@ -49,21 +55,38 @@ function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
 }
 
-export async function applyBulkPriceAdjustment(supplierId: string): Promise<{ count: number }> {
-  return db.$transaction(async (tx) => {
-    const supplier = await tx.supplier.findUniqueOrThrow({ where: { id: supplierId } });
-    const subscriptions = await tx.subscription.findMany({ where: { supplierId, status: 'ACTIVE' } });
+const BULK_ADJUST_CHUNK_SIZE = 500;
 
-    for (const sub of subscriptions) {
-      await tx.subscription.update({
-        where: { id: sub.id },
-        data: {
-          costCents: supplier.unitCostCents,
-          priceCents: resolveAdjustedPriceCents(sub.priceCents, sub.costCents, supplier.unitCostCents),
-        },
-      });
-    }
+export async function applyBulkPriceAdjustment(
+  supplierId: string,
+  expectedOldUnitCostCents: bigint,
+  expectedNewUnitCostCents: bigint,
+): Promise<{ count: number }> {
+  const supplier = await db.supplier.findUniqueOrThrow({ where: { id: supplierId } });
 
-    return { count: subscriptions.length };
+  if (expectedNewUnitCostCents <= expectedOldUnitCostCents || supplier.unitCostCents !== expectedNewUnitCostCents) {
+    throw new BulkAdjustStaleError();
+  }
+
+  const subscriptions = await db.subscription.findMany({
+    where: { supplierId, status: 'ACTIVE' },
+    select: { id: true, priceCents: true, costCents: true },
   });
+
+  for (let i = 0; i < subscriptions.length; i += BULK_ADJUST_CHUNK_SIZE) {
+    const chunk = subscriptions.slice(i, i + BULK_ADJUST_CHUNK_SIZE);
+    await db.$transaction(async (tx) => {
+      for (const sub of chunk) {
+        await tx.subscription.update({
+          where: { id: sub.id },
+          data: {
+            costCents: supplier.unitCostCents,
+            priceCents: resolveAdjustedPriceCents(sub.priceCents, sub.costCents, supplier.unitCostCents),
+          },
+        });
+      }
+    });
+  }
+
+  return { count: subscriptions.length };
 }

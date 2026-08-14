@@ -41,6 +41,7 @@ export function SupplierDrawer({
   });
 
   const [bulkRows, setBulkRows] = useState<BulkAdjustPreviewRow[] | null>(null);
+  const [bulkCost, setBulkCost] = useState<{ oldUnitCostCents: string; newUnitCostCents: string } | null>(null);
 
   async function onSubmit(values: FormValues) {
     const result = supplier
@@ -59,6 +60,9 @@ export function SupplierDrawer({
       const preview = await getBulkAdjustPreviewAction(supplier.id);
       if ('ok' in preview && preview.rows.length > 0) {
         setBulkRows(preview.rows);
+        setBulkCost({ oldUnitCostCents: supplier.unitCostCents, newUnitCostCents: values.unitCostCents });
+      } else if ('error' in preview) {
+        toastError(preview.error);
       }
     }
   }
@@ -112,11 +116,13 @@ export function SupplierDrawer({
           </form>
         </DialogContent>
       </Dialog>
-      {bulkRows && supplier && (
+      {bulkRows && bulkCost && supplier && (
         <BulkAdjustDialog
-          open={bulkRows.length > 0}
+          open={true}
           onOpenChange={(open) => !open && setBulkRows(null)}
           supplierId={supplier.id}
+          oldUnitCostCents={bulkCost.oldUnitCostCents}
+          newUnitCostCents={bulkCost.newUnitCostCents}
           rows={bulkRows}
         />
       )}

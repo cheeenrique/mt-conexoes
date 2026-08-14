@@ -15,11 +15,15 @@ export function BulkAdjustDialog({
   open,
   onOpenChange,
   supplierId,
+  oldUnitCostCents,
+  newUnitCostCents,
   rows,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   supplierId: string;
+  oldUnitCostCents: string;
+  newUnitCostCents: string;
   rows: BulkAdjustPreviewRow[];
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -29,7 +33,7 @@ export function BulkAdjustDialog({
     if (isApplying) return;
     setIsApplying(true);
     try {
-      const result = await applyBulkAdjustAction(supplierId);
+      const result = await applyBulkAdjustAction(supplierId, oldUnitCostCents, newUnitCostCents);
       if ('error' in result) {
         toastError(result.error);
         return;
@@ -37,6 +41,8 @@ export function BulkAdjustDialog({
       toastSuccess(`Reajuste aplicado em ${result.count} assinatura(s).`);
       setConfirmOpen(false);
       onOpenChange(false);
+    } catch {
+      toastError({ code: 'UNEXPECTED_ERROR', message: 'Falha inesperada ao aplicar o reajuste. Tente novamente.' });
     } finally {
       setIsApplying(false);
     }
@@ -53,7 +59,7 @@ export function BulkAdjustDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent>
+        <DialogContent className="w-[640px] bg-surface">
           <DialogHeader>
             <DialogTitle>Custo subiu — {rows.length} assinatura(s) afetada(s)</DialogTitle>
           </DialogHeader>

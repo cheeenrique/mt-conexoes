@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
-import { applyBulkPriceAdjustment } from './service';
+import { applyBulkPriceAdjustment, BulkAdjustStaleError } from './service';
 
 let supplierId: string;
 let customerId: string;
@@ -29,7 +29,7 @@ describe('applyBulkPriceAdjustment', () => {
       },
     });
 
-    const result = await applyBulkPriceAdjustment(supplierId);
+    const result = await applyBulkPriceAdjustment(supplierId, 3_000n, 5_000n);
 
     expect(result.count).toBe(1);
     const updated = await db.subscription.findUniqueOrThrow({ where: { id: sub.id } });
@@ -60,7 +60,7 @@ describe('applyBulkPriceAdjustment', () => {
       },
     });
 
-    await applyBulkPriceAdjustment(supplierId);
+    await applyBulkPriceAdjustment(supplierId, 3_000n, 5_000n);
 
     const untouchedCharge = await db.charge.findUniqueOrThrow({ where: { id: charge.id } });
     expect(untouchedCharge.principalCents).toBe(12_000n);
@@ -82,7 +82,7 @@ describe('applyBulkPriceAdjustment', () => {
       },
     });
 
-    const result = await applyBulkPriceAdjustment(supplierId);
+    const result = await applyBulkPriceAdjustment(supplierId, 1_000n, 5_000n);
 
     expect(result.count).toBe(0);
     const unchanged = await db.subscription.findUniqueOrThrow({ where: { id: sub.id } });
@@ -106,9 +106,52 @@ describe('applyBulkPriceAdjustment', () => {
       },
     });
 
-    const result = await applyBulkPriceAdjustment(supplierId);
+    const result = await applyBulkPriceAdjustment(supplierId, 2_000n, 5_000n);
 
     expect(result.count).toBe(0);
+    const unchanged = await db.subscription.findUniqueOrThrow({ where: { id: sub.id } });
+    expect(unchanged.priceCents).toBe(9_000n);
+    expect(unchanged.costCents).toBe(2_000n);
+  });
+
+  it('throws when the supplier cost changed again since the operator last saw the preview (staleness)', async () => {
+    const customer = await db.customer.create({ data: { name: `Cliente Obsoleto ${randomUUID()}` } });
+    customerId = customer.id;
+    const supplier = await db.supplier.create({ data: { name: `Fornecedor Obsoleto ${randomUUID()}`, unitCostCents: 5_000n } });
+    supplierId = supplier.id;
+
+    const sub = await db.subscription.create({
+      data: {
+        customerId, supplierId,
+        priceCents: 9_000n, costCents: 2_000n, cycle: 'MONTHLY',
+        nextDueAt: new Date('2026-09-13T02:59:59.000Z'),
+      },
+    });
+
+    // expectedNewUnitCostCents (6_000n) não bate com o custo atual do fornecedor (5_000n) — operador viu preview desatualizado.
+    await expect(applyBulkPriceAdjustment(supplierId, 3_000n, 6_000n)).rejects.toThrow(BulkAdjustStaleError);
+
+    const unchanged = await db.subscription.findUniqueOrThrow({ where: { id: sub.id } });
+    expect(unchanged.priceCents).toBe(9_000n);
+    expect(unchanged.costCents).toBe(2_000n);
+  });
+
+  it('throws when expectedNewUnitCostCents is not greater than expectedOldUnitCostCents (not a genuine increase)', async () => {
+    const customer = await db.customer.create({ data: { name: `Cliente NaoAumento ${randomUUID()}` } });
+    customerId = customer.id;
+    const supplier = await db.supplier.create({ data: { name: `Fornecedor NaoAumento ${randomUUID()}`, unitCostCents: 5_000n } });
+    supplierId = supplier.id;
+
+    const sub = await db.subscription.create({
+      data: {
+        customerId, supplierId,
+        priceCents: 9_000n, costCents: 2_000n, cycle: 'MONTHLY',
+        nextDueAt: new Date('2026-09-13T02:59:59.000Z'),
+      },
+    });
+
+    await expect(applyBulkPriceAdjustment(supplierId, 5_000n, 5_000n)).rejects.toThrow(BulkAdjustStaleError);
+
     const unchanged = await db.subscription.findUniqueOrThrow({ where: { id: sub.id } });
     expect(unchanged.priceCents).toBe(9_000n);
     expect(unchanged.costCents).toBe(2_000n);

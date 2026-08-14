@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { supplierSchema } from './schema';
 import { createSupplier, updateSupplier, applyBulkPriceAdjustment } from './service';
 import { listBulkAdjustPreview, type BulkAdjustPreviewRow } from './queries';
@@ -11,6 +12,8 @@ import { messages } from '@/lib/messages';
 
 type ActionResult = { ok: true } | { error: { code: string; message: string } };
 type ActionError = { error: { code: string; message: string } };
+
+const bulkAdjustCentsSchema = z.string().regex(/^\d+$/, 'Custo inválido.');
 
 export async function createSupplierAction(input: unknown): Promise<ActionResult> {
   try {
@@ -63,11 +66,19 @@ export async function getBulkAdjustPreviewAction(
 }
 
 export async function applyBulkAdjustAction(
-  supplierId: string
+  supplierId: string,
+  oldUnitCostCents: unknown,
+  newUnitCostCents: unknown,
 ): Promise<{ ok: true; count: number } | ActionError> {
   try {
     await requireSession();
-    const result = await applyBulkPriceAdjustment(supplierId);
+    const parsedOld = bulkAdjustCentsSchema.safeParse(oldUnitCostCents);
+    const parsedNew = bulkAdjustCentsSchema.safeParse(newUnitCostCents);
+    if (!parsedOld.success || !parsedNew.success) {
+      return { error: { code: 'VALIDATION', message: messages.common.invalidInput } };
+    }
+
+    const result = await applyBulkPriceAdjustment(supplierId, BigInt(parsedOld.data), BigInt(parsedNew.data));
     revalidatePath('/suppliers');
     return { ok: true as const, count: result.count };
   } catch (err) {

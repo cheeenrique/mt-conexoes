@@ -60,7 +60,7 @@ export async function listBulkAdjustPreview(supplierId: string): Promise<BulkAdj
   const supplier = await db.supplier.findUniqueOrThrow({ where: { id: supplierId } });
   const subscriptions = await db.subscription.findMany({
     where: { supplierId, status: 'ACTIVE' },
-    include: { customer: { select: { name: true } } },
+    select: { id: true, priceCents: true, costCents: true, customer: { select: { name: true } } },
   });
 
   return subscriptions.map((sub) => ({
