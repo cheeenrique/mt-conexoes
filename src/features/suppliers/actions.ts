@@ -2,13 +2,15 @@
 
 import { revalidatePath } from 'next/cache';
 import { supplierSchema } from './schema';
-import { createSupplier, updateSupplier } from './service';
+import { createSupplier, updateSupplier, applyBulkPriceAdjustment } from './service';
+import { listBulkAdjustPreview, type BulkAdjustPreviewRow } from './queries';
 import { requireSession } from '@/features/auth/service';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';
 
 type ActionResult = { ok: true } | { error: { code: string; message: string } };
+type ActionError = { error: { code: string; message: string } };
 
 export async function createSupplierAction(input: unknown): Promise<ActionResult> {
   try {
@@ -42,6 +44,35 @@ export async function updateSupplierAction(id: string, input: unknown): Promise<
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
     logger.error({ route: 'suppliers.update', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+export async function getBulkAdjustPreviewAction(
+  supplierId: string
+): Promise<{ ok: true; rows: BulkAdjustPreviewRow[] } | ActionError> {
+  try {
+    await requireSession();
+    const rows = await listBulkAdjustPreview(supplierId);
+    return { ok: true as const, rows };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'suppliers.bulkAdjustPreview', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+export async function applyBulkAdjustAction(
+  supplierId: string
+): Promise<{ ok: true; count: number } | ActionError> {
+  try {
+    await requireSession();
+    const result = await applyBulkPriceAdjustment(supplierId);
+    revalidatePath('/suppliers');
+    return { ok: true as const, count: result.count };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'suppliers.bulkAdjust', error: String(err), stack: err instanceof Error ? err.stack : undefined });
     return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
   }
 }
