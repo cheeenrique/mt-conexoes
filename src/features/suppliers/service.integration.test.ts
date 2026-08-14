@@ -90,4 +90,27 @@ describe('applyBulkPriceAdjustment', () => {
     await db.subscription.delete({ where: { id: sub.id } });
     await db.supplier.delete({ where: { id: otherSupplier.id } });
   });
+
+  it('does not touch a SUSPENDED subscription of the same supplier', async () => {
+    const customer = await db.customer.create({ data: { name: `Cliente Suspenso ${randomUUID()}` } });
+    customerId = customer.id;
+    const supplier = await db.supplier.create({ data: { name: `Fornecedor Suspenso ${randomUUID()}`, unitCostCents: 5_000n } });
+    supplierId = supplier.id;
+
+    const sub = await db.subscription.create({
+      data: {
+        customerId, supplierId,
+        priceCents: 9_000n, costCents: 2_000n, cycle: 'MONTHLY',
+        nextDueAt: new Date('2026-09-13T02:59:59.000Z'),
+        status: 'SUSPENDED',
+      },
+    });
+
+    const result = await applyBulkPriceAdjustment(supplierId);
+
+    expect(result.count).toBe(0);
+    const unchanged = await db.subscription.findUniqueOrThrow({ where: { id: sub.id } });
+    expect(unchanged.priceCents).toBe(9_000n);
+    expect(unchanged.costCents).toBe(2_000n);
+  });
 });

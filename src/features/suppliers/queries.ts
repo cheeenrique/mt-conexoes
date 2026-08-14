@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { resolveAdjustedPriceCents } from '@/core/money';
 
 export interface SupplierDTO {
   id: string;
@@ -62,16 +63,12 @@ export async function listBulkAdjustPreview(supplierId: string): Promise<BulkAdj
     include: { customer: { select: { name: true } } },
   });
 
-  return subscriptions.map((sub) => {
-    const delta = supplier.unitCostCents - sub.costCents;
-    const newPriceCents = sub.priceCents + delta;
-    return {
-      subscriptionId: sub.id,
-      customerName: sub.customer.name,
-      oldCostCents: sub.costCents.toString(),
-      newCostCents: supplier.unitCostCents.toString(),
-      oldPriceCents: sub.priceCents.toString(),
-      newPriceCents: (newPriceCents < 0n ? 0n : newPriceCents).toString(),
-    };
-  });
+  return subscriptions.map((sub) => ({
+    subscriptionId: sub.id,
+    customerName: sub.customer.name,
+    oldCostCents: sub.costCents.toString(),
+    newCostCents: supplier.unitCostCents.toString(),
+    oldPriceCents: sub.priceCents.toString(),
+    newPriceCents: resolveAdjustedPriceCents(sub.priceCents, sub.costCents, supplier.unitCostCents).toString(),
+  }));
 }

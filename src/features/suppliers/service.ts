@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
+import { resolveAdjustedPriceCents } from '@/core/money';
 import type { z } from 'zod';
 import type { supplierSchema } from './schema';
 
@@ -54,11 +55,12 @@ export async function applyBulkPriceAdjustment(supplierId: string): Promise<{ co
     const subscriptions = await tx.subscription.findMany({ where: { supplierId, status: 'ACTIVE' } });
 
     for (const sub of subscriptions) {
-      const delta = supplier.unitCostCents - sub.costCents;
-      const newPriceCents = sub.priceCents + delta;
       await tx.subscription.update({
         where: { id: sub.id },
-        data: { costCents: supplier.unitCostCents, priceCents: newPriceCents < 0n ? 0n : newPriceCents },
+        data: {
+          costCents: supplier.unitCostCents,
+          priceCents: resolveAdjustedPriceCents(sub.priceCents, sub.costCents, supplier.unitCostCents),
+        },
       });
     }
 

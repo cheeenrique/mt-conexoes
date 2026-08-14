@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import Decimal from 'decimal.js';
-import { applyPercent, divRoundHalfUp, marginPercent, classifySubscriptionMargin } from './money';
+import {
+  applyPercent,
+  divRoundHalfUp,
+  marginPercent,
+  classifySubscriptionMargin,
+  resolveAdjustedPriceCents,
+} from './money';
 
 describe('divRoundHalfUp', () => {
   it('arredonda 5/2 para cima (half up)', () => {
@@ -68,5 +74,19 @@ describe('classifySubscriptionMargin', () => {
 
   it('margin well above the threshold is ok', () => {
     expect(classifySubscriptionMargin(10_000n, 2_000n, new Decimal('30'))).toBe('ok');
+  });
+});
+
+describe('resolveAdjustedPriceCents', () => {
+  it('cost increase raises price by the same delta', () => {
+    expect(resolveAdjustedPriceCents(12_000n, 3_000n, 5_000n)).toBe(14_000n);
+  });
+
+  it('cost decrease lowers price by the same delta', () => {
+    expect(resolveAdjustedPriceCents(12_000n, 5_000n, 3_000n)).toBe(10_000n);
+  });
+
+  it('a cost decrease larger than the old price clamps the new price to zero', () => {
+    expect(resolveAdjustedPriceCents(1_000n, 50_000n, 500n)).toBe(0n);
   });
 });

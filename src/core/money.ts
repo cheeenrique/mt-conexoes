@@ -21,6 +21,13 @@ export function marginPercent(revenueCents: bigint, costCents: bigint): Decimal 
     .times(100);
 }
 
+/** Novo preço mantendo o markup absoluto quando o custo muda — nunca abaixo de zero. */
+export function resolveAdjustedPriceCents(oldPriceCents: bigint, oldCostCents: bigint, newCostCents: bigint): bigint {
+  const delta = newCostCents - oldCostCents;
+  const newPriceCents = oldPriceCents + delta;
+  return newPriceCents < 0n ? 0n : newPriceCents;
+}
+
 export type MarginStatus = 'negative' | 'below_threshold' | 'ok';
 
 /** revenueCents ≤ costCents é sempre 'negative', mesmo quando marginPercent devolveria null
