@@ -45,3 +45,33 @@ export async function listActiveSuppliersForSelect(): Promise<{ id: string; name
     orderBy: { name: 'asc' },
   });
 }
+
+export type BulkAdjustPreviewRow = {
+  subscriptionId: string;
+  customerName: string;
+  oldCostCents: string;
+  newCostCents: string;
+  oldPriceCents: string;
+  newPriceCents: string;
+};
+
+export async function listBulkAdjustPreview(supplierId: string): Promise<BulkAdjustPreviewRow[]> {
+  const supplier = await db.supplier.findUniqueOrThrow({ where: { id: supplierId } });
+  const subscriptions = await db.subscription.findMany({
+    where: { supplierId, status: 'ACTIVE' },
+    include: { customer: { select: { name: true } } },
+  });
+
+  return subscriptions.map((sub) => {
+    const delta = supplier.unitCostCents - sub.costCents;
+    const newPriceCents = sub.priceCents + delta;
+    return {
+      subscriptionId: sub.id,
+      customerName: sub.customer.name,
+      oldCostCents: sub.costCents.toString(),
+      newCostCents: supplier.unitCostCents.toString(),
+      oldPriceCents: sub.priceCents.toString(),
+      newPriceCents: (newPriceCents < 0n ? 0n : newPriceCents).toString(),
+    };
+  });
+}
