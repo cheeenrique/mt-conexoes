@@ -31,7 +31,7 @@ export type ConsolidatedMessage = {
 };
 
 /** Agrupa passos pendentes por cliente — no máximo 1 mensagem por customerId. */
-export function consolidate(pending: PendingStep[], _timezone: string): ConsolidatedMessage[] {
+export function consolidate(pending: PendingStep[]): ConsolidatedMessage[] {
   const byCustomer = new Map<string, PendingStep[]>();
   for (const step of pending) {
     const group = byCustomer.get(step.customerId) ?? [];

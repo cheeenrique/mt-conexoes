@@ -67,6 +67,19 @@ export function firstDueDate(params: { startedAt: Date; cycle: BillingCycle; tim
   return computeDueDate(local, params.cycle, params.timezone);
 }
 
+/**
+ * Início (inclusive) e fim (exclusivo) do dia de `instant`, em UTC, no fuso do
+ * negócio. É o recorte que o SQL usa para separar "em atraso" (`dueAt < from`)
+ * de "vence hoje" (`from <= dueAt < to`) sem repetir a regra de fuso dentro da
+ * query — o mesmo corte que `daysFromDue` faz em memória.
+ */
+export function localDayBoundsUtc(instant: Date, timezone: string): { from: Date; to: Date } {
+  const local = new TZDate(instant, timezone);
+  const from = startOfLocalDay(local.getFullYear(), local.getMonth(), local.getDate(), timezone);
+  const to = startOfLocalDay(local.getFullYear(), local.getMonth(), local.getDate() + 1, timezone);
+  return { from, to };
+}
+
 /** Início (inclusive) e fim (exclusivo) do mês, em UTC, no fuso do negócio. */
 export function monthBoundsUtc(year: number, month: number, timezone: string): { from: Date; to: Date } {
   const from = new TZDate(year, month, 1, 0, 0, 0, 0, timezone);

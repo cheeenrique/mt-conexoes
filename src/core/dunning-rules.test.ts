@@ -41,7 +41,7 @@ describe('consolidate', () => {
     const pending: PendingStep[] = [
       { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}, {{cobranca.valor}}', netCents: '6000', context: CONTEXT },
     ];
-    const result = consolidate(pending, 'America/Sao_Paulo');
+    const result = consolidate(pending);
     expect(result).toHaveLength(1);
     expect(result[0].customerId).toBe('c1');
     expect(result[0].toPhone).toBe('+5511999990000');
@@ -56,7 +56,7 @@ describe('consolidate', () => {
       { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch2', stepId: 's2', offsetDays: 3, templateBody: 'ÚLTIMO AVISO {{cliente.primeiro_nome}}, {{cobranca.valor}} atrasada', netCents: '5000', context: { ...CONTEXT, 'cobranca.valor': 'R$ 50,00' } },
       { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch3', stepId: 's3', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}, {{cobranca.valor}}', netCents: '4000', context: { ...CONTEXT, 'cobranca.valor': 'R$ 40,00' } },
     ];
-    const result = consolidate(pending, 'America/Sao_Paulo');
+    const result = consolidate(pending);
     expect(result).toHaveLength(1);
     // usa o template do passo de maior offsetDays (mais atrasado) como base, sem sufixo — caller formata
     expect(result[0].body).toBe('ÚLTIMO AVISO João, R$ 50,00 atrasada');
@@ -71,7 +71,7 @@ describe('consolidate', () => {
       { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}', netCents: '6000', context: CONTEXT },
       { customerId: 'c2', toPhone: '+5511999990001', chargeId: 'ch2', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}', netCents: '6000', context: CONTEXT },
     ];
-    const result = consolidate(pending, 'America/Sao_Paulo');
+    const result = consolidate(pending);
     expect(result).toHaveLength(2);
   });
 });

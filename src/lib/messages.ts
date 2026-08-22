@@ -39,6 +39,7 @@ export const messages = {
     activated: 'Canal ativado.',
     deactivated: 'Canal desativado.',
     defaultSet: 'Canal definido como padrão.',
+    unpaired: 'Aparelho desconectado.',
   },
   dunning: {
     stepCreated: 'Passo criado.',

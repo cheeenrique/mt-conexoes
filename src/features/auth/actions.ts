@@ -16,8 +16,10 @@ export async function loginAction(input: unknown): Promise<AuthResult> {
     const parsed = loginSchema.safeParse(input);
     if (!parsed.success) return { error: { code: 'VALIDATION', message: messages.auth.invalidInput } };
 
-    const ip = getClientIp((await headers()).get('x-forwarded-for'));
-    const token = await login({ ...parsed.data, ip });
+    const requestHeaders = await headers();
+    const ip = getClientIp(requestHeaders.get('x-forwarded-for'));
+    const userAgent = requestHeaders.get('user-agent') ?? undefined;
+    const token = await login({ ...parsed.data, ip, userAgent });
     await setSessionCookie(token);
     return { ok: true as const };
   } catch (err) {

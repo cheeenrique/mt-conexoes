@@ -30,6 +30,22 @@ export function resolveAdjustedPriceCents(oldPriceCents: bigint, oldCostCents: b
 
 export type MarginStatus = 'negative' | 'below_threshold' | 'ok';
 
+export type MarginTone = 'healthy' | 'tight' | 'critical';
+
+const MARGIN_TONE_HEALTHY_FLOOR = new Decimal(40);
+const MARGIN_TONE_TIGHT_FLOOR = new Decimal(15);
+
+/** Régua fixa de cor de margem usada em toda tela que lista fornecedor, plano
+ *  ou assinatura (40% saudável, 15–39% apertada, abaixo crítica). Não confundir
+ *  com `classifySubscriptionMargin`: aquela decide alerta com o limite
+ *  configurável de `Settings.marginAlertPercent`; esta é fixa, só decoração. */
+export function classifyMarginTone(margin: Decimal | null): MarginTone | null {
+  if (margin === null) return null;
+  if (margin.greaterThanOrEqualTo(MARGIN_TONE_HEALTHY_FLOOR)) return 'healthy';
+  if (margin.greaterThanOrEqualTo(MARGIN_TONE_TIGHT_FLOOR)) return 'tight';
+  return 'critical';
+}
+
 /** revenueCents ≤ costCents é sempre 'negative', mesmo quando marginPercent devolveria null
  *  (receita zero). alertPercent vem de Settings.marginAlertPercent, nunca hardcoded. */
 export function classifySubscriptionMargin(
@@ -40,4 +56,28 @@ export function classifySubscriptionMargin(
   if (revenueCents - costCents <= 0n) return 'negative';
   const margin = marginPercent(revenueCents, costCents)!; // revenueCents > 0 aqui — nunca null
   return margin.lessThan(alertPercent) ? 'below_threshold' : 'ok';
+}
+
+/** Converte um valor decimal digitado para centavos. Espera ponto como separador
+ *  decimal — é o formato que o `unmaskedValue` do imask sempre devolve, mesmo com
+ *  `radix: ','` configurado na máscara (ver `CurrencyInput`). Arredonda round half
+ *  up, uma vez, no fim, se aparecer mais de 2 casas fracionárias. */
+export function parseDecimalStringToCents(decimal: string): string {
+  const trimmed = decimal.trim();
+  if (trimmed === '') return '0';
+
+  const negative = trimmed.startsWith('-');
+  const unsigned = negative ? trimmed.slice(1) : trimmed;
+  const [integerPart, fractionalPart = ''] = unsigned.split('.');
+
+  const integerDigits = integerPart.replace(/\D/g, '') || '0';
+  const fractionalDigits = fractionalPart.replace(/\D/g, '');
+
+  const fractionalCents =
+    fractionalDigits.length <= 2
+      ? BigInt(fractionalDigits.padEnd(2, '0') || '00')
+      : divRoundHalfUp(BigInt(fractionalDigits), 10n ** BigInt(fractionalDigits.length - 2));
+
+  const cents = BigInt(integerDigits) * 100n + fractionalCents;
+  return negative && cents !== 0n ? String(-cents) : String(cents);
 }

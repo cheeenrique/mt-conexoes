@@ -5,6 +5,7 @@ import {
   firstDueDate,
   isWithinLocalHourRange,
   localDateOnly,
+  localDayBoundsUtc,
   monthBoundsUtc,
   nextDueDate,
   nextQuietHourStart,
@@ -220,5 +221,34 @@ describe('nextQuietHourStart', () => {
     const now = new Date('2026-09-01T00:00:00Z'); // 21h local de 31/08
     const result = nextQuietHourStart(now, 8, 20, TZ);
     expect(result.toISOString()).toBe(new Date('2026-09-01T11:00:00Z').toISOString()); // 08h local de 01/09
+  });
+});
+
+describe('localDayBoundsUtc', () => {
+  const TZ = 'America/Sao_Paulo';
+
+  it('recorta o dia local, não o dia UTC', () => {
+    // 02:00 UTC de 22/08 ainda é 23:00 de 21/08 em São Paulo.
+    const { from, to } = localDayBoundsUtc(new Date('2026-08-22T02:00:00Z'), TZ);
+    expect(from.toISOString()).toBe('2026-08-21T03:00:00.000Z');
+    expect(to.toISOString()).toBe('2026-08-22T03:00:00.000Z');
+  });
+
+  it('vira o mês no último dia', () => {
+    const { from, to } = localDayBoundsUtc(new Date('2026-01-31T15:00:00Z'), TZ);
+    expect(from.toISOString()).toBe('2026-01-31T03:00:00.000Z');
+    expect(to.toISOString()).toBe('2026-02-01T03:00:00.000Z');
+  });
+
+  it('vira o ano em 31/12', () => {
+    const { from, to } = localDayBoundsUtc(new Date('2026-12-31T15:00:00Z'), TZ);
+    expect(from.toISOString()).toBe('2026-12-31T03:00:00.000Z');
+    expect(to.toISOString()).toBe('2027-01-01T03:00:00.000Z');
+  });
+
+  it('cobre 29/02 em ano bissexto', () => {
+    const { from, to } = localDayBoundsUtc(new Date('2028-02-29T15:00:00Z'), TZ);
+    expect(from.toISOString()).toBe('2028-02-29T03:00:00.000Z');
+    expect(to.toISOString()).toBe('2028-03-01T03:00:00.000Z');
   });
 });
