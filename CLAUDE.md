@@ -4,9 +4,24 @@ Guia para o Claude Code neste repositório.
 
 ## Estado atual
 
-Aplicação real em desenvolvimento, não só spec. Next.js + Prisma + Postgres, com testes, lint, typecheck e build de verdade — `pnpm test`, `pnpm test:integration`, `pnpm lint`, `pnpm typecheck`, `pnpm build` todos rodam contra código real. `pnpm dev` sobe o painel.
+Aplicação real, rodando. Next.js 16 (App Router) + React 19 + Prisma + Postgres. `pnpm test`, `pnpm test:integration`, `pnpm lint`, `pnpm typecheck` e `pnpm build` rodam contra código real; `pnpm dev` sobe o painel. Conferido em 22/08/2026: 468 testes unitários e 259 de integração passando (86 arquivos, 17 migrations).
 
-Histórico de cada etapa entregue (design → plano → implementação) fica em [`docs/superpowers/specs/`](docs/superpowers/specs/) e [`docs/superpowers/plans/`](docs/superpowers/plans/), um par de arquivos datado por etapa/feature — é a fonte mais confiável do que já foi implementado.
+**Existe** — as features `auth`, `charges`, `customers`, `dunning`, `leads`, `messaging`, `plans`, `reports`, `settings`, `subscriptions`, `suppliers` em `src/features/`, e as telas Início, Clientes (ficha em gaveta, com modo edição), Cobranças, Mensagens, Réguas (mestre-detalhe), Leads, Relatórios, Fornecedores, Planos, Ajustes (abas Negócio e Canais) e Conta. Crons: `charges-mark-overdue`, `dunning-evaluate`, `messages-dispatch`, `ping`. Rotas públicas: `POST /api/leads`, os webhooks `evolution` e `meta-cloud`, `/api/health`.
+
+Três coisas que a estrutura não deixa óbvias: **assinatura não tem rota própria** — vive na ficha do cliente (`/customers/[id]`); **não existe `/channels`** — canal é a aba `Canais` de `/settings?aba=canais`; e **a régua está em `/dunning`**, não mais em `/regua`. A **importação da planilha é CLI** (`pnpm import:customers <arquivo.xlsx> "<Fornecedor>"`), não tela.
+
+**Dois Postgres locais**, nunca o mesmo: `db` na 5442 (dev) e `db-test` na 5443 (`pnpm test:integration`), com scripts próprios — ver [`prisma/README.md`](prisma/README.md). `infra/evolution/` sobe a stack Docker do canal não oficial, com a imagem fixada; é separada do `docker-compose.yml` da raiz.
+
+**O que ainda não está pronto** — está aqui porque um documento que promete mais do que o código entrega é pior que um desatualizado:
+
+- **`META_CLOUD` é configurável e não entrega.** O adapter monta o POST de template, mas nenhum ponto do despacho preenche `templateRef`: `send()` recusa sempre, com "Passo sem template aprovado". Marcar esse canal como padrão hoje é ficar sem envio.
+- **Pareamento por QR nunca foi visto conectando de verdade** — exige um WhatsApp real lendo o código. O caminho `open` tem teste, não observação.
+- **"Ativar sem descartar a revisão" não dispara retroativo.** `UNIQUE(chargeId, stepId)` impede reprocessar o par, então nenhuma daquelas mensagens sai. O rótulo do botão já é honesto (o handoff chamava de "Enviar todas"); o comportamento certo é decisão de produto em aberto.
+- **Turnstile implementado e desligado por padrão** (`features/leads/turnstile.ts`): sem `TURNSTILE_SECRET_KEY`, passa direto. O rate limit por IP em `lead_attempts` continua valendo.
+- **CORS de `/api/leads` aberto (`*`)** enquanto `LEADS_ALLOWED_ORIGINS` estiver vazia — temporário, até o site ter domínio. Sem `allow-credentials`; quem protege o endpoint é o Zod estrito, o teto de 8 KB no corpo, o rate limit e o Turnstile.
+- **`src/middleware.ts` está depreciado no Next 16** em favor de `proxy.ts` (o build avisa). Ele carrega o guarda de autenticação de todas as rotas — migração pendente.
+
+Histórico de cada etapa entregue (design → plano → implementação) fica em [`docs/superpowers/specs/`](docs/superpowers/specs/) e [`docs/superpowers/plans/`](docs/superpowers/plans/), um par de arquivos datado por etapa/feature. ⚠️ O par mais recente é de 13/08; a leva de 22/08 (Mensagens, Leads, Réguas mestre-detalhe, pareamento por QR, remoção do Salvy, split dos bancos) não tem spec nem plano — para essa parte, `git log --oneline` é a fonte, não `docs/superpowers/`.
 
 ⚠️ **Este arquivo e o `README.md` já ficaram desatualizados antes** — chegaram a dizer "só existe docs/, sem código" com o app inteiro já implementado e rodando, porque múltiplas sessões trabalham em paralelo neste repo (worktrees por etapa) e ninguém atualizou esta seção depois do merge. Antes de assumir o que existe ou não: `git log --oneline -30`, ou olhar `src/features/` e `prisma/schema.prisma` direto. Não repetir esse erro — se implementar algo novo, atualizar este parágrafo no mesmo PR.
 
@@ -37,7 +52,7 @@ Um cliente, R$ 5.000 fechado, 10 semanas, código-fonte entregue.
 
 ⚠️ **Repositórios, domínios e contas de hospedagem separados.** SEO neste nicho é espaço adversarial — deindexação por DMCA acontece sem que se tenha feito nada errado. Domínio de captação penalizado não pode derrubar o painel do cliente. Sem DNS em comum.
 
-A única ligação é o formulário do site chamando `POST /api/leads` do painel. **Endpoint fora do ar faz o formulário cair para o WhatsApp**, nunca para uma tela de erro.
+A única ligação é o formulário do site chamando `POST /api/leads` do painel — já implementado. **Endpoint fora do ar faz o formulário cair para o WhatsApp**, nunca para uma tela de erro.
 
 ## Stack do painel
 
@@ -62,7 +77,8 @@ lib/       ──> Prisma, env
 
 - **`core/` é puro.** Cálculo de vencimento a partir da data de pagamento (com clamp de fim de mês), arredondamento, desconto, margem e avaliação da régua vivem lá, testáveis em milissegundos. Se uma regra financeira precisa de I/O para ser testada, está no lugar errado.
 - **Server Action não contém regra.** Valida com Zod, chama o service, revalida o cache.
-- **Uma feature não importa de outra feature.**
+- **Uma feature não importa de outra feature.** Quem cruza duas features é `app/` — a rota, ou uma action de composição ao lado dela (`app/(app)/customers/ficha-action.ts`, `app/api/cron/dunning-evaluate/route.ts`).
+- **Sessão e configuração moram em `lib/`**, não numa feature: `requireSession()` em `lib/auth.ts`, `getSettings()` em `lib/settings.ts`. Feature nenhuma reexporta os dois.
 - **Nenhum componente cliente recebe `BigInt`.** Converte para string na borda do servidor.
 
 ---
@@ -91,13 +107,15 @@ lib/       ──> Prisma, env
 | Passo da régua | `UNIQUE(chargeId, stepId)` em `dunning_executions` |
 | Uma mensagem por cliente por dia | Índice único parcial em `messages (customerId, scheduledDate)` |
 | Canal padrão único | Índice único parcial em `channel_configs (isDefault)` |
+| Régua padrão única | Índice único parcial em `dunning_rules (isDefault)` |
 
 **Régua — travas**
 - **T5** opt-out é global por customer, em todos os canais. Conferido na avaliação **e** no despacho.
-- **T6** quiet hours 08:00–20:00 no fuso do negócio. Fora da janela, reagenda; não descarta.
+- **T6** quiet hours no fuso do negócio — janela configurável em Ajustes, padrão 08:00–20:00. Fora dela, reagenda; não descarta.
 - **T7** um customer recebe no máximo uma mensagem de cobrança por dia, consolidada.
 - **T8** kill switch com efeito imediato; mensagem parada há mais de 24h vira `CANCELLED` com motivo `stale`.
-- A régua é entregue em `REVIEW` — calcula tudo, não envia nada, até o operador ativar na frente de uma lista.
+- Régua nasce `DRAFT` e o motor nem a avalia. `DRAFT → REVIEW → ACTIVE`, sem atalho: em `REVIEW` calcula tudo e não envia nada, e ativar exige a decisão sobre retroativos na frente da lista real do que sairia hoje.
+- Existem **várias** réguas, uma padrão. O cron avalia só a padrão; **`activateDunningRule` recebe o `id` que o operador tinha na tela**, nunca resolve por `isDefault` — revisar a régua B e ativar a A é silencioso.
 
 **Providers de WhatsApp**
 - Dois adapters: `META_CLOUD` e `EVOLUTION`. O sistema consulta `capabilities`. `SALVY` foi removido do produto — o valor continua no enum do Postgres, sem adapter, e `resolveAdapter` falha alto se alguma linha antiga apontar para ele (ver `prisma/README.md`).
@@ -105,7 +123,8 @@ lib/       ──> Prisma, env
 - **Como conectar** também é declarado pelo adapter, não perguntado à tela: `ChannelDescriptor.connectionMethods` lista os caminhos (`PAIRING` por QR, `CREDENTIALS` coladas à mão), cada um com seus requisitos, passos e campos. A Evolution declara os dois; a Meta, só o manual. Caminho `PAIRING` exige adapter implementando `PairableChannel` (`channels/pairing.ts`) — contrato **opcional**, fora de `ChannelAdapter`, porque a Meta não parea por QR e obrigá-la a lançar violaria LSP.
 - No pareamento, `instanceName` e `webhookToken` são **gerados pelo painel** e viram chaves do blob criptografado. `ChannelConfig.phoneNumber` vem do `wuid` que o `connection.update` reporta ao conectar, nunca de campo digitado.
 - ⚠️ QR e código de pareamento não são persistidos nem logados: Server Action → prop → `<img>`, morrem com o diálogo.
-- Meta Cloud API só entrega **template aprovado** fora da janela de 24h. Passo sem `metaTemplateName` num canal que exige template vira `SKIPPED`, não uma mensagem que não chega.
+- Meta Cloud API só entrega **template aprovado** fora da janela de 24h. Passo sem `metaTemplateName` num canal que exige template vira `SKIPPED` (motivo `template_not_approved`), não uma mensagem que não chega — a trava existe em `dunning/evaluate.ts` e tem produtor.
+- ⚠️ O envio por template em si **não está implementado**: nada preenche `templateRef` no despacho, então `META_CLOUD` recusa todo envio. Ver §Estado atual antes de tratar esse canal como entregável.
 
 **Segurança**
 - Senha de acesso do assinante: AES-256-GCM, mascarada na tela, revelação **auditada** em `credential_reveals`, fora de log, Sentry, export e mensagem. O DTO padrão não inclui o campo.
@@ -138,7 +157,9 @@ Fora dessas áreas: teste junto ou depois, sem cerimônia.
 | Dinheiro | sufixo `Cents`, tipo `BigInt` | `principalCents` |
 | Datas | sufixo `At`, UTC | `dueAt`, `paidAt` |
 | IDs | `uuid` v7 | — |
-| Rotas da UI | inglês, plural | `/suppliers`, `/plans`, `/settings` |
+| Rotas da UI | inglês, plural quando o recurso é contável | `/customers`, `/charges`, `/leads`, `/dunning`, `/settings` |
+
+`/conta` é a única rota ainda em pt-BR — resíduo do rename, não é o padrão a copiar.
 
 **Vocabulário** — `Customer` é o assinante final do cliente. `User` é quem acessa o painel (existe **um**). `Plan` é o pacote comercial. `Supplier` é o fornecedor do crédito revendido. `Charge` é a cobrança de um ciclo; `Payment` é o dinheiro que entrou. Conceito com outro nome em qualquer lugar é bug de nomenclatura.
 
@@ -165,10 +186,15 @@ Estourar é sinal de split por responsabilidade, nunca de subir o limite.
 - Âncora de fim de mês, ciclos, fuso, casos de teste → `docs/projeto/tecnico/03-datas-e-ciclos.md`
 - `BigInt`, arredondamento, lucro, margem em risco, queries → `docs/projeto/tecnico/04-dinheiro-e-margem.md`
 - Criptografia, auth, logs, LGPD, backup → `docs/projeto/tecnico/05-credenciais-e-seguranca.md`
-- Motor da régua, travas, os 3 adapters → `docs/projeto/tecnico/06-regua-e-canais.md`
+- Motor da régua, travas, os adapters de WhatsApp → `docs/projeto/tecnico/06-regua-e-canais.md`
 - Etapas, critérios de pronto, riscos → `docs/projeto/tecnico/07-plano-de-entrega.md`
 - Site: Astro, arquitetura de conteúdo, SEO técnico, conversão, CWV → `docs/projeto/tecnico/08-site.md`
 - Escopo contratado e o que é R$ 150/h → `docs/projeto/comercial/02-precificacao.md`
+- Telas, densidade, estados, escrita da UI → `docs/projeto/design/02-handoff-painel.md` (régua em `03-handoff-regua.md`, marca em `00-marca.md`)
+- Dois bancos locais, SQL manual das migrations, enum sem adapter → [`prisma/README.md`](prisma/README.md)
+- Stack local do canal não oficial (Docker, Caddy, variáveis) → `infra/evolution/README.md`
+
+⚠️ Dois resíduos conhecidos nesses docs: `docs/projeto/README.md` ainda abre com "implementação não iniciada" e chama de "3 adapters" o que hoje são dois, e `docs/projeto/design/02-handoff-painel.md` ainda descreve o canal Salvy. Ignorar esses pontos; o resto dos docs vale.
 
 Marcadores nos docs: ⚠️ = requisito de segurança, não cortável. 🔮 = fora do escopo, **não implementar sem pedido explícito**.
 
