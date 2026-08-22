@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="64" height="64" role="img" aria-label="MT Conexões">
+  <rect width="512" height="512" rx="112" fill="#EA580C"></rect>
+  <g transform="translate(60,54) scale(0.78)" fill="none" stroke="#0B0B0C" stroke-linejoin="miter">
+    <path d="M120 176V66l72 64 76-104 76 104 72-64v110" stroke-width="22"></path>
+    <path d="M142 202c70-22 178-22 248 0" stroke-width="14" stroke-linecap="round"></path>
+    <path d="M96 420V256l92 100 92-100v164" stroke-width="46"></path>
+    <path d="M316 272h140M386 272v168" stroke-width="46"></path>
+  </g>
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="56 30 440 440" width="256" height="256" fill="none" role="img" aria-label="MT Conexões">
+  <path d="M120 176V66l72 64 76-104 76 104 72-64v110" stroke="#EA580C" stroke-width="18" stroke-linejoin="miter"></path>
+  <path d="M142 202c70-22 178-22 248 0" stroke="#EA580C" stroke-width="11" stroke-linecap="round"></path>
+  <path d="M96 420V256l92 100 92-100v164" stroke="#EA580C" stroke-width="40" stroke-linejoin="miter"></path>
+  <path d="M316 272h140M386 272v168" stroke="currentColor" stroke-width="40"></path>
+</svg>

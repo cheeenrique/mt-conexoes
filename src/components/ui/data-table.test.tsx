@@ -22,7 +22,9 @@ describe('DataTable', () => {
       />,
     );
     expect(screen.getByText('Nome')).toBeInTheDocument();
-    expect(screen.getByText('João')).toBeInTheDocument();
+    // Renderiza duas vezes: cartão (<900px) e tabela (≥900px) — CSS decide
+    // qual fica visível, jsdom não avalia media query.
+    expect(screen.getAllByText('João')).toHaveLength(2);
   });
 
   it('mostra emptyState quando não há linhas', () => {

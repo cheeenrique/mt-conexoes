@@ -5,6 +5,7 @@ const TONE_CLASSES = {
   warning: 'bg-warning/[.14] text-warning',
   danger: 'bg-danger/[.12] text-danger',
   neutral: 'bg-surface-elevated text-foreground-muted',
+  brand: 'bg-brand/[.14] text-brand-light',
 } as const;
 
 export function StatusBadge({

@@ -13,4 +13,9 @@ describe('StatusBadge', () => {
     render(<StatusBadge tone="danger">Falha</StatusBadge>);
     expect(screen.getByText('Falha')).toBeInTheDocument();
   });
+
+  it('tom brand aplica a cor de marca', () => {
+    render(<StatusBadge tone="brand">Novo</StatusBadge>);
+    expect(screen.getByText('Novo')).toHaveClass('text-brand-light');
+  });
 });
