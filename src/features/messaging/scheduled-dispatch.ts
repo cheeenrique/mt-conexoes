@@ -1,8 +1,9 @@
-import type { Prisma } from '@prisma/client';
+import type { ChannelConfig, Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { decrypt } from '@/lib/crypto';
 import { isWithinLocalHourRange, nextQuietHourStart, localDateOnly } from '@/core/dates';
-import { resolveAdapter } from './channels/registry';
+import { CHANNEL_PROVIDERS, resolveAdapter, resolveDescriptor } from './channels/registry';
+import { redactSecrets } from './channels/redact';
 import type { ChannelAdapter } from './channels/types';
 import { logger } from '@/lib/logger';
 
@@ -14,16 +15,34 @@ export type DispatchResult = {
   cancelledPaid: number;
   cancelledDedupe: number;
   rescheduled: number;
+  /** Canal padrão fora do ar (`lastCheckOk === false`): mensagem não foi tentada e
+   *  continua PENDING, recuperável se o operador reparear o canal em até 24h (T8 `stale`
+   *  cuida do resto). Sem isso a queda vira "envios pausados" invisível na tela — ver
+   *  antipadrão registrado sobre `scheduled-dispatch.ts:131`. */
+  blockedChannelDown: number;
 };
 
 function emptyResult(): DispatchResult {
-  return { sent: 0, failed: 0, cancelledStale: 0, cancelledOptedOut: 0, cancelledPaid: 0, cancelledDedupe: 0, rescheduled: 0 };
+  return {
+    sent: 0,
+    failed: 0,
+    cancelledStale: 0,
+    cancelledOptedOut: 0,
+    cancelledPaid: 0,
+    cancelledDedupe: 0,
+    rescheduled: 0,
+    blockedChannelDown: 0,
+  };
 }
 
 const BATCH_SIZE = 60;
 const STALE_MS = 24 * 60 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 const OPEN_CHARGE_STATUSES = new Set(['OPEN', 'OVERDUE', 'PARTIALLY_PAID']);
+// Mesma cadência do próprio job (`messages-dispatch`, a cada 15 min entre 08h-20h) —
+// não é um cron novo, é um GET na frente da passada existente. Cobre o caso que
+// `connection.update` estruturalmente não reporta: a VPS/instância inteira fora do ar.
+const HEALTH_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 
 type PendingMessage = Prisma.MessageGetPayload<{ include: { customer: { select: { optedOut: true } } } }>;
 
@@ -40,6 +59,25 @@ async function isFullyPaidOrCancelled(messageId: string): Promise<boolean> {
   });
   if (executions.length === 0) return false;
   return executions.every((e) => !OPEN_CHARGE_STATUSES.has(e.charge.status));
+}
+
+/**
+ * Reconfere a saúde do canal padrão no máximo uma vez por `HEALTH_CHECK_INTERVAL_MS`.
+ * `connection.update` cobre a sessão do WhatsApp cair; isto cobre a VPS inteira cair,
+ * que não emite webhook nenhum. Persiste em `lastCheckAt/lastCheckOk/lastError` — a
+ * mesma tripla que a tela de Canais e o teste manual (`service.ts`) já leem.
+ */
+async function refreshChannelHealth(channelRow: ChannelConfig, adapter: ChannelAdapter, credentials: unknown, now: Date): Promise<boolean> {
+  const dueForCheck = !channelRow.lastCheckAt || now.getTime() - channelRow.lastCheckAt.getTime() >= HEALTH_CHECK_INTERVAL_MS;
+  if (!dueForCheck) return channelRow.lastCheckOk === true;
+
+  const result = await adapter.healthCheck(credentials);
+  const reason = result.ok ? null : redactSecrets(result.reason, credentials, resolveDescriptor(channelRow.provider));
+  await db.channelConfig.update({
+    where: { id: channelRow.id },
+    data: { lastCheckAt: now, lastCheckOk: result.ok, lastError: reason },
+  });
+  return result.ok;
 }
 
 type Outcome = keyof DispatchResult | 'none';
@@ -74,6 +112,7 @@ async function processMessage(
   channelId: string,
   credentials: unknown,
   adapter: ChannelAdapter,
+  channelHealthy: boolean,
 ): Promise<Outcome> {
   if (now.getTime() - msg.createdAt.getTime() > STALE_MS) {
     await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'stale' } });
@@ -93,6 +132,12 @@ async function processMessage(
     await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'charge_closed' } });
     return 'cancelledPaid';
   }
+
+  // Canal fora do ar: não tenta enviar e não queima a mensagem em FAILED — fica PENDING,
+  // recuperável se o operador reparear em até 24h (depois disso o check de `stale` acima,
+  // na próxima passada, cuida do resto). Roda depois de stale/quiet-hour/opt-out/pago:
+  // esses continuam valendo mesmo com o canal caído.
+  if (!channelHealthy) return 'blockedChannelDown';
 
   // Claim atômico: só quem consegue incrementar `attempts` a partir do valor lido pode enviar.
   // Uma segunda execução concorrente (retry do Scheduler, disparo manual, lote lento sobreposto)
@@ -130,7 +175,11 @@ export async function dispatchPendingMessages(now: Date): Promise<DispatchResult
   const settings = await db.settings.findUniqueOrThrow({ where: { id: 'singleton' } });
   if (settings.sendingPaused) return emptyResult();
 
-  const channelRow = await db.channelConfig.findFirst({ where: { isDefault: true, isActive: true } });
+  const channelRow = await db.channelConfig.findFirst({
+    // `SALVY` continua no enum do Postgres sem adapter — linha antiga marcada como padrão
+    // não pode entrar no despacho.
+    where: { isDefault: true, isActive: true, provider: { in: CHANNEL_PROVIDERS } },
+  });
   if (!channelRow) {
     logger.warn({ job: 'messages-dispatch', reason: 'no_default_channel' });
     return emptyResult();
@@ -146,6 +195,8 @@ export async function dispatchPendingMessages(now: Date): Promise<DispatchResult
     return emptyResult();
   }
 
+  const channelHealthy = await refreshChannelHealth(channelRow, adapter, credentials, now);
+
   const messages = await db.message.findMany({
     where: { status: 'PENDING', scheduledFor: { lte: now } },
     orderBy: { createdAt: 'asc' },
@@ -158,11 +209,15 @@ export async function dispatchPendingMessages(now: Date): Promise<DispatchResult
 
   for (const msg of messages) {
     try {
-      const outcome = await processMessage(msg, now, isWithinQuietHours, settings, channelRow.id, credentials, adapter);
+      const outcome = await processMessage(msg, now, isWithinQuietHours, settings, channelRow.id, credentials, adapter, channelHealthy);
       if (outcome !== 'none') result[outcome]++;
     } catch (err) {
       logger.error({ job: 'messages-dispatch', messageId: msg.id, error: String(err) });
     }
+  }
+
+  if (result.blockedChannelDown > 0) {
+    logger.warn({ job: 'messages-dispatch', reason: 'channel_down', channelId: channelRow.id, blockedChannelDown: result.blockedChannelDown });
   }
 
   return result;

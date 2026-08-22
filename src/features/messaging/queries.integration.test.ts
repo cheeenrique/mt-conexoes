@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
-import { listChannelConfigs, listMessagesForCustomer } from './queries';
+import { getChannelDownAlert, listChannelConfigs, listMessagesForCustomer } from './queries';
 
 afterEach(async () => {
   await db.channelConfig.deleteMany({ where: { provider: 'META_CLOUD' } });
 });
 
 describe('listChannelConfigs', () => {
-  it('devolve os 3 providers mesmo sem nenhuma linha no banco', async () => {
+  it('devolve os 2 providers mesmo sem nenhuma linha no banco', async () => {
     const rows = await listChannelConfigs();
 
-    expect(rows).toHaveLength(3);
-    expect(rows.map((r) => r.provider).sort()).toEqual(['EVOLUTION', 'META_CLOUD', 'SALVY']);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.provider).sort()).toEqual(['EVOLUTION', 'META_CLOUD']);
     expect(rows.every((r) => r.configured === false)).toBe(true);
   });
 
@@ -26,6 +26,48 @@ describe('listChannelConfigs', () => {
     expect(meta?.configured).toBe(true);
     expect(meta?.isActive).toBe(true);
     expect(meta).not.toHaveProperty('credentials');
+  });
+});
+
+describe('getChannelDownAlert', () => {
+  afterEach(async () => {
+    await db.channelConfig.deleteMany({ where: { provider: 'EVOLUTION' } });
+  });
+
+  it('null quando não há canal padrão ativo', async () => {
+    expect(await getChannelDownAlert()).toBeNull();
+  });
+
+  it('null quando o canal padrão está saudável (lastCheckOk true ou nunca testado)', async () => {
+    await db.channelConfig.create({
+      data: { provider: 'EVOLUTION', label: 'Evolution API', credentials: 'ciphertext', isActive: true, isDefault: true, lastCheckOk: true },
+    });
+    expect(await getChannelDownAlert()).toBeNull();
+  });
+
+  it('devolve label e disconnectedAt quando o canal padrão está marcado como caído', async () => {
+    const disconnectedAt = new Date('2026-08-20T10:00:00Z');
+    await db.channelConfig.create({
+      data: {
+        provider: 'EVOLUTION', label: 'Evolution API', credentials: 'ciphertext',
+        isActive: true, isDefault: true, lastCheckOk: false, disconnectedAt,
+      },
+    });
+
+    const alert = await getChannelDownAlert();
+
+    expect(alert?.label).toBe('Evolution API');
+    expect(alert?.disconnectedAt).toBe(disconnectedAt.toISOString());
+  });
+
+  it('disconnectedAt null quando a queda foi detectada só pelo healthCheck periódico (sem webhook connection.update)', async () => {
+    await db.channelConfig.create({
+      data: { provider: 'EVOLUTION', label: 'Evolution API', credentials: 'ciphertext', isActive: true, isDefault: true, lastCheckOk: false },
+    });
+
+    const alert = await getChannelDownAlert();
+
+    expect(alert?.disconnectedAt).toBeNull();
   });
 });
 

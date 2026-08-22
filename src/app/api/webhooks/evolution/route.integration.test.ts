@@ -11,12 +11,18 @@ afterEach(async () => {
   await db.channelConfig.deleteMany({ where: { provider: 'EVOLUTION' } });
 });
 
-async function seedChannel() {
+async function seedChannel(overrides: { disconnectedAt?: Date | null } = {}) {
   const credentials = encrypt(
     JSON.stringify({ baseUrl: 'https://evo.example.com', apiKey: 'k', instanceName: 'i', webhookToken: WEBHOOK_TOKEN }),
     'channel.credentials',
   );
-  return db.channelConfig.create({ data: { provider: 'EVOLUTION', label: 'Evo', isActive: true, credentials } });
+  return db.channelConfig.create({
+    data: { provider: 'EVOLUTION', label: 'Evo', isActive: true, credentials, disconnectedAt: overrides.disconnectedAt ?? null },
+  });
+}
+
+function connectionUpdateBody(state: 'open' | 'close' | 'connecting') {
+  return JSON.stringify({ event: 'connection.update', instance: 'principal', data: { instance: 'principal', state } });
 }
 
 describe('POST /api/webhooks/evolution', () => {
@@ -65,5 +71,46 @@ describe('POST /api/webhooks/evolution', () => {
     const customer = await db.customer.findFirstOrThrow({ where: { name: 'Webhook Evo Teste', phone: '+5511999990031' } });
     expect(customer.optedOut).toBe(true);
     await db.message.deleteMany({ where: { customer: { name: 'Webhook Evo Teste' } } });
+  });
+
+  describe('connection.update — canal morto não pode queimar mensagem em silêncio', () => {
+    it('state "close" grava disconnectedAt, devolve 200, e não cria Message nem DunningExecution', async () => {
+      const channel = await seedChannel();
+      const req = new Request('http://localhost/api/webhooks/evolution', {
+        method: 'POST', body: connectionUpdateBody('close'), headers: { apikey: WEBHOOK_TOKEN },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const reloaded = await db.channelConfig.findUniqueOrThrow({ where: { id: channel.id } });
+      expect(reloaded.disconnectedAt).not.toBeNull();
+      const messages = await db.message.findMany({ where: { channelId: channel.id } });
+      expect(messages).toHaveLength(0);
+    });
+
+    it('state "open" limpa disconnectedAt — canal reparado pelo operador', async () => {
+      const channel = await seedChannel({ disconnectedAt: new Date('2026-08-01T12:00:00Z') });
+      const req = new Request('http://localhost/api/webhooks/evolution', {
+        method: 'POST', body: connectionUpdateBody('open'), headers: { apikey: WEBHOOK_TOKEN },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const reloaded = await db.channelConfig.findUniqueOrThrow({ where: { id: channel.id } });
+      expect(reloaded.disconnectedAt).toBeNull();
+    });
+
+    it('state "connecting" não mexe em disconnectedAt — reconexão automática, nem queda nem volta confirmada', async () => {
+      const disconnectedAt = new Date('2026-08-01T12:00:00Z');
+      const channel = await seedChannel({ disconnectedAt });
+      const req = new Request('http://localhost/api/webhooks/evolution', {
+        method: 'POST', body: connectionUpdateBody('connecting'), headers: { apikey: WEBHOOK_TOKEN },
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(200);
+
+      const reloaded = await db.channelConfig.findUniqueOrThrow({ where: { id: channel.id } });
+      expect(reloaded.disconnectedAt?.toISOString()).toBe(disconnectedAt.toISOString());
+    });
   });
 });

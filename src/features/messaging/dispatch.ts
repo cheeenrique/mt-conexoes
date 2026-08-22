@@ -3,8 +3,8 @@ import { DomainError, UnknownTemplateVariableError } from '@/lib/errors';
 import { assertKnownVariables, extractTemplateVariables, renderTemplate, type TemplateContext } from '@/core/dunning-template';
 import { isWithinLocalHourRange, localDateOnly } from '@/core/dates';
 import { decrypt } from '@/lib/crypto';
-import { resolveAdapter } from './channels/registry';
-import { getSettings } from '@/features/settings/queries';
+import { CHANNEL_PROVIDERS, resolveAdapter } from './channels/registry';
+import { getSettings } from '@/lib/settings';
 
 export class NoDefaultChannelError extends DomainError {
   constructor(cause?: unknown) {
@@ -21,7 +21,7 @@ export class OutsideQuietHoursError extends DomainError {
 export class ChannelDoesNotSupportFreeTextError extends DomainError {
   constructor(cause?: unknown) {
     super(
-      'O canal padrão não envia texto livre. Configure um canal com suporte a envio manual (Evolution ou Salvy).',
+      'O canal padrão não envia texto livre. Configure um canal com suporte a envio manual (Evolution).',
       'CHANNEL_NO_FREE_TEXT',
       { cause },
     );
@@ -53,7 +53,9 @@ export async function sendManualBatch(input: { customerIds: string[]; body: stri
     throw new ChargeVariablesNotAllowedInManualSendError([...new Set(chargeVariables)]);
   }
 
-  const channelRow = await db.channelConfig.findFirst({ where: { isDefault: true, isActive: true } });
+  const channelRow = await db.channelConfig.findFirst({
+    where: { isDefault: true, isActive: true, provider: { in: CHANNEL_PROVIDERS } },
+  });
   if (!channelRow) throw new NoDefaultChannelError();
 
   const adapter = resolveAdapter(channelRow.provider);

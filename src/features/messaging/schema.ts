@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import { metaCloudCredentialsSchema } from './channels/meta-cloud/schema';
-import { evolutionCredentialsSchema } from './channels/evolution/schema';
-import { salvyCredentialsSchema } from './channels/salvy/schema';
+import { evolutionCredentialsSchema, evolutionPairingInputSchema } from './channels/evolution/schema';
 
+/**
+ * Entrada do caminho `CREDENTIALS` de cada canal: o operador cola valores que já tem.
+ * O caminho `PAIRING` tem entrada própria (`beginChannelPairingSchema`) porque pede
+ * outros campos — os que o painel gera não são digitados.
+ */
 export const saveChannelCredentialsSchema = z.discriminatedUnion('provider', [
   z.object({ provider: z.literal('META_CLOUD'), credentials: metaCloudCredentialsSchema }),
   z.object({
@@ -10,10 +14,21 @@ export const saveChannelCredentialsSchema = z.discriminatedUnion('provider', [
     credentials: evolutionCredentialsSchema,
     riskAccepted: z.literal(true, { error: 'Confirme que está ciente do risco antes de salvar.' }),
   }),
-  z.object({ provider: z.literal('SALVY'), credentials: salvyCredentialsSchema }),
 ]);
 
 export type SaveChannelCredentialsInput = z.infer<typeof saveChannelCredentialsSchema>;
+
+/** Entrada do caminho `PAIRING`. `methodId` casa com o `id` do método no descritor. */
+export const beginChannelPairingSchema = z.discriminatedUnion('provider', [
+  z.object({
+    provider: z.literal('EVOLUTION'),
+    methodId: z.literal('qr'),
+    credentials: evolutionPairingInputSchema,
+    riskAccepted: z.literal(true, { error: 'Confirme que está ciente do risco antes de conectar.' }),
+  }),
+]);
+
+export type BeginChannelPairingInput = z.infer<typeof beginChannelPairingSchema>;
 
 export const sendManualMessagesSchema = z.object({
   customerIds: z.array(z.uuid()).min(1, 'Selecione ao menos um cliente.'),

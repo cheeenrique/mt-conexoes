@@ -76,6 +76,65 @@ describe('evolutionAdapter.verifyWebhookSignature', () => {
     expect(evolutionAdapter.verifyWebhookSignature('{}', new Headers({ apikey: 'errado' }), CREDENTIALS)).toBe(false);
     expect(evolutionAdapter.verifyWebhookSignature('{}', new Headers(), CREDENTIALS)).toBe(false);
   });
+
+  it('rejeita token do mesmo tamanho mas com conteúdo diferente (exercita o ramo timingSafeEqual)', () => {
+    // 'token-teste' tem 11 chars — mesma contagem, conteúdo diferente.
+    expect(evolutionAdapter.verifyWebhookSignature('{}', new Headers({ apikey: 'errado-teste'.slice(0, 11) }), CREDENTIALS)).toBe(false);
+  });
+
+  it('T5: o apikey que a Evolution manda sozinha no CORPO nunca autentica — é o token interno da instância, não o webhookToken', () => {
+    // Confirmado rodando a stack local (tag 2.3.7): o corpo de todo evento carrega
+    // `apikey` = token da instância (POST /instance/create → `hash`), nunca o valor que
+    // o operador escolhe aqui. Um payload que "convenientemente" repete o webhookToken
+    // certo no corpo, sem o header, ainda tem que ser recusado — a fonte de verdade é
+    // só o header, configurado via `webhook.headers.apikey` na instância.
+    const bodyWithCorrectTokenButNoHeader = JSON.stringify({ event: 'messages.upsert', apikey: CREDENTIALS.webhookToken, data: {} });
+    expect(evolutionAdapter.verifyWebhookSignature(bodyWithCorrectTokenButNoHeader, new Headers(), CREDENTIALS)).toBe(false);
+  });
+});
+
+describe('evolutionAdapter.parseConnectionEvent', () => {
+  it('extrai state "close" de connection.update — sessão caiu', () => {
+    const payload = JSON.stringify({ event: 'connection.update', instance: 'principal', data: { instance: 'principal', state: 'close', statusReason: 401 } });
+    expect(evolutionAdapter.parseConnectionEvent!(payload)).toEqual({ state: 'close' });
+  });
+
+  it('extrai state "open" — sessão conectada', () => {
+    const payload = JSON.stringify({ event: 'connection.update', data: { state: 'open' } });
+    expect(evolutionAdapter.parseConnectionEvent!(payload)).toEqual({ state: 'open' });
+  });
+
+  it('extrai state "connecting" — reconexão em andamento, nem queda nem volta confirmada', () => {
+    const payload = JSON.stringify({ event: 'connection.update', data: { state: 'connecting' } });
+    expect(evolutionAdapter.parseConnectionEvent!(payload)).toEqual({ state: 'connecting' });
+  });
+
+  it('extrai o número do wuid quando o aparelho conecta — é o remetente que a tela mostra', () => {
+    // Forma real do evento de `open` na tag 2.3.7: o `wuid` entra junto com o state.
+    const payload = JSON.stringify({
+      event: 'connection.update',
+      data: {
+        instance: 'painel-a1b2c3',
+        wuid: '5565999998888@s.whatsapp.net',
+        profileName: 'MT Conexões',
+        state: 'open',
+        statusReason: 200,
+      },
+    });
+    expect(evolutionAdapter.parseConnectionEvent!(payload)).toEqual({ state: 'open', phone: '+5565999998888' });
+  });
+
+  it('ignora evento que não é connection.update (ex.: messages.upsert)', () => {
+    const payload = JSON.stringify({ event: 'messages.upsert', data: { key: {}, message: {} } });
+    expect(evolutionAdapter.parseConnectionEvent!(payload)).toBeNull();
+  });
+
+  it('payload malformado ou com state desconhecido retorna null, não lança', () => {
+    expect(evolutionAdapter.parseConnectionEvent!('not json')).toBeNull();
+    expect(evolutionAdapter.parseConnectionEvent!(JSON.stringify({ event: 'connection.update' }))).toBeNull();
+    expect(evolutionAdapter.parseConnectionEvent!(JSON.stringify({ event: 'connection.update', data: null }))).toBeNull();
+    expect(evolutionAdapter.parseConnectionEvent!(JSON.stringify({ event: 'connection.update', data: { state: 'banido' } }))).toBeNull();
+  });
 });
 
 describe('evolutionAdapter.parseInboundWebhook', () => {

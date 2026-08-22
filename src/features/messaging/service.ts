@@ -1,19 +1,20 @@
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { encrypt, decrypt } from '@/lib/crypto';
-import { resolveAdapter } from './channels/registry';
+import { resolveAdapter, resolveDescriptor } from './channels/registry';
+import { redactSecrets } from './channels/redact';
 import type { SaveChannelCredentialsInput } from './schema';
 import type { ChannelProvider } from '@prisma/client';
 
-export class EvolutionRiskNotAcceptedError extends DomainError {
+export class ChannelRiskNotAcceptedError extends DomainError {
   constructor(cause?: unknown) {
-    super('Confirme que está ciente do risco de banimento antes de salvar o Evolution.', 'EVOLUTION_RISK_NOT_ACCEPTED', { cause });
+    super('Confirme que está ciente do risco deste canal antes de salvar.', 'CHANNEL_RISK_NOT_ACCEPTED', { cause });
   }
 }
 
 export class ChannelNotVerifiedError extends DomainError {
   constructor(cause?: unknown) {
-    super('Teste a conexão com sucesso antes de ativar este canal.', 'CHANNEL_NOT_VERIFIED', { cause });
+    super('Salve e teste a conexão com sucesso antes de usar este canal.', 'CHANNEL_NOT_VERIFIED', { cause });
   }
 }
 
@@ -23,77 +24,83 @@ export class ChannelNotConfiguredError extends DomainError {
   }
 }
 
-export class ChannelNotActiveError extends DomainError {
-  constructor(cause?: unknown) {
-    super('Ative o canal antes de defini-lo como padrão.', 'CHANNEL_NOT_ACTIVE', { cause });
-  }
+export type ChannelTestResult = { ok: true } | { ok: false; reason: string };
+
+function riskAccepted(input: SaveChannelCredentialsInput): boolean {
+  return 'riskAccepted' in input && input.riskAccepted === true;
 }
 
-const LABELS: Record<ChannelProvider, string> = {
-  META_CLOUD: 'Meta Cloud API',
-  EVOLUTION: 'Evolution API',
-  SALVY: 'Salvy',
-};
-
-export async function saveChannelCredentials(input: SaveChannelCredentialsInput): Promise<void> {
-  if (input.provider === 'EVOLUTION' && input.riskAccepted !== true) {
-    throw new EvolutionRiskNotAcceptedError();
+/**
+ * Salvar e testar é uma operação só, na ordem que importa: **testa primeiro**.
+ * Credencial que não responde no provider não é gravada — o canal continua com a
+ * que funcionava, e a régua não para no meio de uma troca de token.
+ *
+ * ⚠️ O teste valida a credencial no provider; **não** dispara mensagem para ninguém.
+ */
+export async function saveAndTestChannel(input: SaveChannelCredentialsInput): Promise<ChannelTestResult> {
+  const descriptor = resolveDescriptor(input.provider);
+  if (descriptor.warning.requiresAcceptance && !riskAccepted(input)) {
+    throw new ChannelRiskNotAcceptedError();
   }
 
-  const encrypted = encrypt(JSON.stringify(input.credentials), 'channel.credentials');
+  const health = await resolveAdapter(input.provider).healthCheck(input.credentials);
+  if (!health.ok) {
+    return { ok: false, reason: redactSecrets(health.reason, input.credentials, descriptor) };
+  }
+
+  const now = new Date();
+  const verified = {
+    credentials: encrypt(JSON.stringify(input.credentials), 'channel.credentials'),
+    lastCheckAt: now,
+    lastCheckOk: true,
+    lastError: null,
+    ...(descriptor.warning.requiresAcceptance ? { riskAcceptedAt: now } : {}),
+  };
+
   await db.channelConfig.upsert({
     where: { provider: input.provider },
-    create: {
-      provider: input.provider,
-      label: LABELS[input.provider],
-      credentials: encrypted,
-      riskAcceptedAt: input.provider === 'EVOLUTION' ? new Date() : null,
-    },
-    update: {
-      credentials: encrypted,
-      isActive: false,
-      lastCheckAt: null,
-      lastCheckOk: null,
-      lastError: null,
-      ...(input.provider === 'EVOLUTION' ? { riskAcceptedAt: new Date() } : {}),
-    },
+    create: { provider: input.provider, label: descriptor.label, ...verified },
+    // isActive/isDefault ficam como estavam: a credencial nova já passou no teste,
+    // então rotacionar um token não tira do ar o canal que está enviando.
+    update: verified,
   });
+
+  return { ok: true };
 }
 
-export async function testChannelConnection(provider: ChannelProvider): Promise<{ ok: boolean; reason?: string }> {
+/** Reconfere a credencial já gravada. É como o operador redescobre um canal que caiu. */
+export async function testChannelConnection(provider: ChannelProvider): Promise<ChannelTestResult> {
   const row = await db.channelConfig.findUnique({ where: { provider } });
   if (!row) throw new ChannelNotConfiguredError();
+
   const credentials = JSON.parse(decrypt(row.credentials, 'channel.credentials'));
   const result = await resolveAdapter(provider).healthCheck(credentials);
+  const reason = result.ok ? null : redactSecrets(result.reason, credentials, resolveDescriptor(provider));
 
   await db.channelConfig.update({
     where: { provider },
-    data: {
-      lastCheckAt: new Date(),
-      lastCheckOk: result.ok,
-      lastError: result.ok ? null : result.reason,
-    },
+    data: { lastCheckAt: new Date(), lastCheckOk: result.ok, lastError: reason },
   });
 
-  return result.ok ? { ok: true } : { ok: false, reason: result.reason };
+  return result.ok ? { ok: true } : { ok: false, reason: reason ?? '' };
 }
 
-export async function setChannelActive(provider: ChannelProvider, active: boolean): Promise<void> {
-  if (active) {
-    const row = await db.channelConfig.findUnique({ where: { provider } });
-    if (!row) throw new ChannelNotConfiguredError();
-    if (row.lastCheckOk !== true) throw new ChannelNotVerifiedError();
-  }
-  await db.channelConfig.update({ where: { provider }, data: { isActive: active } });
-}
-
-export async function setDefaultChannel(provider: ChannelProvider): Promise<void> {
+/**
+ * "Usar este canal": passa a ser ele quem envia, a partir do próximo despacho.
+ *
+ * `isActive` e `isDefault` continuam sendo coisas diferentes no banco — `isDefault`
+ * escolhe quem **envia** (um só, garantido por índice único parcial), `isActive`
+ * decide de quem o sistema **aceita resposta de entrada** (`app/api/webhooks/*`).
+ * O canal anterior segue ativo de propósito: quem responder "PARE" para o número
+ * antigo continua sendo marcado como opt-out (T5).
+ */
+export async function setSendingChannel(provider: ChannelProvider): Promise<void> {
   const row = await db.channelConfig.findUnique({ where: { provider } });
   if (!row) throw new ChannelNotConfiguredError();
-  if (row.isActive !== true) throw new ChannelNotActiveError();
+  if (row.lastCheckOk !== true) throw new ChannelNotVerifiedError();
 
   await db.$transaction(async (tx) => {
     await tx.channelConfig.updateMany({ where: { isDefault: true }, data: { isDefault: false } });
-    await tx.channelConfig.update({ where: { provider }, data: { isDefault: true } });
+    await tx.channelConfig.update({ where: { provider }, data: { isActive: true, isDefault: true } });
   });
 }

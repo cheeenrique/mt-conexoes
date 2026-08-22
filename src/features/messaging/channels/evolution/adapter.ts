@@ -1,7 +1,11 @@
+import { timingSafeEqual } from 'node:crypto';
 import { ZodError } from 'zod';
-import type { ChannelAdapter, HealthResult, InboundMessage, SendInput, SendResult } from '../types';
+import type { ChannelAdapter, ConnectionEvent, HealthResult, InboundMessage, SendInput, SendResult } from '../types';
 import { ChannelCredentialsInvalidError } from '../types';
+import type { PairableChannel } from '../pairing';
 import { evolutionCredentialsSchema, type EvolutionCredentials } from './schema';
+import { evolutionDescriptor } from './descriptor';
+import { evolutionPairing } from './pairing';
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -57,10 +61,59 @@ async function healthCheck(rawCredentials: unknown): Promise<HealthResult> {
   }
 }
 
+/**
+ * A Evolution só entrega o `apikey` do operador como **header HTTP**, e só quando a
+ * instância foi criada/atualizada com `webhook.headers.apikey` — confirmado rodando a
+ * stack local (tag 2.3.7): sem esse campo, o header não existe.
+ *
+ * ⚠️ O `apikey` que vem no **corpo** de todo evento (`{ ..., apikey: "..." }`) NÃO é este
+ * segredo — é o token interno da instância (o mesmo de `POST /instance/create` → `hash`),
+ * gerado pela Evolution e sem relação com o `webhookToken` que o operador escolhe aqui.
+ * Comparar o corpo contra `webhookToken` nunca bateria; aceitar o corpo sem comparar seria
+ * autenticação falsa. Por isso só o header é conferido.
+ */
 function verifyWebhookSignature(rawBody: string, headers: Headers, rawCredentials: unknown): boolean {
   const credentials = parseCredentials(rawCredentials);
   const header = headers.get('apikey');
-  return header === credentials.webhookToken;
+  if (!header) return false;
+
+  const expected = Buffer.from(credentials.webhookToken);
+  const received = Buffer.from(header);
+  if (expected.length !== received.length) return false;
+  return timingSafeEqual(expected, received);
+}
+
+/**
+ * `connection.update` é o único jeito de saber que a sessão do WhatsApp caiu sem esperar
+ * o próximo `healthCheck`, e é também como o pareamento por QR fecha o laço. Confirmado
+ * rodando a stack local (tag 2.3.7):
+ * `{ event: 'connection.update', data: { state: 'open' | 'close' | 'connecting', ... } }`.
+ * `'connecting'` é reconexão automática em andamento — não é sinal de queda nem de volta.
+ *
+ * No evento de `'open'` a Evolution acrescenta `wuid` (`5565999998888@s.whatsapp.net`) —
+ * é dali que sai o número remetente que a tela mostra, e não de um campo digitado.
+ */
+function parseConnectionEvent(rawBody: string): ConnectionEvent | null {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
+
+  if (typeof payload !== 'object' || payload === null) return null;
+  if ((payload as { event?: unknown }).event !== 'connection.update') return null;
+
+  const data = (payload as { data?: unknown }).data;
+  if (typeof data !== 'object' || data === null) return null;
+
+  const state = (data as { state?: unknown }).state;
+  if (state !== 'open' && state !== 'close' && state !== 'connecting') return null;
+
+  const wuid = (data as { wuid?: unknown }).wuid;
+  const phone = typeof wuid === 'string' ? wuid.split('@')[0] : undefined;
+
+  return phone ? { state, phone: `+${phone}` } : { state };
 }
 
 // ⚠️ Formato do payload de webhook do Evolution não confirmado contra a doc
@@ -99,8 +152,9 @@ function parseInboundWebhook(rawBody: string): InboundMessage[] | null {
   return [{ fromPhone, text: conversation }];
 }
 
-export const evolutionAdapter: ChannelAdapter = {
+export const evolutionAdapter: ChannelAdapter & PairableChannel = {
   provider: 'EVOLUTION',
+  descriptor: evolutionDescriptor,
   capabilities: {
     supportsFreeText: true,
     requiresApprovedTemplate: false,
@@ -113,4 +167,6 @@ export const evolutionAdapter: ChannelAdapter = {
   healthCheck,
   verifyWebhookSignature,
   parseInboundWebhook,
+  parseConnectionEvent,
+  ...evolutionPairing,
 };

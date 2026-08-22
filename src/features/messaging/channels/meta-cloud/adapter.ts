@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import type { ChannelAdapter, HealthResult, InboundMessage, SendInput, SendResult } from '../types';
 import { ChannelCredentialsInvalidError } from '../types';
 import { metaCloudCredentialsSchema, type MetaCloudCredentials } from './schema';
+import { metaCloudDescriptor } from './descriptor';
 
 const GRAPH_BASE = 'https://graph.facebook.com/v20.0';
 const RATE_LIMIT_CODES = new Set([4, 80007, 130429]);
@@ -121,6 +122,7 @@ function parseInboundWebhook(rawBody: string): InboundMessage[] | null {
 
 export const metaCloudAdapter: ChannelAdapter = {
   provider: 'META_CLOUD',
+  descriptor: metaCloudDescriptor,
   capabilities: {
     supportsFreeText: false,
     requiresApprovedTemplate: true,

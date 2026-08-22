@@ -8,7 +8,13 @@ process.env.CREDENTIAL_KEY = process.env.CREDENTIAL_KEY ?? Buffer.alloc(32, 9).t
 const IN_HOURS_NOW = new Date('2026-08-08T15:00:00Z'); // 12h em America/Sao_Paulo, dentro de 8-20
 const OUT_OF_HOURS_NOW = new Date('2026-08-09T02:00:00Z'); // 23h local (08/08), fora de 8-20
 
-async function seedActiveDefaultChannel() {
+/**
+ * `lastCheckAt` por padrão bate exatamente com `IN_HOURS_NOW`: dentro da janela de
+ * `HEALTH_CHECK_INTERVAL_MS` (15 min), o healthCheck da frente do despacho não dispara
+ * de novo — os testes que só querem exercitar `send()` não precisam mockar a rota de
+ * `connectionState` também. Os testes de canal caído passam um `lastCheckAt` próprio.
+ */
+async function seedActiveDefaultChannel(overrides: { lastCheckOk?: boolean; lastCheckAt?: Date | null } = {}) {
   return db.channelConfig.create({
     data: {
       provider: 'EVOLUTION',
@@ -19,7 +25,8 @@ async function seedActiveDefaultChannel() {
         JSON.stringify({ baseUrl: 'https://evolution.example.com', apiKey: 'a', instanceName: 'default', webhookToken: 'webhook-token-teste' }),
         'channel.credentials',
       ),
-      lastCheckOk: true,
+      lastCheckOk: overrides.lastCheckOk ?? true,
+      lastCheckAt: overrides.lastCheckAt === undefined ? IN_HOURS_NOW : overrides.lastCheckAt,
     },
   });
 }
@@ -94,7 +101,16 @@ describe('dispatchPendingMessages', () => {
 
     const result = await dispatchPendingMessages(IN_HOURS_NOW);
 
-    expect(result).toEqual({ sent: 0, failed: 0, cancelledStale: 0, cancelledOptedOut: 0, cancelledPaid: 0, cancelledDedupe: 0, rescheduled: 0 });
+    expect(result).toEqual({
+      sent: 0,
+      failed: 0,
+      cancelledStale: 0,
+      cancelledOptedOut: 0,
+      cancelledPaid: 0,
+      cancelledDedupe: 0,
+      rescheduled: 0,
+      blockedChannelDown: 0,
+    });
     const reloaded = await db.message.findUnique({ where: { id: msg.id } });
     expect(reloaded?.status).toBe('PENDING');
   });
@@ -124,7 +140,7 @@ describe('dispatchPendingMessages', () => {
   });
 
   it('mensagem fora da quiet hour é reagendada pro início da próxima janela, não descartada (T6)', async () => {
-    await seedActiveDefaultChannel();
+    await seedActiveDefaultChannel({ lastCheckAt: OUT_OF_HOURS_NOW });
     const customer = await seedCustomer();
     const msg = await seedPendingMessage(customer.id, {
       createdAt: OUT_OF_HOURS_NOW,
@@ -143,7 +159,7 @@ describe('dispatchPendingMessages', () => {
   });
 
   it('reagendamento por T6 que colide com Message já existente no novo dia cancela a mensagem de hoje, motivo daily_dedupe (T7)', async () => {
-    await seedActiveDefaultChannel();
+    await seedActiveDefaultChannel({ lastCheckAt: OUT_OF_HOURS_NOW });
     const customer = await seedCustomer();
     const msg = await seedPendingMessage(customer.id, {
       createdAt: OUT_OF_HOURS_NOW,
@@ -306,5 +322,93 @@ describe('dispatchPendingMessages', () => {
     expect(result.sent).toBe(60);
     const stillPending = await db.message.count({ where: { customerId: customer.id, status: 'PENDING' } });
     expect(stillPending).toBe(5);
+  });
+
+  describe('canal padrão fora do ar — não envia e não queima a mensagem', () => {
+    /** Responde diferente por endpoint: `/instance/connectionState/` (healthCheck) vs
+     *  `/message/sendText/` (send). Necessário porque a frente do despacho agora chama
+     *  os dois na mesma passada quando o healthCheck está vencido. */
+    function stubFetchByEndpoint(opts: { connectionState: 'open' | 'close'; sendOk?: boolean }) {
+      const fetchMock = vi.fn(async (url: string) => {
+        if (url.includes('/instance/connectionState/')) {
+          return { ok: true, status: 200, json: async () => ({ instance: { state: opts.connectionState } }) };
+        }
+        if (url.includes('/message/sendText/')) {
+          return opts.sendOk === false
+            ? { ok: false, status: 500, json: async () => ({ message: 'falhou' }) }
+            : { ok: true, status: 200, json: async () => ({ key: { id: 'wamid-health' } }) };
+        }
+        throw new Error(`fetch inesperado neste teste: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    it('lastCheckOk=false (já conhecido, dentro da janela de 15min): não tenta enviar, mensagem continua PENDING, conta blockedChannelDown', async () => {
+      await seedActiveDefaultChannel({ lastCheckOk: false, lastCheckAt: IN_HOURS_NOW });
+      const customer = await seedCustomer();
+      const msg = await seedPendingMessage(customer.id);
+      const fetchMock = vi.fn().mockRejectedValue(new Error('não deveria chamar fetch com o canal marcado como caído'));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await dispatchPendingMessages(IN_HOURS_NOW);
+
+      expect(result.blockedChannelDown).toBe(1);
+      expect(result.sent).toBe(0);
+      expect(result.failed).toBe(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+      expect(reloaded?.status).toBe('PENDING');
+      expect(reloaded?.attempts).toBe(0);
+    });
+
+    it('mensagem stale (>24h) continua sendo cancelada mesmo com o canal caído — T8 age antes do bloqueio', async () => {
+      await seedActiveDefaultChannel({ lastCheckOk: false, lastCheckAt: IN_HOURS_NOW });
+      const customer = await seedCustomer();
+      const msg = await seedPendingMessage(customer.id, { createdAt: new Date('2026-08-06T12:00:00Z') }); // >24h antes de IN_HOURS_NOW
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('não deveria chamar fetch')));
+
+      const result = await dispatchPendingMessages(IN_HOURS_NOW);
+
+      expect(result.cancelledStale).toBe(1);
+      expect(result.blockedChannelDown).toBe(0);
+      const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+      expect(reloaded?.status).toBe('CANCELLED');
+      expect(reloaded?.cancelReason).toBe('stale');
+    });
+
+    it('healthCheck vencido (lastCheckAt null): roda antes do lote, marca o canal caído e bloqueia — sem cron novo, na frente da própria passada', async () => {
+      const channel = await seedActiveDefaultChannel({ lastCheckOk: true, lastCheckAt: null });
+      const customer = await seedCustomer();
+      const msg = await seedPendingMessage(customer.id);
+      const fetchMock = stubFetchByEndpoint({ connectionState: 'close' });
+
+      const result = await dispatchPendingMessages(IN_HOURS_NOW);
+
+      expect(result.blockedChannelDown).toBe(1);
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/instance/connectionState/'), expect.anything());
+      expect(fetchMock.mock.calls.some(([url]: [string]) => url.includes('/message/sendText/'))).toBe(false);
+      const reloadedMsg = await db.message.findUnique({ where: { id: msg.id } });
+      expect(reloadedMsg?.status).toBe('PENDING');
+      const reloadedChannel = await db.channelConfig.findUniqueOrThrow({ where: { id: channel.id } });
+      expect(reloadedChannel.lastCheckOk).toBe(false);
+      expect(reloadedChannel.lastCheckAt?.toISOString()).toBe(IN_HOURS_NOW.toISOString());
+    });
+
+    it('healthCheck vencido confirma canal saudável: despacho segue normalmente e persiste lastCheckOk=true', async () => {
+      const channel = await seedActiveDefaultChannel({ lastCheckOk: false, lastCheckAt: null });
+      const customer = await seedCustomer();
+      const msg = await seedPendingMessage(customer.id);
+      stubFetchByEndpoint({ connectionState: 'open', sendOk: true });
+
+      const result = await dispatchPendingMessages(IN_HOURS_NOW);
+
+      expect(result.blockedChannelDown).toBe(0);
+      expect(result.sent).toBe(1);
+      const reloadedMsg = await db.message.findUnique({ where: { id: msg.id } });
+      expect(reloadedMsg?.status).toBe('SENT');
+      const reloadedChannel = await db.channelConfig.findUniqueOrThrow({ where: { id: channel.id } });
+      expect(reloadedChannel.lastCheckOk).toBe(true);
+    });
   });
 });

@@ -2,7 +2,7 @@ import { db } from '@/lib/db';
 import { matchOptOutKeyword } from '@/core/opt-out-keywords';
 import { localDateOnly } from '@/core/dates';
 import { toE164 } from '@/core/phone';
-import { getSettings } from '@/features/settings/queries';
+import { getSettings } from '@/lib/settings';
 
 export async function processInboundMessage(input: {
   channelId: string;
