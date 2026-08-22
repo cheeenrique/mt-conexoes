@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
-import { createStep, updateStep, deleteStep, activateDunningRule, UnknownTemplateVariableError, DuplicateStepOffsetError } from './service';
+import {
+  createStep,
+  updateStep,
+  deleteStep,
+  activateDunningRule,
+  UnknownTemplateVariableError,
+  DuplicateStepOffsetError,
+  DunningRuleNotInReviewError,
+} from './service';
 
 let ruleId: string;
 let activateTestSubscriptionId: string | undefined;
@@ -9,7 +17,7 @@ let activateTestPlanId: string | undefined;
 let activateTestSupplierId: string | undefined;
 
 afterEach(async () => {
-  await db.dunningStep.deleteMany({ where: { offsetDays: { in: [42, 43] } } });
+  await db.dunningStep.deleteMany({ where: { offsetDays: { in: [-42, 42, 43] } } });
 
   if (activateTestSubscriptionId) {
     await db.charge.deleteMany({ where: { subscriptionId: activateTestSubscriptionId } });
@@ -36,18 +44,32 @@ describe('createStep', () => {
     ruleId = rule.id;
 
     await expect(
-      createStep(ruleId, { offsetDays: 42, action: 'SEND_MESSAGE', templateBody: 'Olá {{cliente.apelido}}', isActive: true }),
+      createStep(ruleId, { days: 42, direction: 'after', action: 'SEND_MESSAGE', templateBody: 'Olá {{cliente.apelido}}', isActive: true }),
     ).rejects.toThrow(UnknownTemplateVariableError);
 
     const created = await db.dunningStep.findFirst({ where: { ruleId, offsetDays: 42 } });
     expect(created).toBeNull();
   });
 
+  it('"antes do vencimento" grava deslocamento negativo — o sinal não é digitado', async () => {
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+
+    const step = await createStep(rule.id, {
+      days: 42,
+      direction: 'before',
+      action: 'SEND_MESSAGE',
+      templateBody: 'Olá {{negocio.nome}}',
+      isActive: true,
+    });
+
+    expect(step.offsetDays).toBe(-42);
+  });
+
   it('cria passo com template válido', async () => {
     const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
     ruleId = rule.id;
 
-    const step = await createStep(ruleId, { offsetDays: 43, action: 'SEND_MESSAGE', templateBody: 'Olá {{cliente.primeiro_nome}}', isActive: true });
+    const step = await createStep(ruleId, { days: 43, direction: 'after', action: 'SEND_MESSAGE', templateBody: 'Olá {{cliente.primeiro_nome}}', isActive: true });
 
     expect(step.offsetDays).toBe(43);
   });
@@ -56,10 +78,10 @@ describe('createStep', () => {
     const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
     ruleId = rule.id;
 
-    await createStep(ruleId, { offsetDays: 42, action: 'SEND_MESSAGE', templateBody: 'Olá {{negocio.nome}}', isActive: true });
+    await createStep(ruleId, { days: 42, direction: 'after', action: 'SEND_MESSAGE', templateBody: 'Olá {{negocio.nome}}', isActive: true });
 
     await expect(
-      createStep(ruleId, { offsetDays: 42, action: 'SEND_MESSAGE', templateBody: 'Outro {{negocio.nome}}', isActive: true }),
+      createStep(ruleId, { days: 42, direction: 'after', action: 'SEND_MESSAGE', templateBody: 'Outro {{negocio.nome}}', isActive: true }),
     ).rejects.toThrow(DuplicateStepOffsetError);
   });
 });
@@ -67,10 +89,10 @@ describe('createStep', () => {
 describe('updateStep', () => {
   it('re-valida o template ao atualizar', async () => {
     const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
-    const step = await createStep(rule.id, { offsetDays: 42, action: 'SEND_MESSAGE', templateBody: 'Olá {{negocio.nome}}', isActive: true });
+    const step = await createStep(rule.id, { days: 42, direction: 'after', action: 'SEND_MESSAGE', templateBody: 'Olá {{negocio.nome}}', isActive: true });
 
     await expect(
-      updateStep(step.id, { offsetDays: 42, action: 'SEND_MESSAGE', templateBody: 'Olá {{variavel.inexistente}}', isActive: true }),
+      updateStep(step.id, { days: 42, direction: 'after', action: 'SEND_MESSAGE', templateBody: 'Olá {{variavel.inexistente}}', isActive: true }),
     ).rejects.toThrow(UnknownTemplateVariableError);
   });
 });
@@ -78,7 +100,7 @@ describe('updateStep', () => {
 describe('deleteStep', () => {
   it('remove o passo', async () => {
     const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
-    const step = await createStep(rule.id, { offsetDays: 42, action: 'SEND_MESSAGE', templateBody: 'Olá {{negocio.nome}}', isActive: true });
+    const step = await createStep(rule.id, { days: 42, direction: 'after', action: 'SEND_MESSAGE', templateBody: 'Olá {{negocio.nome}}', isActive: true });
 
     await deleteStep(step.id);
 
@@ -88,11 +110,21 @@ describe('deleteStep', () => {
 });
 
 describe('activateDunningRule', () => {
+  it('rejeita DRAFT → ACTIVE direto, sem passar por revisão', async () => {
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    await db.dunningRule.update({ where: { id: rule.id }, data: { status: 'DRAFT' } });
+
+    await expect(activateDunningRule(rule.id, 'send-all')).rejects.toThrow(DunningRuleNotInReviewError);
+
+    const refreshed = await db.dunningRule.findUniqueOrThrow({ where: { id: rule.id } });
+    expect(refreshed.status).toBe('DRAFT');
+  });
+
   it('send-all: muda status pra ACTIVE, mantém PENDING_REVIEW existentes', async () => {
     const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
     await db.dunningRule.update({ where: { id: rule.id }, data: { status: 'REVIEW' } });
 
-    await activateDunningRule('send-all');
+    await activateDunningRule(rule.id, 'send-all');
 
     const refreshed = await db.dunningRule.findUniqueOrThrow({ where: { id: rule.id } });
     expect(refreshed.status).toBe('ACTIVE');
@@ -133,7 +165,7 @@ describe('activateDunningRule', () => {
     const executionReview = await db.dunningExecution.create({ data: { chargeId: chargeReview.id, stepId: step.id, outcome: 'PENDING_REVIEW', reason: 'review' } });
     const executionQueued = await db.dunningExecution.create({ data: { chargeId: chargeQueued.id, stepId: step.id, outcome: 'QUEUED', reason: 'queued' } });
 
-    await activateDunningRule('ignore-retroactive');
+    await activateDunningRule(rule.id, 'ignore-retroactive');
 
     const refreshedRule = await db.dunningRule.findUniqueOrThrow({ where: { id: rule.id } });
     expect(refreshedRule.status).toBe('ACTIVE');

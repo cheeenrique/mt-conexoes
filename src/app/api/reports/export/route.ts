@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireSession } from '@/features/auth/service';
 import { toCsv } from '@/lib/csv';
 import { monthBoundsUtc } from '@/core/dates';
-import { getSettings } from '@/features/settings/queries';
+import { getSettings } from '@/lib/settings';
 import { getSupplierBreakdown, getPlanBreakdown, getAllCustomerBreakdown, type BreakdownRowDTO } from '@/features/reports/queries';
 import { formatCents } from '@/lib/format';
 import { marginPercent } from '@/core/money';

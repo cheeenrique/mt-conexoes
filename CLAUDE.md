@@ -100,8 +100,11 @@ lib/       ──> Prisma, env
 - A régua é entregue em `REVIEW` — calcula tudo, não envia nada, até o operador ativar na frente de uma lista.
 
 **Providers de WhatsApp**
-- Três adapters: `META_CLOUD`, `EVOLUTION`, `SALVY`. O sistema consulta `capabilities`.
+- Dois adapters: `META_CLOUD` e `EVOLUTION`. O sistema consulta `capabilities`. `SALVY` foi removido do produto — o valor continua no enum do Postgres, sem adapter, e `resolveAdapter` falha alto se alguma linha antiga apontar para ele (ver `prisma/README.md`).
 - ❌ `if (provider === 'evolution')` fora de `features/messaging/channels`. Se apareceu, o modelo de capabilities está incompleto — corrige o modelo.
+- **Como conectar** também é declarado pelo adapter, não perguntado à tela: `ChannelDescriptor.connectionMethods` lista os caminhos (`PAIRING` por QR, `CREDENTIALS` coladas à mão), cada um com seus requisitos, passos e campos. A Evolution declara os dois; a Meta, só o manual. Caminho `PAIRING` exige adapter implementando `PairableChannel` (`channels/pairing.ts`) — contrato **opcional**, fora de `ChannelAdapter`, porque a Meta não parea por QR e obrigá-la a lançar violaria LSP.
+- No pareamento, `instanceName` e `webhookToken` são **gerados pelo painel** e viram chaves do blob criptografado. `ChannelConfig.phoneNumber` vem do `wuid` que o `connection.update` reporta ao conectar, nunca de campo digitado.
+- ⚠️ QR e código de pareamento não são persistidos nem logados: Server Action → prop → `<img>`, morrem com o diálogo.
 - Meta Cloud API só entrega **template aprovado** fora da janela de 24h. Passo sem `metaTemplateName` num canal que exige template vira `SKIPPED`, não uma mensagem que não chega.
 
 **Segurança**

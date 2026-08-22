@@ -1,5 +1,6 @@
 import { AppShell } from '@/components/layout/app-shell';
 import { listSuppliers } from '@/features/suppliers/queries';
+import { getSettings } from '@/lib/settings';
 import { SupplierTable } from '@/features/suppliers/components/supplier-table';
 import { NewSupplierButton } from '@/features/suppliers/components/new-supplier-button';
 
@@ -16,11 +17,20 @@ export default async function SuppliersPage({
     ? Number(params.perPage)
     : 8) as 8 | 12 | 20;
 
-  const { rows, total } = await listSuppliers({ page, perPage });
+  const [{ rows, total }, settings] = await Promise.all([
+    listSuppliers({ page, perPage }),
+    getSettings(),
+  ]);
 
   return (
-    <AppShell title="Fornecedores" primaryAction={<NewSupplierButton />}>
-      <SupplierTable rows={rows} total={total} page={page} perPage={perPage} />
+    <AppShell title="Fornecedores" primaryAction={<NewSupplierButton marginAlertPercent={settings.marginAlertPercent} />}>
+      <SupplierTable
+        rows={rows}
+        total={total}
+        page={page}
+        perPage={perPage}
+        marginAlertPercent={settings.marginAlertPercent}
+      />
     </AppShell>
   );
 }

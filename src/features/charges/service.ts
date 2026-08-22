@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { deriveChargeStatus } from '@/core/billing';
 import { nextDueDate, localDateOnly } from '@/core/dates';
-import { getSettings } from '@/features/settings/queries';
+import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
 import type { registerPaymentSchema } from './schema';
 

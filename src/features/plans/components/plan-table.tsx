@@ -2,24 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Pencil, Layers } from 'lucide-react';
-import Decimal from 'decimal.js';
+import { Pencil, Layers, Plus } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
-import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { formatCents } from '@/lib/format';
-import { marginPercent } from '@/core/money';
 import { CYCLE_LABELS } from '@/lib/labels';
 import { PlanDrawer } from './plan-drawer';
 import type { PlanDTO } from '../queries';
-
-function marginTone(pct: Decimal | null): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (pct === null) return 'neutral';
-  if (pct.gte(40)) return 'success';
-  if (pct.gte(15)) return 'warning';
-  return 'danger';
-}
 
 function cycleLabel(cycle: string): string {
   return CYCLE_LABELS[cycle] ?? cycle;
@@ -54,25 +44,16 @@ export function PlanTable({
       header: 'Plano',
       cell: (row) => (
         <div className="flex items-center gap-2">
-          <span>{row.name}</span>
-          <StatusBadge tone={row.isActive ? 'success' : 'neutral'}>
-            {row.isActive ? 'Ativo' : 'Inativo'}
-          </StatusBadge>
+          <span className={row.isActive ? undefined : 'text-foreground-muted'}>{row.name}</span>
+          {!row.isActive && <span className="text-xs text-foreground-muted">desativado</span>}
         </div>
       ),
     },
     { header: 'Ciclo', cell: (row) => cycleLabel(row.cycle) },
-    { header: 'Preço', align: 'right', cell: (row) => formatCents(row.priceCents) },
-    { header: 'Custo', align: 'right', cell: (row) => formatCents(row.costCents) },
-    {
-      header: 'Margem',
-      align: 'right',
-      cell: (row) => {
-        const pct = marginPercent(BigInt(row.priceCents), BigInt(row.costCents));
-        return <StatusBadge tone={marginTone(pct)}>{pct === null ? '—' : `${pct.toFixed(1)}%`}</StatusBadge>;
-      },
-    },
-    { header: 'Assinaturas ativas', align: 'right', cell: () => '0' },
+    { header: 'Preço sugerido', align: 'right', cell: (row) => formatCents(row.priceCents) },
+    { header: 'Custo sugerido', align: 'right', cell: (row) => formatCents(row.costCents) },
+    { header: 'Fornecedor', cell: (row) => row.supplierName ?? '—' },
+    { header: 'Assinaturas ativas', align: 'right', cell: (row) => String(row.activeSubscriptionsCount) },
     {
       header: '',
       align: 'right',
@@ -106,10 +87,21 @@ export function PlanTable({
             icon={Layers}
             title="Nenhum plano cadastrado"
             description="Cadastre os pacotes comerciais vendidos aos clientes."
-            action={<Button onClick={() => { setEditing(null); setDrawerOpen(true); }}>Cadastrar o primeiro</Button>}
+            action={
+              <Button onClick={() => { setEditing(null); setDrawerOpen(true); }}>
+                <Plus aria-hidden="true" />
+                Cadastrar o primeiro
+              </Button>
+            }
           />
         }
       />
+      {rows.length > 0 && (
+        <p className="-mt-px rounded-b border border-t-0 border-border bg-surface px-4 py-2.5 text-xs text-foreground-muted">
+          Preço e custo aqui são sugestão para preencher o formulário. O valor que vale é o negociado em cada
+          assinatura; editar o plano não muda o que ninguém paga.
+        </p>
+      )}
       <PlanDrawer open={drawerOpen} onOpenChange={setDrawerOpen} plan={editing} suppliers={suppliers} />
     </>
   );

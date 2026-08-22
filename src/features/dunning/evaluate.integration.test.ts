@@ -30,6 +30,32 @@ afterEach(async () => {
 });
 
 describe('evaluateDunningRule', () => {
+  it('régua em DRAFT não avalia nada: zero DunningExecution, zero Message, contadores zerados', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'DRAFT' } });
+    const { customer, charge } = await seedFixture();
+
+    const result = await evaluateDunningRule(NOW);
+
+    expect(result).toEqual({ queued: 0, skipped: 0, pendingReview: 0, suspended: 0 });
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+    expect(executions).toHaveLength(0);
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(0);
+  });
+
+  it('régua em PAUSED não avalia nada: zero DunningExecution, zero Message, contadores zerados', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'PAUSED' } });
+    const { customer, charge } = await seedFixture();
+
+    const result = await evaluateDunningRule(NOW);
+
+    expect(result).toEqual({ queued: 0, skipped: 0, pendingReview: 0, suspended: 0 });
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+    expect(executions).toHaveLength(0);
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(0);
+  });
+
   it('régua em REVIEW gera PENDING_REVIEW, zero Message', async () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'REVIEW' } });
     const { customer, charge } = await seedFixture();

@@ -1,7 +1,23 @@
+import type { ReactNode } from 'react';
 import { formatCents } from '@/lib/format';
 import { marginPercent } from '@/core/money';
+import { marginToneClass } from '@/lib/margin-tone';
 import type { MonthlySummaryDTO } from '../queries';
 
+function SummaryFigure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[.06em] text-foreground-muted">{label}</p>
+      <p className="mt-1.5 font-mono text-xl font-semibold tabular-mono">{children}</p>
+    </div>
+  );
+}
+
+/**
+ * Resumo do mês — primeiro bloco do Início e topo de Relatórios.
+ * Cinco números na mesma competência: faturado e custo vêm das cobranças
+ * emitidas no mês, recebido vem dos pagamentos. Ver `04-dinheiro-e-margem.md`.
+ */
 export function MonthlySummaryCard({ summary, monthLabel }: { summary: MonthlySummaryDTO; monthLabel: string }) {
   const billedCents = BigInt(summary.billedCents);
   const costCents = BigInt(summary.costCents);
@@ -10,38 +26,43 @@ export function MonthlySummaryCard({ summary, monthLabel }: { summary: MonthlySu
   const costAtRiskCents = BigInt(summary.costAtRiskCents);
 
   return (
-    <div className="rounded border border-border bg-surface p-5">
-      <p className="mb-4 text-lg font-bold text-foreground">{monthLabel}</p>
-      <div className="grid grid-cols-2 gap-4 font-mono text-sm tabular-mono sm:grid-cols-4">
-        <div>
-          <p className="text-xs text-foreground-muted">Faturamento</p>
-          <p className="text-foreground">{formatCents(summary.billedCents)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-foreground-muted">Custo</p>
-          <p className="text-foreground">{formatCents(summary.costCents)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-foreground-muted">Lucro bruto</p>
-          <p className="text-foreground">
-            {formatCents(profitCents)}
-            {margin !== null && <span className="ml-2 text-xs text-foreground-muted">margem {margin.toFixed(0)}%</span>}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs text-foreground-muted">Recebido</p>
-          <p className="text-foreground">{formatCents(summary.receivedCents)}</p>
-        </div>
+    <section className="rounded border border-border bg-surface p-4">
+      <p className="text-[13px] font-semibold uppercase tracking-[.06em] text-foreground-muted">{monthLabel}</p>
+
+      <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-5">
+        <SummaryFigure label="Faturado">
+          <span className="text-foreground">{formatCents(summary.billedCents)}</span>
+        </SummaryFigure>
+        <SummaryFigure label="Recebido">
+          <span className="text-foreground">{formatCents(summary.receivedCents)}</span>
+        </SummaryFigure>
+        <SummaryFigure label="Custo">
+          <span className="text-foreground">{formatCents(summary.costCents)}</span>
+        </SummaryFigure>
+        <SummaryFigure label="Lucro bruto">
+          <span className="text-foreground">{formatCents(profitCents)}</span>
+        </SummaryFigure>
+        <SummaryFigure label="Margem">
+          <span className={marginToneClass(margin)}>{margin === null ? '—' : `${margin.toFixed(0)}%`}</span>
+        </SummaryFigure>
       </div>
-      <div className="mt-3 border-t border-border pt-3 font-mono text-sm tabular-mono">
-        <p className="text-xs text-foreground-muted">Em aberto</p>
-        <p className="text-foreground">
-          {formatCents(summary.openCents)}
-          {costAtRiskCents > 0n && (
-            <span className="ml-2 text-xs text-warning">⚠ margem em risco: {formatCents(summary.costAtRiskCents)}</span>
-          )}
+
+      <div className="mt-4 flex flex-wrap items-baseline gap-x-6 gap-y-1 border-t border-border pt-3 text-[13px]">
+        <p className="text-foreground-muted">
+          Em aberto{' '}
+          <span className="font-mono font-semibold tabular-mono text-foreground">{formatCents(summary.openCents)}</span>
         </p>
+        {costAtRiskCents > 0n && (
+          <>
+            <p className="text-foreground-muted">
+              Margem em risco{' '}
+              <span className="font-mono font-semibold tabular-mono text-warning">{formatCents(summary.costAtRiskCents)}</span>
+            </p>
+            {/* O conceito que mais confunde: não é lucro previsto, é dinheiro que já saiu. */}
+            <p className="text-foreground-muted">Custo já pago ao fornecedor sobre cobranças não recebidas.</p>
+          </>
+        )}
       </div>
-    </div>
+    </section>
   );
 }

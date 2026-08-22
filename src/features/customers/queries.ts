@@ -1,4 +1,12 @@
 import { db } from '@/lib/db';
+import { localDayBoundsUtc } from '@/core/dates';
+import { phoneSearchDigits } from '@/core/phone';
+import {
+  resolveCustomerSituation,
+  type CustomerSituation,
+  type CustomerSituationFilter,
+} from '@/core/customer-situation';
+import type { Prisma, SubscriptionStatus } from '@prisma/client';
 
 export interface CustomerDTO {
   id: string;
@@ -12,7 +20,9 @@ export interface CustomerDTO {
 export interface CustomerListRowDTO extends CustomerDTO {
   planName: string | null;
   supplierName: string | null;
+  /** Vencimento da cobrança em aberto mais antiga; sem cobrança em aberto, o da assinatura. */
   nextDueAt: string | null;
+  situation: CustomerSituation;
 }
 
 function toDTO(row: {
@@ -23,23 +33,96 @@ function toDTO(row: {
   document: string | null;
   notes: string | null;
 }): CustomerDTO {
-  return row;
+  return {
+    id: row.id,
+    name: row.name,
+    phone: row.phone,
+    email: row.email,
+    document: row.document,
+    notes: row.notes,
+  };
 }
+
+/** Cobrança que ainda pesa no cliente. `PAID`/`CANCELLED` não entram. */
+const OPEN_CHARGE_STATUSES = ['OPEN', 'OVERDUE', 'PARTIALLY_PAID'] as const;
+
+function searchWhere(q: string): Prisma.CustomerWhereInput {
+  const digits = phoneSearchDigits(q);
+  const or: Prisma.CustomerWhereInput[] = [
+    { name: { contains: q, mode: 'insensitive' } },
+    { subscriptions: { some: { accessUsername: { contains: q, mode: 'insensitive' } } } },
+  ];
+  // O telefone é guardado em E.164 (`+5562998133401`); comparar `(62) 99813`
+  // cru contra ele nunca casa. Normaliza para dígitos antes de procurar.
+  if (digits) or.push({ phone: { contains: digits } });
+  return { OR: or };
+}
+
+/**
+ * Recorte de cada chip, escrito como predicado de banco. Espelha
+ * `resolveCustomerSituation`: as fronteiras de dia saem de `localDayBoundsUtc`,
+ * não de comparação em UTC, e o `none` de atraso em `DUE_TODAY` reproduz a
+ * precedência de "cobrança em aberto mais antiga manda" — sem ele, quem deve
+ * agosto e setembro apareceria no chip errado.
+ */
+function situationWhere(
+  situation: CustomerSituationFilter,
+  now: Date,
+  timezone: string,
+): Prisma.CustomerWhereInput {
+  const { from, to } = localDayBoundsUtc(now, timezone);
+  const status = { in: [...OPEN_CHARGE_STATUSES] };
+  const activeSubscription: Prisma.CustomerWhereInput = {
+    subscriptions: { some: { status: 'ACTIVE' } },
+  };
+
+  if (situation === 'ACTIVE') {
+    return { ...activeSubscription, charges: { none: { status } } };
+  }
+  if (situation === 'OVERDUE') {
+    return { ...activeSubscription, charges: { some: { status, dueAt: { lt: from } } } };
+  }
+  return {
+    ...activeSubscription,
+    charges: { some: { status, dueAt: { gte: from, lt: to } }, none: { status, dueAt: { lt: from } } },
+  };
+}
+
+// `orderBy: { status: 'asc' }` usa a ordem de declaração do enum no Postgres
+// (ACTIVE, SUSPENDED, CANCELLED): a assinatura que decide a linha é a ativa; na
+// falta dela, a suspensa. `take: 1` em relação vira window function no SQL do
+// Prisma — uma query para todas as linhas da página, não uma por cliente.
+const LIST_INCLUDE = {
+  subscriptions: {
+    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    take: 1,
+    select: {
+      status: true,
+      nextDueAt: true,
+      plan: { select: { name: true } },
+      supplier: { select: { name: true } },
+    },
+  },
+  charges: {
+    where: { status: { in: [...OPEN_CHARGE_STATUSES] } },
+    orderBy: { dueAt: 'asc' },
+    take: 1,
+    select: { dueAt: true },
+  },
+} satisfies Prisma.CustomerInclude;
 
 export async function listCustomers(params: {
   page: number;
   perPage: 8 | 12 | 20;
   q?: string;
+  situation?: CustomerSituationFilter;
+  now: Date;
+  timezone: string;
 }): Promise<{ rows: CustomerListRowDTO[]; total: number }> {
-  const where = params.q
-    ? {
-        OR: [
-          { name: { contains: params.q, mode: 'insensitive' as const } },
-          { phone: { contains: params.q } },
-          { subscriptions: { some: { accessUsername: { contains: params.q, mode: 'insensitive' as const } } } },
-        ],
-      }
-    : {};
+  const and: Prisma.CustomerWhereInput[] = [];
+  if (params.q) and.push(searchWhere(params.q));
+  if (params.situation) and.push(situationWhere(params.situation, params.now, params.timezone));
+  const where: Prisma.CustomerWhereInput = and.length > 0 ? { AND: and } : {};
 
   const [rows, total] = await Promise.all([
     db.customer.findMany({
@@ -47,14 +130,7 @@ export async function listCustomers(params: {
       orderBy: { name: 'asc' },
       skip: (params.page - 1) * params.perPage,
       take: params.perPage,
-      include: {
-        subscriptions: {
-          where: { status: 'ACTIVE' },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          include: { plan: { select: { name: true } }, supplier: { select: { name: true } } },
-        },
-      },
+      include: LIST_INCLUDE,
     }),
     db.customer.count({ where }),
   ]);
@@ -62,18 +138,56 @@ export async function listCustomers(params: {
   return {
     rows: rows.map((row) => {
       const sub = row.subscriptions[0];
+      const openChargeDueAt = row.charges[0]?.dueAt ?? null;
       return {
         ...toDTO(row),
         planName: sub?.plan?.name ?? null,
         supplierName: sub?.supplier?.name ?? null,
-        nextDueAt: sub?.nextDueAt.toISOString() ?? null,
+        nextDueAt: (openChargeDueAt ?? sub?.nextDueAt)?.toISOString() ?? null,
+        situation: resolveCustomerSituation({
+          subscriptionStatus: (sub?.status as SubscriptionStatus | undefined) ?? null,
+          openChargeDueAt,
+          now: params.now,
+          timezone: params.timezone,
+        }),
       };
     }),
     total,
   };
 }
 
-export async function getCustomer(id: string): Promise<CustomerDTO | null> {
-  const row = await db.customer.findUnique({ where: { id } });
-  return row ? toDTO(row) : null;
+export interface CustomerHeadDTO extends CustomerDTO {
+  situation: CustomerSituation;
+  supplierName: string | null;
+  /** Mês/ano do início da assinatura mais antiga, para "cliente desde". */
+  sinceAt: string | null;
+}
+
+/** Cabeçalho da ficha: os mesmos campos derivados da lista, para um cliente só. */
+export async function getCustomerHead(
+  id: string,
+  now: Date,
+  timezone: string,
+): Promise<CustomerHeadDTO | null> {
+  const row = await db.customer.findUnique({ where: { id }, include: LIST_INCLUDE });
+  if (!row) return null;
+
+  const sub = row.subscriptions[0];
+  const oldest = await db.subscription.findFirst({
+    where: { customerId: id },
+    orderBy: { startedAt: 'asc' },
+    select: { startedAt: true },
+  });
+
+  return {
+    ...toDTO(row),
+    supplierName: sub?.supplier?.name ?? null,
+    sinceAt: oldest?.startedAt.toISOString() ?? null,
+    situation: resolveCustomerSituation({
+      subscriptionStatus: (sub?.status as SubscriptionStatus | undefined) ?? null,
+      openChargeDueAt: row.charges[0]?.dueAt ?? null,
+      now,
+      timezone,
+    }),
+  };
 }

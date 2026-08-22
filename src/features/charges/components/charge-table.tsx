@@ -1,12 +1,26 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Receipt } from 'lucide-react';
+import { Receipt, SearchX } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
+import { daysFromDue } from '@/core/dunning-rules';
 import { formatCents, formatLocalDate } from '@/lib/format';
 import { ChargeStatusBadge } from './charge-status-badge';
+import { ChargeRowActions } from './charge-row-actions';
+import { RegisterPaymentDialog } from './register-payment-dialog';
 import type { ChargeDTO } from '../queries';
+
+const FILTER_KEYS = ['status', 'customerId', 'supplierId', 'dueFrom', 'dueTo'];
+
+/** "3 dias" de atraso, ou vazio quando não há (não vencida, ou já resolvida). */
+function formatOverdue(row: ChargeDTO, timezone: string): string {
+  if (row.status === 'PAID' || row.status === 'CANCELLED') return '';
+  const days = daysFromDue(new Date(row.dueAt), new Date(), timezone);
+  if (days <= 0) return '';
+  return `${days} ${days === 1 ? 'dia' : 'dias'}`;
+}
 
 export function ChargeTable({
   rows,
@@ -19,6 +33,8 @@ export function ChargeTable({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [paying, setPaying] = useState<ChargeDTO | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   function loadMore() {
     if (!nextCursor) return;
@@ -27,19 +43,32 @@ export function ChargeTable({
     router.push(`/charges?${params.toString()}`);
   }
 
+  function openPaymentDialog(charge: ChargeDTO) {
+    setPaying(charge);
+    setDialogOpen(true);
+  }
+
+  const hasActiveFilters = FILTER_KEYS.some((key) => !!searchParams.get(key));
+
   if (rows.length === 0) {
-    return (
+    return hasActiveFilters ? (
+      <EmptyState
+        icon={SearchX}
+        title="Nenhuma cobrança encontrada com esse filtro"
+        description="Ajuste os filtros para ver outras cobranças."
+      />
+    ) : (
       <EmptyState
         icon={Receipt}
-        title="Nenhuma cobrança encontrada"
-        description="Ajuste os filtros ou aguarde a próxima geração do ciclo."
+        title="Nenhuma cobrança ainda"
+        description="Cobranças nascem sozinhas do ciclo da assinatura — aguarde a próxima geração."
       />
     );
   }
 
   return (
     <div className="overflow-hidden rounded border border-border bg-surface">
-      <div className="overflow-x-auto">
+      <div className="max-h-[480px] overflow-x-auto overflow-y-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b border-border">
@@ -48,7 +77,9 @@ export function ChargeTable({
               <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-foreground-muted">Valor</th>
               <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-foreground-muted">Pago</th>
               <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-foreground-muted">Vencimento</th>
+              <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-foreground-muted">Atraso</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-foreground-muted">Situação</th>
+              <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-foreground-muted">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -63,8 +94,12 @@ export function ChargeTable({
                 <td className="px-4 text-right font-mono text-sm tabular-mono">{formatCents(row.netCents)}</td>
                 <td className="px-4 text-right font-mono text-sm tabular-mono">{formatCents(row.paidCents)}</td>
                 <td className="px-4 text-right font-mono text-sm tabular-mono">{formatLocalDate(row.dueAt, timezone)}</td>
+                <td className="px-4 text-right font-mono text-sm tabular-mono">{formatOverdue(row, timezone)}</td>
                 <td className="px-4 text-left text-sm">
                   <ChargeStatusBadge status={row.status} />
+                </td>
+                <td className="px-4 text-right text-sm">
+                  <ChargeRowActions charge={row} onRegisterPayment={openPaymentDialog} />
                 </td>
               </tr>
             ))}
@@ -82,6 +117,10 @@ export function ChargeTable({
           </button>
         </div>
       )}
+      <p className="border-t border-border px-4 py-2.5 text-xs text-foreground-muted">
+        Cobrança paga ou cancelada não é editável. Correção é registro novo.
+      </p>
+      <RegisterPaymentDialog charge={paying} open={dialogOpen} onOpenChange={setDialogOpen} timezone={timezone} />
     </div>
   );
 }

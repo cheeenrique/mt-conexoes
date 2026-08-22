@@ -32,6 +32,17 @@ export const subscriptionSchema = z
     discountType: discountTypeField,
     discountValue: discountValueField,
     discountUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data de validade inválida.').optional().or(z.literal('')),
+    // Próximo vencimento editável (handoff 04 §"Modo edição"). Campo vazio =
+    // não mexer: quem não abriu o campo não pode reescrever a âncora do ciclo
+    // sem querer. Cobrança já emitida nunca é tocada por isso — o valor novo
+    // vale da próxima cobrança gerada em diante.
+    nextDueAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data de vencimento inválida.').optional().or(z.literal('')),
+    // Situação da assinatura, o único estado do cliente que o operador
+    // controla na mão — o resto do badge ("Vence hoje", "Em atraso") é
+    // derivado de `core/customer-situation` e não cabe em select.
+    // `CANCELLED` fica de fora: cancelar tem efeito sobre cobrança em aberto e
+    // é outro fluxo, não um item de lista suspensa.
+    status: z.enum(['ACTIVE', 'SUSPENDED'], { error: 'Selecione uma situação válida.' }).optional().or(z.literal('')),
     accessUsername: z.string().optional(),
     accessPassword: z.string().optional(),
     accessServer: z.string().optional(),

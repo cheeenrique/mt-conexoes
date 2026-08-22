@@ -1,7 +1,7 @@
 import { AppShell } from '@/components/layout/app-shell';
 import { listCharges } from '@/features/charges/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
-import { getSettings } from '@/features/settings/queries';
+import { getSettings } from '@/lib/settings';
 import { ChargeFilters } from '@/features/charges/components/charge-filters';
 import { ChargeTable } from '@/features/charges/components/charge-table';
 import { SendMessageButton } from '@/features/messaging/components/send-message-button';

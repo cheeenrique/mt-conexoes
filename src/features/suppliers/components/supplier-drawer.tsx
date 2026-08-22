@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Check, Loader2 } from 'lucide-react';
 import type { z } from 'zod';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Drawer, DrawerContent, DrawerHeader, DrawerBody, DrawerSection, DrawerFooter } from '@/components/ui/drawer';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,10 +24,12 @@ export function SupplierDrawer({
   open,
   onOpenChange,
   supplier,
+  marginAlertPercent,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   supplier: SupplierDTO | null;
+  marginAlertPercent: string;
 }) {
   const {
     register,
@@ -57,7 +61,7 @@ export function SupplierDrawer({
     onOpenChange(false);
 
     if (supplier && BigInt(values.unitCostCents) > BigInt(supplier.unitCostCents)) {
-      const preview = await getBulkAdjustPreviewAction(supplier.id);
+      const preview = await getBulkAdjustPreviewAction(supplier.id, marginAlertPercent);
       if ('ok' in preview && preview.rows.length > 0) {
         setBulkRows(preview.rows);
         setBulkCost({ oldUnitCostCents: supplier.unitCostCents, newUnitCostCents: values.unitCostCents });
@@ -69,53 +73,74 @@ export function SupplierDrawer({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[520px] bg-surface">
-          <DialogHeader>
-            <DialogTitle>{supplier ? 'Editar fornecedor' : 'Novo fornecedor'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-            <div>
-              <Label htmlFor="name">Nome</Label>
-              <Input id="name" aria-invalid={!!errors.name} {...register('name')} className="h-11" />
-              {errors.name && <p className="mt-1 text-sm text-danger">{errors.name.message}</p>}
-            </div>
-            <div>
-              <Label htmlFor="unitCostCents">Custo padrão por ciclo</Label>
-              <Controller
-                control={control}
-                name="unitCostCents"
-                render={({ field }) => (
-                  <CurrencyInput id="unitCostCents" value={field.value} onValueChange={field.onChange} />
-                )}
-              />
-              {errors.unitCostCents && <p className="mt-1 text-sm text-danger">{errors.unitCostCents.message}</p>}
-            </div>
-            <div>
-              <Label htmlFor="notes">Observações</Label>
-              <textarea
-                id="notes"
-                {...register('notes')}
-                className="min-h-20 w-full rounded-sm border border-border bg-surface-elevated px-3 py-2 text-sm text-foreground"
-              />
-            </div>
-            {supplier && (
-              <>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="isActive" {...register('isActive')} className="h-4 w-4" />
-                  <Label htmlFor="isActive">Ativo</Label>
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent width={520} aria-label={supplier ? 'Editar fornecedor' : 'Novo fornecedor'}>
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-1 flex-col">
+            <DrawerHeader
+              title={supplier ? 'Editar fornecedor' : 'Novo fornecedor'}
+              subtitle={
+                supplier
+                  ? `${supplier.activeSubscriptionsCount} assinatura${supplier.activeSubscriptionsCount === 1 ? '' : 's'} ativa${supplier.activeSubscriptionsCount === 1 ? '' : 's'} com este fornecedor`
+                  : 'O custo padrão só sugere valor na criação de uma assinatura.'
+              }
+            />
+            <DrawerBody>
+              <DrawerSection label="Dados do fornecedor">
+                <div className="space-y-1.5">
+                  <Label htmlFor="name">Nome</Label>
+                  <Input id="name" aria-invalid={!!errors.name} {...register('name')} className="h-11" />
+                  {errors.name && <p className="mt-1 text-sm text-danger">{errors.name.message}</p>}
                 </div>
-                <p className="text-xs text-foreground-muted">
-                  Mudar o custo não reajusta assinatura existente sozinho.
-                </p>
-              </>
-            )}
-            <Button type="submit" disabled={isSubmitting} className="h-11">
-              {isSubmitting ? 'Salvando...' : 'Salvar'}
-            </Button>
+                <div className="space-y-1.5">
+                  <Label htmlFor="unitCostCents">Custo padrão por ciclo</Label>
+                  <Controller
+                    control={control}
+                    name="unitCostCents"
+                    render={({ field }) => (
+                      <CurrencyInput id="unitCostCents" value={field.value} onValueChange={field.onChange} />
+                    )}
+                  />
+                  {errors.unitCostCents && <p className="mt-1 text-sm text-danger">{errors.unitCostCents.message}</p>}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="notes">Observações</Label>
+                  <textarea
+                    id="notes"
+                    {...register('notes')}
+                    className="min-h-20 w-full rounded-sm border border-border bg-surface-elevated px-3 py-2 text-sm text-foreground"
+                  />
+                </div>
+              </DrawerSection>
+              {supplier && (
+                <DrawerSection label="Status">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="isActive" {...register('isActive')} className="h-4 w-4" />
+                    <Label htmlFor="isActive">Ativo</Label>
+                  </div>
+                  {supplier.activeSubscriptionsCount > 0 && (
+                    <p className="text-xs text-foreground-muted">Desativar não cancela nenhuma assinatura ativa.</p>
+                  )}
+                  <Alert tone="warning" className="text-xs text-foreground-muted">
+                    <p>
+                      Mudar o custo padrão não altera nenhuma assinatura sozinho. Ao salvar, mostramos quantas caem
+                      abaixo do limite de margem e você decide o reajuste em lote.
+                    </p>
+                    <p className="mt-1.5">
+                      O reajuste vale da próxima cobrança em diante. Cobranças já emitidas não mudam.
+                    </p>
+                  </Alert>
+                </DrawerSection>
+              )}
+            </DrawerBody>
+            <DrawerFooter>
+              <Button type="submit" size="lg" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 aria-hidden="true" className="animate-spin" /> : <Check aria-hidden="true" />}
+                {isSubmitting ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </DrawerFooter>
           </form>
-        </DialogContent>
-      </Dialog>
+        </DrawerContent>
+      </Drawer>
       {bulkRows && bulkCost && supplier && (
         <BulkAdjustDialog
           open={true}

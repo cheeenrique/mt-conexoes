@@ -2,6 +2,7 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Check, Loader2 } from 'lucide-react';
 import type { z } from 'zod';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -124,6 +125,7 @@ export function SubscriptionDrawer({
           </p>
           <SubscriptionAccessFields register={register} errors={errors} hasAccessPassword={!!subscription?.hasAccessPassword} />
           <Button type="submit" disabled={isSubmitting} className="h-11">
+            {isSubmitting ? <Loader2 aria-hidden="true" className="animate-spin" /> : <Check aria-hidden="true" />}
             {isSubmitting ? 'Salvando...' : 'Salvar'}
           </Button>
         </form>

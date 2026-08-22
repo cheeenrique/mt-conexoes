@@ -104,6 +104,64 @@ export async function getMonthlySummary(from: Date, to: Date): Promise<MonthlySu
   };
 }
 
+export interface DashboardKpisDTO {
+  dueTodayCount: number;
+  dueTodayCents: string;
+  overdueCount: number;
+  overdueCents: string;
+  activeSubscriptionsCount: number;
+  suspendedSubscriptionsCount: number;
+  /** Pontos percentuais, como texto para virar `Decimal`. `null` sem assinatura ativa com preço. */
+  averageMarginPercent: string | null;
+}
+
+type OpenChargeKpiRow = {
+  dueTodayCount: number;
+  dueTodayCents: string;
+  overdueCount: number;
+  overdueCents: string;
+};
+
+type SubscriptionKpiRow = {
+  activeSubscriptionsCount: number;
+  suspendedSubscriptionsCount: number;
+  averageMarginPercent: string | null;
+};
+
+/** KPIs do Início. `todayStart`/`tomorrowStart` vêm de `startOfLocalDay` no fuso do negócio. */
+export async function getDashboardKpis(todayStart: Date, tomorrowStart: Date): Promise<DashboardKpisDTO> {
+  const [chargeRows, subscriptionRows] = await Promise.all([
+    db.$queryRaw<OpenChargeKpiRow[]>`
+      WITH open_charges AS (
+        SELECT
+          ch."dueAt" AS "dueAt",
+          ch."principalCents" - ch."discountCents" - COALESCE(SUM(p."amountCents"), 0) AS "outstandingCents"
+        FROM charges ch
+        LEFT JOIN payments p ON p."chargeId" = ch.id
+        WHERE ch.status IN ('OPEN', 'OVERDUE', 'PARTIALLY_PAID')
+        GROUP BY ch.id, ch."dueAt", ch."principalCents", ch."discountCents"
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE "dueAt" >= ${todayStart} AND "dueAt" < ${tomorrowStart})::int AS "dueTodayCount",
+        COALESCE(SUM("outstandingCents") FILTER (WHERE "dueAt" >= ${todayStart} AND "dueAt" < ${tomorrowStart}), 0)::text AS "dueTodayCents",
+        COUNT(*) FILTER (WHERE "dueAt" < ${todayStart})::int AS "overdueCount",
+        COALESCE(SUM("outstandingCents") FILTER (WHERE "dueAt" < ${todayStart}), 0)::text AS "overdueCents"
+      FROM open_charges
+    `,
+    db.$queryRaw<SubscriptionKpiRow[]>`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'ACTIVE')::int AS "activeSubscriptionsCount",
+        COUNT(*) FILTER (WHERE status = 'SUSPENDED')::int AS "suspendedSubscriptionsCount",
+        (AVG((("priceCents" - "costCents")::numeric / "priceCents") * 100)
+           FILTER (WHERE status = 'ACTIVE' AND "priceCents" > 0))::text AS "averageMarginPercent"
+      FROM subscriptions
+      WHERE status IN ('ACTIVE', 'SUSPENDED')
+    `,
+  ]);
+
+  return { ...chargeRows[0], ...subscriptionRows[0] };
+}
+
 export async function getSupplierBreakdown(from: Date, to: Date): Promise<BreakdownRowDTO[]> {
   return db.$queryRaw<BreakdownRowDTO[]>`
     SELECT

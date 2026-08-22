@@ -19,7 +19,7 @@ export function SubscriptionDiscountFields({
 }) {
   return (
     <>
-      <div>
+      <div className="space-y-1.5">
         <Label htmlFor="discountType">Desconto</Label>
         <select id="discountType" {...register('discountType')} className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground">
           <option value="">Nenhum</option>
@@ -27,12 +27,12 @@ export function SubscriptionDiscountFields({
           <option value="FIXED">Fixo</option>
         </select>
       </div>
-      <div>
+      <div className="space-y-1.5">
         <Label htmlFor="discountValue">Valor do desconto</Label>
         <Input id="discountValue" placeholder="Ex.: 10.50" aria-invalid={!!errors.discountValue} {...register('discountValue')} className="h-11" />
         {errors.discountValue && <p className="mt-1 text-sm text-danger">{errors.discountValue.message}</p>}
       </div>
-      <div>
+      <div className="space-y-1.5">
         <Label htmlFor="discountUntil">Válido até</Label>
         <Controller control={control} name="discountUntil" render={({ field }) => (
           <DateInput id="discountUntil" value={field.value ?? ''} onValueChange={field.onChange} />

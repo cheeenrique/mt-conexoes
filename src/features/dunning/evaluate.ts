@@ -1,54 +1,10 @@
 import { db } from '@/lib/db';
-import { daysFromDue, consolidate, type PendingStep, type ConsolidatedMessage } from '@/core/dunning-rules';
+import { consolidate, daysFromDue, type PendingStep, type ConsolidatedMessage } from '@/core/dunning-rules';
+import { buildConsolidatedBody, buildPendingStep, type ChargeForStep, type StepForEvaluation } from './message-build';
 import { getDefaultRuleWithSteps } from './queries';
-import { getSettings, type SettingsDTO } from '@/features/settings/queries';
+import { getSettings, type SettingsDTO } from '@/lib/settings';
 import { localDateOnly } from '@/core/dates';
-import { formatCents } from '@/lib/format';
 import { logger } from '@/lib/logger';
-import type { TemplateContext } from '@/core/dunning-template';
-
-type ChargeForStep = {
-  id: string;
-  customerId: string;
-  dueAt: Date;
-  principalCents: bigint;
-  discountCents: bigint;
-  payments: { amountCents: bigint }[];
-  customer: { name: string; phone: string | null; optedOut: boolean };
-};
-
-type StepForEvaluation = {
-  id: string;
-  offsetDays: number;
-  templateBody: string | null;
-};
-
-function buildPendingStep(charge: ChargeForStep, step: StepForEvaluation, settings: SettingsDTO, now: Date): PendingStep {
-  const netCents = charge.principalCents - charge.discountCents;
-  const paidCents = charge.payments.reduce((sum, p) => sum + p.amountCents, 0n);
-  const remainingCents = netCents - paidCents;
-
-  const context: TemplateContext = {
-    'cliente.primeiro_nome': charge.customer.name.split(' ')[0],
-    'cliente.nome': charge.customer.name,
-    'cobranca.valor': formatCents(remainingCents),
-    'cobranca.vencimento': localDateOnly(charge.dueAt, settings.timezone).toLocaleDateString('pt-BR', { timeZone: 'UTC' }),
-    'cobranca.dias_atraso': String(Math.max(0, daysFromDue(charge.dueAt, now, settings.timezone))),
-    'pix.chave': settings.pixKey ?? '',
-    'negocio.nome': settings.businessName,
-  };
-
-  return {
-    customerId: charge.customerId,
-    toPhone: charge.customer.phone as string, // já validado não-nulo antes de chamar
-    chargeId: charge.id,
-    stepId: step.id,
-    offsetDays: step.offsetDays,
-    templateBody: step.templateBody ?? '',
-    netCents: remainingCents.toString(),
-    context,
-  };
-}
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
@@ -118,9 +74,7 @@ async function persistConsolidatedMessage(msg: ConsolidatedMessage, now: Date, t
     let queued = 0;
     await db.$transaction(async (tx) => {
       const scheduledDate = localDateOnly(now, timezone);
-      const body = msg.extraCount > 0
-        ? `${msg.body}\n\n+ mais ${msg.extraCount} cobrança(s), totalizando ${formatCents(msg.extraCents)}`
-        : msg.body;
+      const body = buildConsolidatedBody(msg);
       const created = await tx.message.create({
         data: {
           customerId: msg.customerId,
@@ -162,10 +116,18 @@ async function persistConsolidatedMessage(msg: ConsolidatedMessage, now: Date, t
   }
 }
 
+const EMPTY_EVALUATION_RESULT = { queued: 0, skipped: 0, pendingReview: 0, suspended: 0 } as const;
+
 export async function evaluateDunningRule(now: Date): Promise<{
   queued: number; skipped: number; pendingReview: number; suspended: number;
 }> {
   const rule = await getDefaultRuleWithSteps();
+  // DRAFT: "o motor nem avalia esta régua". PAUSED: "nada sai por esta régua".
+  // Só REVIEW (calcula sem enviar) e ACTIVE (roda) chegam a avaliar cobrança.
+  if (rule.status !== 'REVIEW' && rule.status !== 'ACTIVE') {
+    return { ...EMPTY_EVALUATION_RESULT };
+  }
+
   const settings = await getSettings();
   const activeSteps = rule.steps.filter((s) => s.isActive);
 
@@ -180,7 +142,7 @@ export async function evaluateDunningRule(now: Date): Promise<{
       .map((step) => ({ charge, step })),
   );
 
-  if (chargeStepPairs.length === 0) return { queued: 0, skipped: 0, pendingReview: 0, suspended: 0 };
+  if (chargeStepPairs.length === 0) return { ...EMPTY_EVALUATION_RESULT };
 
   const existing = await db.dunningExecution.findMany({
     where: { OR: chargeStepPairs.map(({ charge, step }) => ({ chargeId: charge.id, stepId: step.id })) },
@@ -202,7 +164,7 @@ export async function evaluateDunningRule(now: Date): Promise<{
     else if (outcome.kind === 'suspended') suspended++;
   }
 
-  const consolidated = consolidate(pending, settings.timezone);
+  const consolidated = consolidate(pending);
   let queued = 0;
 
   for (const msg of consolidated) {

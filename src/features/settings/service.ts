@@ -18,3 +18,13 @@ export async function updateSettings(input: SettingsInput) {
     },
   });
 }
+
+// Kill switch (T8). `dispatchPendingMessages` lê esta coluna a cada passada
+// (features/messaging/scheduled-dispatch.ts) — gravar aqui já vale a partir
+// do próximo ciclo do cron, sem depender de nenhum cache.
+export async function setSendingPaused(paused: boolean) {
+  return db.settings.update({
+    where: { id: 'singleton' },
+    data: { sendingPaused: paused },
+  });
+}

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import Decimal from 'decimal.js';
 import { supplierSchema } from './schema';
 import { createSupplier, updateSupplier, applyBulkPriceAdjustment } from './service';
 import { listBulkAdjustPreview, type BulkAdjustPreviewRow } from './queries';
@@ -14,6 +15,10 @@ type ActionResult = { ok: true } | { error: { code: string; message: string } };
 type ActionError = { error: { code: string; message: string } };
 
 const bulkAdjustCentsSchema = z.string().regex(/^\d+$/, 'Custo inválido.');
+// Mesmo formato de Settings.marginAlertPercent (features/settings/schema.ts) — não importamos
+// a feature settings aqui (uma feature não importa de outra); o valor chega validado por prop,
+// vindo de getSettings() na page.
+const marginAlertPercentSchema = z.string().regex(/^\d+(\.\d{1,2})?$/, 'Percentual inválido.');
 
 export async function createSupplierAction(input: unknown): Promise<ActionResult> {
   try {
@@ -52,11 +57,17 @@ export async function updateSupplierAction(id: string, input: unknown): Promise<
 }
 
 export async function getBulkAdjustPreviewAction(
-  supplierId: string
+  supplierId: string,
+  marginAlertPercent: unknown,
 ): Promise<{ ok: true; rows: BulkAdjustPreviewRow[] } | ActionError> {
   try {
     await requireSession();
-    const rows = await listBulkAdjustPreview(supplierId);
+    const parsedAlertPercent = marginAlertPercentSchema.safeParse(marginAlertPercent);
+    if (!parsedAlertPercent.success) {
+      return { error: { code: 'VALIDATION', message: messages.common.invalidInput } };
+    }
+
+    const rows = await listBulkAdjustPreview(supplierId, new Decimal(parsedAlertPercent.data));
     return { ok: true as const, rows };
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };

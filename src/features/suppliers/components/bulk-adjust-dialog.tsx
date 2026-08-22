@@ -1,15 +1,23 @@
 'use client';
 
 import { useState } from 'react';
+import Decimal from 'decimal.js';
+import { Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { TypeToConfirmDialog } from '@/components/ui/type-to-confirm-dialog';
 import { formatCents } from '@/lib/format';
+import { marginBadgeTone } from '@/lib/margin-tone';
 import { applyBulkAdjustAction } from '../actions';
 import { toastError, toastSuccess } from '@/lib/toast';
 import type { BulkAdjustPreviewRow } from '../queries';
 
 const BATCH_CONFIRM_THRESHOLD = 100;
+
+function marginLabel(pct: string | null): string {
+  return pct === null ? '—' : `${new Decimal(pct).toFixed(1)}%`;
+}
 
 export function BulkAdjustDialog({
   open,
@@ -63,20 +71,25 @@ export function BulkAdjustDialog({
           <DialogHeader>
             <DialogTitle>Custo subiu — {rows.length} assinatura(s) afetada(s)</DialogTitle>
           </DialogHeader>
-          <ul className="mt-2 max-h-80 overflow-y-auto text-sm">
+          <div className="mt-2 flex items-center justify-between gap-3 px-1 text-xs font-semibold uppercase tracking-wide text-foreground-muted">
+            <span>Cliente</span>
+            <span>Valor atual · Margem atual → depois</span>
+          </div>
+          <ul className="max-h-80 overflow-y-auto text-sm">
             {rows.map((row) => (
               <li key={row.subscriptionId} className="flex items-center justify-between gap-3 border-b border-border py-2 last:border-0">
                 <span className="text-foreground">{row.customerName}</span>
-                <span className="font-mono text-foreground-muted">
-                  {formatCents(row.oldCostCents)} → {formatCents(row.newCostCents)}
-                </span>
-                <span className="font-mono text-foreground">
-                  {formatCents(row.oldPriceCents)} → {formatCents(row.newPriceCents)}
+                <span className="font-mono tabular-mono text-foreground-muted">{formatCents(row.oldPriceCents)}</span>
+                <span className="flex items-center gap-1.5">
+                  <StatusBadge tone={marginBadgeTone(row.oldMarginPercent)}>{marginLabel(row.oldMarginPercent)}</StatusBadge>
+                  <span className="text-foreground-muted">→</span>
+                  <StatusBadge tone={marginBadgeTone(row.newMarginPercent)}>{marginLabel(row.newMarginPercent)}</StatusBadge>
                 </span>
               </li>
             ))}
           </ul>
           <Button disabled={isApplying} onClick={handleConfirmClick}>
+            <Check aria-hidden="true" />
             {rows.length > BATCH_CONFIRM_THRESHOLD ? 'Continuar' : `Aplicar em ${rows.length} assinatura(s)`}
           </Button>
         </DialogContent>

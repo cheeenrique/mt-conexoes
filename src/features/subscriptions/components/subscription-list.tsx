@@ -1,12 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Pencil } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { formatCents } from '@/lib/format';
 import { CYCLE_LABELS, SUBSCRIPTION_STATUS_LABELS } from '@/lib/labels';
-import { CredentialRevealDialog } from './credential-reveal-dialog';
 import { SubscriptionDrawer } from './subscription-drawer';
 import type { SubscriptionDTO } from '../queries';
 
@@ -35,7 +34,10 @@ export function SubscriptionList({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-end">
-        <Button onClick={() => { setEditing(null); setDrawerOpen(true); }}>Nova assinatura</Button>
+        <Button onClick={() => { setEditing(null); setDrawerOpen(true); }}>
+          <Plus aria-hidden="true" />
+          Nova assinatura
+        </Button>
       </div>
       {subscriptions.length === 0 && (
         <p className="text-sm text-foreground-muted">Nenhuma assinatura cadastrada.</p>
@@ -49,13 +51,12 @@ export function SubscriptionList({
           <p className="font-mono text-sm tabular-mono text-foreground-muted">
             {formatCents(sub.priceCents)} · {CYCLE_LABELS[sub.cycle] ?? sub.cycle} · {sub.supplierName ?? 'sem fornecedor'}
           </p>
+          {/* ⚠️ Usuário e senha de acesso não aparecem aqui. Eles moram no bloco
+              "Acesso do assinante" da ficha (handoff 04 §4), onde os dois ficam
+              mascarados e são revelados juntos por uma revelação auditada. Ter
+              o usuário em texto claro nesta lista era a segunda cópia — e a
+              cópia insegura — da mesma interface. */}
           <div className="mt-3 flex items-center gap-2">
-            {(sub.accessUsername || sub.hasAccessPassword) && (
-              <span className="font-mono text-xs tabular-mono text-foreground-muted">
-                {sub.accessUsername || 'sem usuário'} · {sub.hasAccessPassword ? '••••••••' : 'sem senha'}
-              </span>
-            )}
-            {sub.hasAccessPassword && <CredentialRevealDialog subscriptionId={sub.id} />}
             <button
               type="button"
               aria-label="Editar assinatura"

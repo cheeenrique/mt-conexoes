@@ -1,6 +1,8 @@
 import { db } from '@/lib/db';
 import { DomainError, UnknownTemplateVariableError } from '@/lib/errors';
 import { assertKnownVariables } from '@/core/dunning-template';
+import { DunningRuleNotFoundError } from './rule.service';
+import { offsetDaysFrom } from './step-offset';
 import type { DunningStepInput } from './schema';
 
 export { UnknownTemplateVariableError };
@@ -8,6 +10,14 @@ export { UnknownTemplateVariableError };
 export class DuplicateStepOffsetError extends DomainError {
   constructor(cause?: unknown) {
     super('Já existe um passo com esse deslocamento nesta régua.', 'DUPLICATE_STEP_OFFSET', { cause });
+  }
+}
+
+// Handoff da tela de réguas, regra 1: "rascunho → em revisão → ativa, sem atalho".
+// A revisão existe para o operador ver a lista do que sairia antes de ativar.
+export class DunningRuleNotInReviewError extends DomainError {
+  constructor(cause?: unknown) {
+    super('A régua precisa estar em revisão antes de ser ativada.', 'DUNNING_RULE_NOT_IN_REVIEW', { cause });
   }
 }
 
@@ -24,7 +34,7 @@ export async function createStep(ruleId: string, input: DunningStepInput) {
   validateTemplate(input.templateBody);
   try {
     return await db.dunningStep.create({
-      data: { ruleId, offsetDays: input.offsetDays, action: input.action, templateBody: input.templateBody ?? null, isActive: input.isActive },
+      data: { ruleId, offsetDays: offsetDaysFrom(input.days, input.direction), action: input.action, templateBody: input.templateBody ?? null, isActive: input.isActive },
     });
   } catch (err) {
     if (isUniqueViolation(err)) throw new DuplicateStepOffsetError(err);
@@ -37,7 +47,7 @@ export async function updateStep(id: string, input: DunningStepInput) {
   try {
     return await db.dunningStep.update({
       where: { id },
-      data: { offsetDays: input.offsetDays, action: input.action, templateBody: input.templateBody ?? null, isActive: input.isActive },
+      data: { offsetDays: offsetDaysFrom(input.days, input.direction), action: input.action, templateBody: input.templateBody ?? null, isActive: input.isActive },
     });
   } catch (err) {
     if (isUniqueViolation(err)) throw new DuplicateStepOffsetError(err);
@@ -49,8 +59,18 @@ export async function deleteStep(id: string) {
   await db.dunningStep.delete({ where: { id } });
 }
 
-export async function activateDunningRule(mode: 'send-all' | 'ignore-retroactive'): Promise<void> {
-  const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+/**
+ * ⚠️ Recebe o id da régua que o operador tem na tela, não "a padrão".
+ *
+ * A tela é mestre-detalhe e uma régua em revisão pode perfeitamente não ser a
+ * padrão. Resolver a régua por `isDefault` aqui dentro ativaria uma régua
+ * diferente da que o operador acabou de revisar linha a linha — que é o
+ * contrário do que a revisão existe para garantir.
+ */
+export async function activateDunningRule(ruleId: string, mode: 'send-all' | 'ignore-retroactive'): Promise<void> {
+  const rule = await db.dunningRule.findUnique({ where: { id: ruleId } });
+  if (!rule) throw new DunningRuleNotFoundError();
+  if (rule.status !== 'REVIEW') throw new DunningRuleNotInReviewError();
 
   if (mode === 'ignore-retroactive') {
     const steps = await db.dunningStep.findMany({ where: { ruleId: rule.id }, select: { id: true } });

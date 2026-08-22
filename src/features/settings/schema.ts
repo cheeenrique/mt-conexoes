@@ -25,3 +25,12 @@ export const settingsSchema = z
     message: 'O início precisa ser antes do fim.',
     path: ['quietHourEnd'],
   });
+
+export type SettingsFormValues = z.infer<typeof settingsSchema>;
+
+// Kill switch (T8, CLAUDE.md §Régua — travas). Recebe o estado alvo explícito
+// em vez de inverter o valor atual no banco: assim um clique perdido em
+// trânsito nunca deixa o estado divergente do que o operador viu na tela.
+export const toggleSendingPausedSchema = z.object({
+  paused: z.boolean(),
+});

@@ -1,34 +1,83 @@
+import { GitCommitHorizontal, Route } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
-import { StatusBadge } from '@/components/ui/status-badge';
-import { getDefaultRuleWithSteps, listRecentChargesForPreview, listReviewPreview } from '@/features/dunning/queries';
-import { getSettings } from '@/features/settings/queries';
-import { StepList } from '@/features/dunning/components/step-list';
-import { ReviewPreview } from '@/features/dunning/components/review-preview';
-import { DUNNING_STATUS_LABELS } from '@/lib/labels';
+import { EmptyState } from '@/components/ui/empty-state';
+import {
+  countEvaluableSubscriptions,
+  getRuleWithSteps,
+  listDunningRules,
+  listRecentChargesForPreview,
+  listReviewMessages,
+} from '@/features/dunning/queries';
+import { NewRuleButton } from '@/features/dunning/components/new-rule-button';
+import { RuleList } from '@/features/dunning/components/rule-list';
+import { RuleDetail } from '@/features/dunning/components/rule-detail';
+import { getSettings } from '@/lib/settings';
+import { listChannelConfigs } from '@/features/messaging/queries';
+import { resolveAdapter } from '@/features/messaging/channels/registry';
 
-export default async function DunningRulePage() {
-  const [rule, charges, settings, preview] = await Promise.all([
-    getDefaultRuleWithSteps(),
-    listRecentChargesForPreview(),
+export default async function DunningRulePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ regua?: string }>;
+}) {
+  const [{ regua }, rules, settings, channels, evaluableSubscriptions] = await Promise.all([
+    searchParams,
+    listDunningRules(),
     getSettings(),
-    listReviewPreview(),
+    listChannelConfigs(),
+    countEvaluableSubscriptions(),
   ]);
 
+  const newRuleButton = <NewRuleButton rules={rules} />;
+
+  if (rules.length === 0) {
+    return (
+      <AppShell title="Réguas" icon={<GitCommitHorizontal size={22} />} primaryAction={newRuleButton}>
+        <EmptyState
+          icon={Route}
+          title="Nenhuma régua de cobrança ainda"
+          description="A régua é o que cobra sozinho no WhatsApp. Crie a primeira — ela nasce em rascunho e não envia nada até você revisar."
+          action={newRuleButton}
+        />
+      </AppShell>
+    );
+  }
+
+  // Seleção em `searchParams`, não em estado: o operador manda o link da régua
+  // que está olhando e volta pelo histórico. Link com id morto cai na padrão.
+  const selectedId = rules.find((rule) => rule.id === regua)?.id ?? rules[0].id;
+  const [rule, charges, reviewMessages] = await Promise.all([
+    getRuleWithSteps(selectedId),
+    listRecentChargesForPreview(),
+    listReviewMessages(selectedId),
+  ]);
+
+  const activeChannel = channels.find((channel) => channel.isActive) ?? null;
+
   return (
-    <AppShell title="Régua de cobrança">
-      <div className="mb-4 flex items-center gap-2">
-        <p className="text-sm text-foreground-muted">{rule.name}</p>
-        <StatusBadge tone={rule.status === 'ACTIVE' ? 'success' : 'warning'}>
-          {DUNNING_STATUS_LABELS[rule.status] ?? rule.status}
-        </StatusBadge>
+    <AppShell title="Réguas" icon={<GitCommitHorizontal size={22} />} primaryAction={newRuleButton}>
+      <div className="grid items-start gap-4 md:grid-cols-[minmax(220px,280px)_1fr]">
+        <RuleList rules={rules} selectedId={selectedId} />
+        {rule && (
+          <RuleDetail
+            rule={rule}
+            reviewMessages={reviewMessages}
+            charges={charges}
+            settings={{ timezone: settings.timezone, pixKey: settings.pixKey, businessName: settings.businessName }}
+            channel={
+              activeChannel
+                ? {
+                    label: activeChannel.descriptor.label,
+                    requiresApprovedTemplate: resolveAdapter(activeChannel.provider).capabilities
+                      .requiresApprovedTemplate,
+                  }
+                : null
+            }
+            currentDefaultName={rules.find((item) => item.isDefault)?.name ?? null}
+            evaluableSubscriptions={evaluableSubscriptions}
+          />
+        )}
       </div>
-      {rule.status === 'REVIEW' && <ReviewPreview preview={preview} />}
-      <StepList
-        ruleId={rule.id}
-        steps={rule.steps}
-        charges={charges}
-        settings={{ timezone: settings.timezone, pixKey: settings.pixKey, businessName: settings.businessName }}
-      />
     </AppShell>
   );
 }

@@ -20,9 +20,11 @@ export function TemplatePreview({
 
   if (charges.length === 0) {
     return (
-      <div className="rounded-sm border border-border bg-surface-elevated p-3 text-sm text-foreground-muted">
+      <div className="flex flex-col gap-2 text-sm text-foreground-muted">
         Nenhuma cobrança cadastrada ainda pra pré-visualizar — o texto abaixo mostra as variáveis sem substituir.
-        <pre className="mt-2 whitespace-pre-wrap font-sans text-sm text-foreground">{templateBody}</pre>
+        <pre className="whitespace-pre-wrap rounded border border-border bg-background p-3.5 font-sans text-sm leading-relaxed text-foreground">
+          {templateBody}
+        </pre>
       </div>
     );
   }
@@ -41,12 +43,12 @@ export function TemplatePreview({
   };
 
   return (
-    <div className="rounded-sm border border-border bg-surface-elevated p-3">
+    <div className="flex flex-col gap-2">
       <select
         aria-label="Cobrança pra prévia"
         value={chargeId}
         onChange={(e) => setChargeId(e.target.value)}
-        className="mb-2 h-9 w-full rounded-sm border border-border bg-surface px-2 text-sm text-foreground"
+        className="h-9 w-full rounded-badge border border-border bg-surface-elevated px-2 text-sm text-foreground"
       >
         {charges.map((c) => (
           <option key={c.id} value={c.id}>
@@ -54,7 +56,11 @@ export function TemplatePreview({
           </option>
         ))}
       </select>
-      <pre className="whitespace-pre-wrap font-sans text-sm text-foreground">{renderTemplate(templateBody, context)}</pre>
+      {/* Fundo `#0B0B0C` (bg-background), como no handoff: a prévia imita a
+          bolha do WhatsApp e precisa se destacar do cartão da seção. */}
+      <pre className="whitespace-pre-wrap rounded border border-border bg-background p-3.5 font-sans text-sm leading-relaxed text-foreground">
+        {renderTemplate(templateBody, context)}
+      </pre>
     </div>
   );
 }

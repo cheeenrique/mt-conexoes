@@ -1,16 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Check, Loader2 } from 'lucide-react';
 import type { z } from 'zod';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerHeader } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
-import { dunningStepSchema } from '../schema';
-import { createDunningStepAction, updateDunningStepAction } from '../actions';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { messages } from '@/lib/messages';
-import { DUNNING_ACTION_OPTIONS } from '@/lib/labels';
-import { TemplatePreview } from './template-preview';
+import { dunningStepSchema } from '../schema';
+import { daysOf, directionOf, offsetDaysFrom, stepLabel } from '../step-offset';
+import { createDunningStepAction, deleteDunningStepAction, updateDunningStepAction } from '../actions';
+import { StepScheduleFields } from './step-schedule-fields';
+import { StepMessageFields } from './step-message-fields';
 import type { DunningStepDTO, PreviewChargeDTO } from '../queries';
 
 type FormValues = z.input<typeof dunningStepSchema>;
@@ -30,14 +34,31 @@ export function StepDrawer({
   charges: PreviewChargeDTO[];
   settings: { timezone: string; pixKey: string | null; businessName: string };
 }) {
-  const { register, handleSubmit, watch, setError, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
     resolver: zodResolver(dunningStepSchema),
     values: step
-      ? { offsetDays: step.offsetDays, action: step.action as FormValues['action'], templateBody: step.templateBody ?? '', isActive: step.isActive }
-      : { offsetDays: 0, action: 'SEND_MESSAGE', templateBody: '', isActive: true },
+      ? {
+          days: daysOf(step.offsetDays),
+          direction: directionOf(step.offsetDays),
+          action: step.action as FormValues['action'],
+          templateBody: step.templateBody ?? '',
+          isActive: step.isActive,
+        }
+      : { days: 1, direction: 'after', action: 'SEND_MESSAGE', templateBody: '', isActive: true },
   });
 
   const templateBody = watch('templateBody') ?? '';
+  const action = watch('action');
+  const direction = watch('direction');
+  const label = stepLabel(offsetDaysFrom(Number(watch('days')) || 0, direction));
 
   async function onSubmit(values: FormValues) {
     const result = step
@@ -45,8 +66,9 @@ export function StepDrawer({
       : await createDunningStepAction(ruleId, values);
 
     if ('error' in result) {
-      if (result.error.code === 'UNKNOWN_TEMPLATE_VARIABLE') {
-        setError('templateBody', { message: result.error.message });
+      if (result.error.code === 'UNKNOWN_TEMPLATE_VARIABLE') setError('templateBody', { message: result.error.message });
+      if (result.error.code === 'DUPLICATE_STEP_OFFSET') {
+        setError('days', { message: `Já existe um passo em ${label}. Edite o existente ou escolha outro dia.` });
       }
       toastError(result.error);
       return;
@@ -55,44 +77,72 @@ export function StepDrawer({
     onOpenChange(false);
   }
 
+  async function remove() {
+    if (!step) return;
+    const result = await deleteDunningStepAction(step.id);
+    setConfirmDelete(false);
+    if ('error' in result) {
+      toastError(result.error);
+      return;
+    }
+    toastSuccess(messages.dunning.stepDeleted);
+    onOpenChange(false);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{step ? `Passo D${step.offsetDays >= 0 ? '+' : ''}${step.offsetDays}` : 'Novo passo'}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
-          <div>
-            <label className="text-sm font-medium text-foreground" htmlFor="offsetDays">Deslocamento (dias, negativo = antes do vencimento)</label>
-            <input id="offsetDays" type="number" {...register('offsetDays')} className="mt-1 h-9 w-full rounded-sm border border-border bg-surface px-2 text-sm" />
-            {errors.offsetDays && <p className="mt-1 text-xs text-danger">{errors.offsetDays.message}</p>}
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground" htmlFor="action">Ação</label>
-            <select id="action" {...register('action')} className="mt-1 h-9 w-full rounded-sm border border-border bg-surface px-2 text-sm">
-              {DUNNING_ACTION_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-foreground" htmlFor="templateBody">Texto (com variáveis {'{{...}}'})</label>
-            <textarea id="templateBody" {...register('templateBody')} rows={5} className="mt-1 w-full rounded-sm border border-border bg-surface px-2 py-1.5 text-sm" />
-            {errors.templateBody && <p className="mt-1 text-xs text-danger">{errors.templateBody.message}</p>}
-          </div>
-          {templateBody && (
-            <div>
-              <p className="mb-1 text-sm font-medium text-foreground">Prévia</p>
-              <TemplatePreview templateBody={templateBody} charges={charges} settings={settings} />
-            </div>
-          )}
-          <label className="flex items-center gap-2 text-sm text-foreground-muted">
-            <input type="checkbox" {...register('isActive')} />
-            Passo ativo
-          </label>
-          <Button type="submit" disabled={isSubmitting}>Salvar</Button>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent width={560}>
+          <DrawerHeader
+            title={step ? `Passo ${stepLabel(step.offsetDays)}` : 'Novo passo'}
+            subtitle={
+              label === 'D0'
+                ? 'No dia do vencimento'
+                : `${label} · ${direction === 'before' ? 'antes' : 'depois'} do vencimento`
+            }
+          />
+          <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
+            <DrawerBody>
+              <StepScheduleFields register={register} errors={errors} action={action} />
+
+              {action === 'SEND_MESSAGE' && (
+                <StepMessageFields
+                  templateBody={templateBody}
+                  registration={register('templateBody')}
+                  onValueChange={(next) => setValue('templateBody', next, { shouldDirty: true })}
+                  error={errors.templateBody?.message}
+                  charges={charges}
+                  settings={settings}
+                />
+              )}
+            </DrawerBody>
+
+            <DrawerFooter>
+              <Button type="submit" size="lg" className="min-w-[200px] flex-1" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 aria-hidden="true" className="animate-spin" /> : <Check aria-hidden="true" />}
+                Salvar passo
+              </Button>
+              <Button type="button" variant="outline" size="lg" className="min-w-[140px] flex-1" onClick={() => onOpenChange(false)}>
+                Cancelar
+              </Button>
+              {step && (
+                <Button type="button" variant="destructive" size="lg" onClick={() => setConfirmDelete(true)}>
+                  Remover passo
+                </Button>
+              )}
+            </DrawerFooter>
+          </form>
+        </DrawerContent>
+      </Drawer>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Remover passo"
+        description={`O passo ${step ? stepLabel(step.offsetDays) : ''} deixa de existir nesta régua. Não dá para desfazer.`}
+        confirmLabel="Remover"
+        onConfirm={remove}
+      />
+    </>
   );
 }

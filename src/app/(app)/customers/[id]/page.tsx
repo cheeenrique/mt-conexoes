@@ -1,82 +1,56 @@
 import { notFound } from 'next/navigation';
+import { Users } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
-import { getCustomer } from '@/features/customers/queries';
-import { listSubscriptionsForCustomer } from '@/features/subscriptions/queries';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { CUSTOMER_SITUATION_LABELS, CUSTOMER_SITUATION_TONES } from '@/lib/labels';
 import { listActivePlansForSelect } from '@/features/plans/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
-import { getSettings } from '@/features/settings/queries';
-import { getChargesForCustomer } from '@/features/charges/queries';
-import { listMessagesForCustomer } from '@/features/messaging/queries';
-import { getCustomerPnl } from '@/features/reports/queries';
-import { CustomerProfileHeader } from '@/features/customers/components/customer-profile-header';
-import { CustomerTabs } from '@/features/customers/components/customer-tabs';
+import { listSubscriptionsForCustomer } from '@/features/subscriptions/queries';
+import { getSettings } from '@/lib/settings';
+import { CustomerFicha } from '@/features/customers/components/ficha/customer-ficha';
+import { fichaSubtitle } from '@/features/customers/components/ficha/ficha-subtitle';
 import { BackButton } from '@/features/customers/components/back-button';
 import { SubscriptionList } from '@/features/subscriptions/components/subscription-list';
-import { CustomerChargeHistory } from '@/features/charges/components/customer-charge-history';
-import { MessageTimeline } from '@/features/messaging/components/message-timeline';
+import { loadCustomerFichaAction, revealAccessPasswordAction } from '../ficha-action';
 
-function resolveAba(raw: string | undefined): 'subscriptions' | 'charges' | 'messages' {
-  if (raw === 'charges' || raw === 'messages') return raw;
-  return 'subscriptions';
-}
-
-export default async function CustomerProfilePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ aba?: string }>;
-}) {
+/**
+ * Deep link de um cliente: é o que permite compartilhar o link de uma pessoa.
+ * Mostra a **mesma** ficha do drawer de `?cliente=<id>` — o handoff 04 pede um
+ * componente só para as quatro telas — e acrescenta a lista de assinaturas,
+ * que é onde se cria e se edita assinatura.
+ */
+export default async function CustomerProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const aba = resolveAba((await searchParams).aba);
 
-  const customer = await getCustomer(id);
-  if (!customer) notFound();
+  const result = await loadCustomerFichaAction(id);
+  if ('error' in result) notFound();
+  const { data } = result;
 
-  const [subscriptions, plans, suppliers, settings, charges, messages, pnl] = await Promise.all([
-    listSubscriptionsForCustomer(id),
+  const [plans, suppliers, subscriptions, settings] = await Promise.all([
     listActivePlansForSelect(),
     listActiveSuppliersForSelect(),
+    listSubscriptionsForCustomer(id),
     getSettings(),
-    getChargesForCustomer(id),
-    listMessagesForCustomer(id),
-    getCustomerPnl(id),
   ]);
 
-  const activeSub = subscriptions.find((s) => s.status === 'ACTIVE');
-  const since =
-    subscriptions.length > 0
-      ? new Intl.DateTimeFormat('pt-BR', { month: '2-digit', year: 'numeric', timeZone: settings.timezone }).format(
-          new Date(subscriptions[subscriptions.length - 1].startedAt),
-        )
-      : '—';
-
   return (
-    <AppShell title={customer.name}>
+    <AppShell title={data.name} icon={<Users size={22} />}>
       <BackButton />
-      <CustomerProfileHeader
-        name={customer.name}
-        supplierName={activeSub?.supplierName ?? null}
-        since={since}
-        active={!!activeSub}
-        pnl={pnl}
-      />
-      <div className="mt-6">
-        <CustomerTabs customerId={id} aba={aba}>
-          {aba === 'charges' ? (
-            <CustomerChargeHistory charges={charges} timezone={settings.timezone} />
-          ) : aba === 'messages' ? (
-            <MessageTimeline messages={messages} timezone={settings.timezone} />
-          ) : (
-            <SubscriptionList
-              customerId={id}
-              subscriptions={subscriptions}
-              plans={plans}
-              suppliers={suppliers}
-              timezone={settings.timezone}
-            />
-          )}
-        </CustomerTabs>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13px] text-foreground-muted">{fichaSubtitle(data)}</p>
+        <StatusBadge tone={CUSTOMER_SITUATION_TONES[data.situation]}>
+          {CUSTOMER_SITUATION_LABELS[data.situation]}
+        </StatusBadge>
+      </div>
+      <CustomerFicha data={data} revealPassword={revealAccessPasswordAction} />
+      <div className="mt-4">
+        <SubscriptionList
+          customerId={id}
+          subscriptions={subscriptions}
+          plans={plans}
+          suppliers={suppliers}
+          timezone={settings.timezone}
+        />
       </div>
     </AppShell>
   );

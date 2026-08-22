@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { AppShell } from '@/components/layout/app-shell';
-import { getSettings } from '@/features/settings/queries';
+import { getSettings } from '@/lib/settings';
 import { monthBoundsUtc, localDateOnly } from '@/core/dates';
 import {
   getMonthlySummary,

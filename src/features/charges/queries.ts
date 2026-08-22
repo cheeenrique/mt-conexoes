@@ -15,6 +15,7 @@ export interface ChargeDTO {
   id: string;
   customerId: string;
   customerName: string;
+  customerPhone: string | null;
   supplierName: string | null;
   principalCents: string;
   discountCents: string;
@@ -29,7 +30,7 @@ export interface ChargeDTO {
 function toChargeDTO(row: {
   id: string; customerId: string; principalCents: bigint; discountCents: bigint;
   status: string; dueAt: Date; issuedAt: Date;
-  customer: { name: string }; supplier: { name: string } | null;
+  customer: { name: string; phone: string | null }; supplier: { name: string } | null;
   payments: { id: string; amountCents: bigint; method: string; paidAt: Date; note: string | null }[];
 }): ChargeDTO {
   const netCents = row.principalCents - row.discountCents;
@@ -38,6 +39,7 @@ function toChargeDTO(row: {
     id: row.id,
     customerId: row.customerId,
     customerName: row.customer.name,
+    customerPhone: row.customer.phone,
     supplierName: row.supplier?.name ?? null,
     principalCents: row.principalCents.toString(),
     discountCents: row.discountCents.toString(),
@@ -57,7 +59,7 @@ function toChargeDTO(row: {
 }
 
 const CHARGE_INCLUDE = {
-  customer: { select: { name: true } },
+  customer: { select: { name: true, phone: true } },
   supplier: { select: { name: true } },
   payments: { select: { id: true, amountCents: true, method: true, paidAt: true, note: true } },
 } as const;

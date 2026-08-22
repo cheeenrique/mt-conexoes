@@ -1,8 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import type { ChargeStatus } from '@prisma/client';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Decimal from 'decimal.js';
+import type { BillingCycle, ChargeStatus, SubscriptionStatus } from '@prisma/client';
 import { db } from '@/lib/db';
-import { monthBoundsUtc } from '@/core/dates';
-import { getCustomerPnl, getMonthlySummary, getSupplierBreakdown, getPlanBreakdown, getCustomerBreakdown, getMonthlyTrend } from './queries';
+import { monthBoundsUtc, startOfLocalDay } from '@/core/dates';
+import { marginPercent } from '@/core/money';
+import { getCustomerPnl, getMonthlySummary, getSupplierBreakdown, getPlanBreakdown, getCustomerBreakdown, getMonthlyTrend, getDashboardKpis } from './queries';
 
 function sumBilledCents(rows: { billedCents: string }[]): bigint {
   return rows.reduce((acc, r) => acc + BigInt(r.billedCents), 0n);
@@ -159,10 +161,14 @@ async function seedMonthlyFixture() {
 }
 
 afterEach(async () => {
-  await db.payment.deleteMany({ where: { charge: { customer: { name: 'Mês Teste' } } } });
-  await db.charge.deleteMany({ where: { customer: { name: 'Mês Teste' } } });
-  await db.subscription.deleteMany({ where: { customer: { name: 'Mês Teste' } } });
-  await db.customer.deleteMany({ where: { name: 'Mês Teste' } });
+  // `startsWith` e não igualdade: getCustomerBreakdown cria 'Mês Teste Cliente N'
+  // e 'Mês Teste Muitos N' e os limpa no corpo do teste — se o teste falha antes
+  // disso, as linhas ficam e derrubam as suítes de mês na execução seguinte.
+  const strays = { customer: { name: { startsWith: 'Mês Teste' } } };
+  await db.payment.deleteMany({ where: { charge: strays } });
+  await db.charge.deleteMany({ where: strays });
+  await db.subscription.deleteMany({ where: strays });
+  await db.customer.deleteMany({ where: { name: { startsWith: 'Mês Teste' } } });
   await db.plan.deleteMany({ where: { name: 'Plano Mês A' } });
   await db.supplier.deleteMany({ where: { name: { startsWith: 'Fornecedor Mês' } } });
 });
@@ -360,5 +366,189 @@ describe('getMonthlyTrend', () => {
 
     const august = rows.find((r) => r.year === 2026 && r.month === 7);
     expect(august?.billedCents).toBe('6000');
+  });
+});
+
+describe('getDashboardKpis', () => {
+  // O banco de integração é compartilhado e já tem linhas de outras suítes.
+  // Por isso cada caso mede o baseline com os MESMOS parâmetros antes de semear
+  // e afirma sobre o delta — nunca sobre o total absoluto.
+  const TODAY_START = startOfLocalDay(2026, 7, 22, TZ); // 22/08/2026 00:00 em SP
+  const TOMORROW_START = startOfLocalDay(2026, 7, 23, TZ);
+
+  async function seedKpiFixture() {
+    const supplier = await db.supplier.create({ data: { name: 'Fornecedor KPI', unitCostCents: 1000n } });
+    const plan = await db.plan.create({ data: { name: 'Plano KPI', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });
+    const customer = await db.customer.create({ data: { name: 'KPI Teste', phone: '+5511997770001' } });
+    return { supplier, plan, customer };
+  }
+
+  async function createSubscription(
+    customerId: string,
+    supplierId: string,
+    overrides: { priceCents?: bigint; costCents?: bigint; status?: SubscriptionStatus; cycle?: BillingCycle } = {},
+  ) {
+    return db.subscription.create({
+      data: {
+        customerId, supplierId,
+        priceCents: overrides.priceCents ?? 6000n,
+        costCents: overrides.costCents ?? 1000n,
+        cycle: overrides.cycle ?? 'MONTHLY',
+        status: overrides.status ?? 'ACTIVE',
+        startedAt: new Date('2026-01-01T12:00:00Z'),
+        nextDueAt: new Date('2026-02-01T12:00:00Z'),
+      },
+    });
+  }
+
+  async function createOpenCharge(
+    subscriptionId: string, customerId: string, supplierId: string,
+    overrides: { principalCents?: bigint; discountCents?: bigint; dueAt: Date; status?: ChargeStatus; periodStart: Date },
+  ) {
+    return db.charge.create({
+      data: {
+        subscriptionId, customerId, supplierId,
+        principalCents: overrides.principalCents ?? 6000n,
+        discountCents: overrides.discountCents ?? 0n,
+        costCents: 1000n,
+        periodStart: overrides.periodStart, periodEnd: overrides.periodStart,
+        dueAt: overrides.dueAt,
+        status: overrides.status ?? 'OPEN',
+      },
+    });
+  }
+
+  /** Idempotente, por chave natural. Roda antes E depois: o Postgres de
+   *  integração é compartilhado e resíduo de um crash não se limpa sozinho —
+   *  sem a purga prévia, o telefone da fixture derruba a execução seguinte. */
+  async function purgeKpiFixture() {
+    await db.payment.deleteMany({ where: { charge: { customer: { name: 'KPI Teste' } } } });
+    await db.charge.deleteMany({ where: { customer: { name: 'KPI Teste' } } });
+    await db.subscription.deleteMany({ where: { customer: { name: 'KPI Teste' } } });
+    await db.customer.deleteMany({ where: { name: 'KPI Teste' } });
+    await db.plan.deleteMany({ where: { name: 'Plano KPI' } });
+    await db.supplier.deleteMany({ where: { name: 'Fornecedor KPI' } });
+  }
+
+  // Antes do baseline, nunca dentro do seed: baseline medido com resíduo e
+  // apagado em seguida daria delta negativo.
+  beforeEach(purgeKpiFixture);
+  afterEach(purgeKpiFixture);
+
+  it('vence hoje é 23:59:59 local, e um dia antes já é atraso', async () => {
+    const before = await getDashboardKpis(TODAY_START, TOMORROW_START);
+    const { customer, supplier } = await seedKpiFixture();
+    // Índice parcial permite no máximo uma cobrança não-terminal por assinatura.
+    const subToday = await createSubscription(customer.id, supplier.id);
+    const subOverdue = await createSubscription(customer.id, supplier.id);
+    const subFuture = await createSubscription(customer.id, supplier.id);
+    await createOpenCharge(subToday.id, customer.id, supplier.id, {
+      periodStart: new Date('2026-08-01'), dueAt: new Date('2026-08-22T23:59:59.999-03:00'), principalCents: 4500n,
+    });
+    await createOpenCharge(subOverdue.id, customer.id, supplier.id, {
+      periodStart: new Date('2026-08-01'), dueAt: new Date('2026-08-21T23:59:59.999-03:00'), principalCents: 12000n, status: 'OVERDUE',
+    });
+    await createOpenCharge(subFuture.id, customer.id, supplier.id, {
+      periodStart: new Date('2026-08-01'), dueAt: new Date('2026-08-25T23:59:59.999-03:00'), principalCents: 9900n,
+    });
+
+    const after = await getDashboardKpis(TODAY_START, TOMORROW_START);
+
+    expect(after.dueTodayCount - before.dueTodayCount).toBe(1);
+    expect(BigInt(after.dueTodayCents) - BigInt(before.dueTodayCents)).toBe(4500n);
+    expect(after.overdueCount - before.overdueCount).toBe(1);
+    expect(BigInt(after.overdueCents) - BigInt(before.overdueCents)).toBe(12000n);
+  });
+
+  it('valor é o líquido menos o que já entrou, nunca o principal cheio', async () => {
+    const before = await getDashboardKpis(TODAY_START, TOMORROW_START);
+    const { customer, supplier } = await seedKpiFixture();
+    const sub = await createSubscription(customer.id, supplier.id);
+    const charge = await createOpenCharge(sub.id, customer.id, supplier.id, {
+      periodStart: new Date('2026-08-01'), dueAt: new Date('2026-08-22T23:59:59.999-03:00'),
+      principalCents: 10000n, discountCents: 1000n, status: 'PARTIALLY_PAID',
+    });
+    await db.payment.create({ data: { chargeId: charge.id, amountCents: 3000n, paidAt: new Date('2026-08-20T12:00:00Z') } });
+
+    const after = await getDashboardKpis(TODAY_START, TOMORROW_START);
+
+    // 10000 principal - 1000 desconto - 3000 pago = 6000 a receber.
+    expect(BigInt(after.dueTodayCents) - BigInt(before.dueTodayCents)).toBe(6000n);
+  });
+
+  it('1 centavo sobrevive à agregação sem virar float', async () => {
+    const before = await getDashboardKpis(TODAY_START, TOMORROW_START);
+    const { customer, supplier } = await seedKpiFixture();
+    const sub = await createSubscription(customer.id, supplier.id);
+    await createOpenCharge(sub.id, customer.id, supplier.id, {
+      periodStart: new Date('2026-08-01'), dueAt: new Date('2026-08-22T23:59:59.999-03:00'), principalCents: 1n,
+    });
+
+    const after = await getDashboardKpis(TODAY_START, TOMORROW_START);
+
+    expect(BigInt(after.dueTodayCents) - BigInt(before.dueTodayCents)).toBe(1n);
+  });
+
+  it('cobrança paga ou cancelada some da faixa de vencimentos', async () => {
+    const before = await getDashboardKpis(TODAY_START, TOMORROW_START);
+    const { customer, supplier } = await seedKpiFixture();
+    const subPaid = await createSubscription(customer.id, supplier.id);
+    const subCancelled = await createSubscription(customer.id, supplier.id);
+    await createOpenCharge(subPaid.id, customer.id, supplier.id, {
+      periodStart: new Date('2026-08-01'), dueAt: new Date('2026-08-22T23:59:59.999-03:00'), status: 'PAID',
+    });
+    await createOpenCharge(subCancelled.id, customer.id, supplier.id, {
+      periodStart: new Date('2026-08-01'), dueAt: new Date('2026-08-21T23:59:59.999-03:00'), status: 'CANCELLED',
+    });
+
+    const after = await getDashboardKpis(TODAY_START, TOMORROW_START);
+
+    expect(after.dueTodayCount).toBe(before.dueTodayCount);
+    expect(after.overdueCount).toBe(before.overdueCount);
+  });
+
+  it('conta ativa e suspensa em contadores separados', async () => {
+    const before = await getDashboardKpis(TODAY_START, TOMORROW_START);
+    const { customer, supplier } = await seedKpiFixture();
+    await createSubscription(customer.id, supplier.id, { status: 'ACTIVE' });
+    await createSubscription(customer.id, supplier.id, { status: 'ACTIVE' });
+    await createSubscription(customer.id, supplier.id, { status: 'SUSPENDED' });
+    await createSubscription(customer.id, supplier.id, { status: 'CANCELLED' });
+
+    const after = await getDashboardKpis(TODAY_START, TOMORROW_START);
+
+    expect(after.activeSubscriptionsCount - before.activeSubscriptionsCount).toBe(2);
+    expect(after.suspendedSubscriptionsCount - before.suspendedSubscriptionsCount).toBe(1);
+  });
+
+  it('margem média é a média das margens, não a margem da soma — anual não pesa 12x', async () => {
+    const { customer, supplier } = await seedKpiFixture();
+    // Mensal com margem 50% e anual com margem 10%. Média das margens = 30%.
+    // Margem da soma seria (1000+12000-500-10800)/(1000+12000) ≈ 13%, número bem diferente.
+    await createSubscription(customer.id, supplier.id, { priceCents: 1000n, costCents: 500n, cycle: 'MONTHLY' });
+    await createSubscription(customer.id, supplier.id, { priceCents: 1200000n, costCents: 1080000n, cycle: 'ANNUAL' });
+
+    const result = await getDashboardKpis(TODAY_START, TOMORROW_START);
+
+    const active = await db.subscription.findMany({
+      where: { status: 'ACTIVE', priceCents: { gt: 0n } },
+      select: { priceCents: true, costCents: true },
+    });
+    const expected = active
+      .reduce((acc, s) => acc.plus(marginPercent(s.priceCents, s.costCents)!), new Decimal(0))
+      .div(active.length);
+
+    expect(new Decimal(result.averageMarginPercent!).toFixed(6)).toBe(expected.toFixed(6));
+  });
+
+  it('assinatura sem preço não entra na média — divisão por zero não derruba o painel', async () => {
+    const before = await getDashboardKpis(TODAY_START, TOMORROW_START);
+    const { customer, supplier } = await seedKpiFixture();
+    await createSubscription(customer.id, supplier.id, { priceCents: 0n, costCents: 0n });
+
+    const after = await getDashboardKpis(TODAY_START, TOMORROW_START);
+
+    expect(after.activeSubscriptionsCount - before.activeSubscriptionsCount).toBe(1);
+    expect(after.averageMarginPercent).toBe(before.averageMarginPercent);
   });
 });
