@@ -128,13 +128,15 @@ describe('sendManualBatch', () => {
   it('cliente com optedOut nunca vira Message, aparece em skippedOptedOut', async () => {
     await seedActiveDefaultChannel();
     const optedOut = await seedCustomer({ optedOut: true });
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ key: { id: 'x' } }) }));
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
 
     const summary = await sendManualBatch({ customerIds: [optedOut.id], body: 'Olá {{cliente.primeiro_nome}}', now: IN_HOURS_NOW });
 
-    expect(summary).toEqual({ sent: 0, failed: 0, skippedOptedOut: 1, skippedNoPhone: 0 });
+    expect(summary).toEqual({ queued: 0, skippedOptedOut: 1, skippedNoPhone: 0 });
     const count = await db.message.count({ where: { customerId: optedOut.id } });
     expect(count).toBe(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('cliente sem telefone nunca vira Message, aparece em skippedNoPhone', async () => {
@@ -143,38 +145,52 @@ describe('sendManualBatch', () => {
 
     const summary = await sendManualBatch({ customerIds: [noPhone.id], body: 'Olá {{cliente.primeiro_nome}}', now: IN_HOURS_NOW });
 
-    expect(summary).toEqual({ sent: 0, failed: 0, skippedOptedOut: 0, skippedNoPhone: 1 });
+    expect(summary).toEqual({ queued: 0, skippedOptedOut: 0, skippedNoPhone: 1 });
   });
 
-  it('dois clientes, um sucesso e um falha — falha não derruba o sucesso anterior', async () => {
-    await seedActiveDefaultChannel();
-    const ok = await seedCustomer();
-    const bad = await db.customer.create({ data: { name: 'Cliente Teste', phone: '+5511998880001', optedOut: false } });
+  // O disparo manual assistido é o caminho de maior volume por clique (confirmação por
+  // digitação só existe acima de 100 destinatários) e roda dentro de uma Server Action —
+  // sem os ~15 min de folga do cron. Chamar o provider em rajada sequencial aqui é a
+  // assinatura que heurística antispam do WhatsApp procura, e a espera ritmada (Evolution
+  // 20/min) de um lote grande estouraria o timeout da Action. sendManualBatch por isso só
+  // enfileira: quem chama o provider, no ritmo de `sendDelayMs`, é dispatchPendingMessages
+  // (messages-dispatch) — mesmo motor que já serve a régua, sem nenhum código duplicado aqui.
+  it('clientes elegíveis viram Message PENDING, sem tocar o provider', async () => {
+    const channel = await seedActiveDefaultChannel();
+    const first = await seedCustomer();
+    const second = await db.customer.create({ data: { name: 'Cliente Teste', phone: '+5511998880001', optedOut: false } });
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
 
-    let call = 0;
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => {
-      call += 1;
-      if (call === 1) return Promise.resolve({ ok: true, status: 200, json: async () => ({ key: { id: 'wamid1' } }) });
-      return Promise.resolve({ ok: false, status: 400, json: async () => ({ message: 'rejeitado' } ) });
-    }));
+    const summary = await sendManualBatch({
+      customerIds: [first.id, second.id],
+      body: 'Olá {{cliente.primeiro_nome}}',
+      now: IN_HOURS_NOW,
+    });
 
-    const summary = await sendManualBatch({ customerIds: [ok.id, bad.id], body: 'Olá {{cliente.primeiro_nome}}', now: IN_HOURS_NOW });
+    expect(summary).toEqual({ queued: 2, skippedOptedOut: 0, skippedNoPhone: 0 });
+    expect(fetchSpy).not.toHaveBeenCalled();
 
-    expect(summary.sent).toBe(1);
-    expect(summary.failed).toBe(1);
-    const messages = await db.message.findMany({ where: { customerId: { in: [ok.id, bad.id] } } });
-    expect(messages).toHaveLength(2);
-    expect(messages.find((m) => m.customerId === ok.id)?.status).toBe('SENT');
-    expect(messages.find((m) => m.customerId === bad.id)?.status).toBe('FAILED');
+    const created = await db.message.findMany({ where: { customerId: { in: [first.id, second.id] } } });
+    expect(created).toHaveLength(2);
+    for (const msg of created) {
+      expect(msg.status).toBe('PENDING');
+      expect(msg.kind).toBe('MANUAL');
+      expect(msg.channelId).toBeNull(); // resolvido no despacho, não no enfileiramento — mesmo padrão de `evaluate.ts`
+      expect(msg.scheduledFor).toEqual(IN_HOURS_NOW);
+      expect(msg.attempts).toBe(0);
+    }
+    expect(created.find((m) => m.customerId === first.id)?.body).toBe('Olá Cliente');
+    void channel; // canal padrão precisa existir (guarda de capability), mas não é referenciado na Message ainda
   });
 
-  it('mesmo customerId duas vezes na entrada gera uma única Message', async () => {
+  it('mesmo customerId duas vezes na entrada gera uma única Message PENDING', async () => {
     await seedActiveDefaultChannel();
     const customer = await seedCustomer();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ key: { id: 'x' } }) }));
 
-    await sendManualBatch({ customerIds: [customer.id, customer.id], body: 'Olá {{cliente.primeiro_nome}}', now: IN_HOURS_NOW });
+    const summary = await sendManualBatch({ customerIds: [customer.id, customer.id], body: 'Olá {{cliente.primeiro_nome}}', now: IN_HOURS_NOW });
 
+    expect(summary.queued).toBe(1);
     const count = await db.message.count({ where: { customerId: customer.id } });
     expect(count).toBe(1);
   });

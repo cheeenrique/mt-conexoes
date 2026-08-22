@@ -10,7 +10,7 @@ import {
   unpairChannel,
   type PairingChallengeDTO,
 } from './pairing.service';
-import { sendManualBatch, type DispatchSummary } from './dispatch';
+import { sendManualBatch, type ManualQueueSummary } from './dispatch';
 import { requireSession } from '@/features/auth/service';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -104,7 +104,7 @@ export async function unpairChannelAction(provider: ChannelProvider): Promise<Ac
   }
 }
 
-export async function sendManualMessagesAction(input: unknown): Promise<{ ok: true; summary: DispatchSummary } | ActionError> {
+export async function sendManualMessagesAction(input: unknown): Promise<{ ok: true; summary: ManualQueueSummary } | ActionError> {
   try {
     await requireSession();
     const parsed = sendManualMessagesSchema.safeParse(input);

@@ -39,12 +39,12 @@ async function seedCustomer(overrides: { optedOut?: boolean } = {}) {
 
 async function seedPendingMessage(
   customerId: string,
-  overrides: { createdAt?: Date; scheduledFor?: Date; attempts?: number; scheduledDate?: Date } = {},
+  overrides: { createdAt?: Date; scheduledFor?: Date; attempts?: number; scheduledDate?: Date; kind?: 'DUNNING' | 'MANUAL' } = {},
 ) {
   return db.message.create({
     data: {
       customerId,
-      kind: 'DUNNING',
+      kind: overrides.kind ?? 'DUNNING',
       status: 'PENDING',
       toPhone: '+5511998880000',
       body: 'Olá! Sua cobrança venceu.',
@@ -238,6 +238,23 @@ describe('dispatchPendingMessages', () => {
     expect(reloaded?.externalId).toBe('wamid-ok');
     expect(reloaded?.channelId).toBe(channel.id);
     expect(reloaded?.sentAt).not.toBeNull();
+  });
+
+  // Prova a ponta a ponta que o enfileiramento do envio manual (`sendManualBatch`
+  // em dispatch.ts, kind MANUAL) sai pelo mesmo despacho da régua, sem tratamento
+  // especial: mesmo ritmo, mesma claim atômica, mesmo registro de canal.
+  it('mensagem MANUAL (enfileirada pelo envio assistido) é despachada como qualquer outra — kind não muda o tratamento', async () => {
+    const channel = await seedActiveDefaultChannel();
+    const customer = await seedCustomer();
+    const msg = await seedPendingMessage(customer.id, { kind: 'MANUAL' });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ key: { id: 'wamid-manual' } }) }));
+
+    const result = await dispatchPendingMessages(IN_HOURS_NOW);
+
+    expect(result.sent).toBe(1);
+    const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+    expect(reloaded?.status).toBe('SENT');
+    expect(reloaded?.channelId).toBe(channel.id);
   });
 
   it('claim atômico previne double-send em duas execuções concorrentes do cron', async () => {

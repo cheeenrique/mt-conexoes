@@ -31,7 +31,9 @@ export function SendMessageDialog({
         toastError(result.error);
         return;
       }
-      toastSuccess(`Enviado: ${result.summary.sent} · Falhou: ${result.summary.failed} · Opt-out: ${result.summary.skippedOptedOut} · Sem telefone: ${result.summary.skippedNoPhone}`);
+      toastSuccess(
+        `Enfileirado: ${result.summary.queued} · Opt-out: ${result.summary.skippedOptedOut} · Sem telefone: ${result.summary.skippedNoPhone}. O envio respeita o ritmo do canal e pode levar alguns minutos.`,
+      );
       setBody('');
       setConfirmOpen(false);
       onOpenChange(false);
