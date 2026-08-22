@@ -55,8 +55,10 @@ export function SettingsForm({
 
   return (
     <form id="settings-form" onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
-      <IdentificationSection register={register} errors={errors} />
-      <ReceivingSection register={register} pixKey={watch('pixKey') ?? ''} pixHolderName={watch('pixHolderName') ?? ''} />
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2">
+        <IdentificationSection register={register} errors={errors} />
+        <ReceivingSection register={register} pixKey={watch('pixKey') ?? ''} pixHolderName={watch('pixHolderName') ?? ''} />
+      </div>
       <SendingSection
         register={register}
         control={control}

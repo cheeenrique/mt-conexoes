@@ -178,3 +178,26 @@ describe('CORS', () => {
     expect(res.headers.get('access-control-allow-origin')).toBe(ALLOWED_ORIGIN);
   });
 });
+
+describe('CORS sem allowlist configurada', () => {
+  it('libera qualquer origem quando LEADS_ALLOWED_ORIGINS está vazia', async () => {
+    delete process.env.LEADS_ALLOWED_ORIGINS;
+
+    const res = await OPTIONS(
+      new Request('http://localhost/api/leads', { method: 'OPTIONS', headers: { origin: 'https://qualquer.example' } }),
+    );
+
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('não manda Allow-Credentials junto com o wildcard', async () => {
+    delete process.env.LEADS_ALLOWED_ORIGINS;
+
+    const res = await OPTIONS(
+      new Request('http://localhost/api/leads', { method: 'OPTIONS', headers: { origin: 'https://qualquer.example' } }),
+    );
+
+    expect(res.headers.get('access-control-allow-credentials')).toBeNull();
+  });
+});

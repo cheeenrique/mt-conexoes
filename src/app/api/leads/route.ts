@@ -47,10 +47,32 @@ function allowedOrigins(): string[] {
  * cabeçalho: o navegador bloqueia e o formulário cai para o WhatsApp, que é
  * a degradação desejada. Chamada servidor-a-servidor não manda `Origin` e
  * segue funcionando.
+ *
+ * ⚠️ TEMPORÁRIO — `LEADS_ALLOWED_ORIGINS` vazia libera qualquer origem
+ * (`*`), porque o site de captação (`docs/projeto/tecnico/08-site.md`)
+ * ainda não tem domínio de produção: sem isso o preflight não devolve
+ * cabeçalho nenhum e o formulário do site cai pro WhatsApp por falta de
+ * config, não por decisão. CORS nunca foi a proteção deste endpoint — quem
+ * protege é o Zod `.strict()`, o teto de 8 KB do corpo, o rate limit por IP
+ * em `lead_attempts` e o Turnstile (desligado por padrão até a decisão de
+ * ligar). `*` é seguro aqui porque o endpoint nunca manda
+ * `access-control-allow-credentials`. Aperta preenchendo
+ * `LEADS_ALLOWED_ORIGINS` com a origem de produção assim que o domínio
+ * existir — a allowlist volta a valer sozinha, sem tocar em código.
  */
 function corsHeaders(req: Request): Record<string, string> {
+  const allowed = allowedOrigins();
+  if (allowed.length === 0) {
+    return {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'POST, OPTIONS',
+      'access-control-allow-headers': 'content-type',
+      'access-control-max-age': '86400',
+    };
+  }
+
   const origin = req.headers.get('origin');
-  if (!origin || !allowedOrigins().includes(origin)) return {};
+  if (!origin || !allowed.includes(origin)) return {};
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'POST, OPTIONS',
