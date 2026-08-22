@@ -4,7 +4,7 @@ import { consolidate, type PendingStep } from '@/core/dunning-rules';
 import { getSettings } from '@/lib/settings';
 import { buildConsolidatedBody, buildPendingStep } from './message-build';
 
-// Sem a régua padrão (isDefault=true), o cron e a tela /regua não têm o que
+// Sem a régua padrão (isDefault=true), o cron e a tela /dunning não têm o que
 // avaliar/mostrar. O seed garante isso em dev, mas não é garantia em produção
 // (linha apagada por engano, singleton nunca recriado etc.) — sem esta guarda,
 // `findFirstOrThrow` do Prisma estoura direto e a tela fica em branco, sem

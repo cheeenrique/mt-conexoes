@@ -1,8 +1,7 @@
 import Decimal from 'decimal.js';
 import { AppShell } from '@/components/layout/app-shell';
-import { localDateOnly, monthBoundsUtc, startOfLocalDay } from '@/core/dates';
+import { localDateOnly, localDayBoundsUtc, monthBoundsUtc } from '@/core/dates';
 import { DUE_DATE_BUCKETS, type DueDateBucket } from '@/core/due-date-buckets';
-import { DUE_DATE_BUCKET_LABELS } from '@/lib/labels';
 import { formatLocalDate } from '@/lib/format';
 import { getSettings } from '@/lib/settings';
 import { getDueDateOverview } from '@/features/charges/queries';
@@ -51,10 +50,8 @@ export default async function DashboardPage({
 
   // Recortes de data são conceito local: vêm do fuso do negócio, nunca de UTC cru.
   const today = localDateOnly(now, timezone);
-  const [year, month, day] = [today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()];
-  const todayStart = startOfLocalDay(year, month, day, timezone);
-  const tomorrowStart = startOfLocalDay(year, month, day + 1, timezone);
-  const { from, to } = monthBoundsUtc(year, month, timezone);
+  const { from: todayStart, to: tomorrowStart } = localDayBoundsUtc(now, timezone);
+  const { from, to } = monthBoundsUtc(today.getUTCFullYear(), today.getUTCMonth(), timezone);
 
   const [overview, summary, kpis, alerts, marginAlerts, channelDownAlert] = await Promise.all([
     getDueDateOverview(now, timezone),
@@ -65,15 +62,6 @@ export default async function DashboardPage({
     getChannelDownAlert(),
   ]);
 
-  const filteredCharges = selectedBucket
-    ? overview.charges.filter((charge) => charge.bucket === selectedBucket)
-    : overview.charges;
-  // Link antigo com `page` alto (cobrança foi paga, a lista encolheu) cai na
-  // última página existente em vez de numa tela vazia.
-  const page = Math.min(requestedPage, Math.max(1, Math.ceil(filteredCharges.length / perPage)));
-  const cardLabel = selectedBucket
-    ? `Filtrado pela coluna ${DUE_DATE_BUCKET_LABELS[selectedBucket]}`
-    : 'Cobranças em aberto';
   const monthLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: timezone }).format(now);
 
   return (
@@ -89,13 +77,11 @@ export default async function DashboardPage({
         <ChannelDownBanner alert={channelDownAlert} timezone={timezone} />
         <MarginAlertBanner summary={marginAlerts} />
         <OpenChargesTable
-          rows={filteredCharges}
-          totalOpenCount={overview.charges.length}
-          cardLabel={cardLabel}
-          page={page}
+          charges={overview.charges}
+          selectedBucket={selectedBucket}
+          requestedPage={requestedPage}
           perPage={perPage}
           timezone={timezone}
-          isFiltered={selectedBucket !== null}
         />
         <OperatorAlerts alerts={alerts} timezone={timezone} />
       </div>

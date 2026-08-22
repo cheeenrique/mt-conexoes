@@ -20,7 +20,7 @@ export function RuleList({ rules, selectedId }: { rules: DunningRuleListItemDTO[
         return (
           <Link
             key={rule.id}
-            href={`/regua?regua=${rule.id}`}
+            href={`/dunning?regua=${rule.id}`}
             aria-current={selected ? 'true' : undefined}
             className={`flex flex-col gap-2 rounded border p-3 text-left transition-colors ${
               selected

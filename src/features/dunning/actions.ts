@@ -42,7 +42,7 @@ async function run<T>(route: string, fn: () => Promise<T>): Promise<ActionResult
   try {
     await requireSession();
     const data = await fn();
-    revalidatePath('/regua');
+    revalidatePath('/dunning');
     return { ok: true, data };
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };

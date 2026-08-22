@@ -49,7 +49,7 @@ export function NewRuleDrawer({
     }
     toastSuccess('Régua criada em rascunho.');
     onOpenChange(false);
-    router.push(`/regua?regua=${result.data.ruleId}`);
+    router.push(`/dunning?regua=${result.data.ruleId}`);
   }
 
   return (

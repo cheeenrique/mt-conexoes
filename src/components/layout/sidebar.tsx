@@ -17,7 +17,7 @@ const MENU_ITEMS = [
   { href: '/customers', label: 'Clientes', icon: Users },
   { href: '/charges', label: 'Cobranças', icon: Receipt },
   { href: '/messages', label: 'Mensagens', icon: MessageSquare },
-  { href: '/regua', label: 'Réguas', icon: GitCommitHorizontal },
+  { href: '/dunning', label: 'Réguas', icon: GitCommitHorizontal },
   { href: '/leads', label: 'Leads', icon: Inbox },
   { href: '/reports', label: 'Relatórios', icon: ChartNoAxesColumn },
   { href: '/suppliers', label: 'Fornecedores', icon: Truck },

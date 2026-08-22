@@ -7,6 +7,8 @@ import { Receipt, SearchX } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { formatCents, formatLocalDate, formatPhoneBR } from '@/lib/format';
+import { DUE_DATE_BUCKET_LABELS } from '@/lib/labels';
+import type { DueDateBucket } from '@/core/due-date-buckets';
 import { ChargeStatusBadge } from './charge-status-badge';
 import { ChargeRowActions } from './charge-row-actions';
 import { RegisterPaymentDialog } from './register-payment-dialog';
@@ -15,22 +17,19 @@ import type { ChargeDTO } from '../queries';
 export type PerPage = 8 | 12 | 20;
 
 export function OpenChargesTable({
-  rows,
-  totalOpenCount,
-  cardLabel,
-  page,
+  charges,
+  selectedBucket,
+  requestedPage,
   perPage,
   timezone,
-  isFiltered,
 }: {
-  /** Já filtradas pelo balde selecionado, na ordem de vencimento. */
-  rows: ChargeDTO[];
-  totalOpenCount: number;
-  cardLabel: string;
-  page: number;
+  /** Todas as cobranças em aberto, em todos os baldes, na ordem de vencimento. */
+  charges: (ChargeDTO & { bucket: DueDateBucket })[];
+  selectedBucket: DueDateBucket | null;
+  /** Valor cru vindo da URL, sem clamp — link antigo pode apontar além do fim da lista. */
+  requestedPage: number;
   perPage: PerPage;
   timezone: string;
-  isFiltered: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -79,6 +78,14 @@ export function OpenChargesTable({
     { header: '', align: 'right', cell: (row) => <ChargeRowActions charge={row} onRegisterPayment={openPaymentDialog} /> },
   ];
 
+  const isFiltered = selectedBucket !== null;
+  const cardLabel = selectedBucket
+    ? `Filtrado pela coluna ${DUE_DATE_BUCKET_LABELS[selectedBucket]}`
+    : 'Cobranças em aberto';
+  const rows = isFiltered ? charges.filter((charge) => charge.bucket === selectedBucket) : charges;
+  // Link antigo com `page` alto (cobrança foi paga, a lista encolheu) cai na
+  // última página existente em vez de numa tela vazia.
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(rows.length / perPage)));
   const pageRows = rows.slice((page - 1) * perPage, page * perPage);
 
   return (
@@ -86,7 +93,7 @@ export function OpenChargesTable({
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-[13px] font-semibold uppercase tracking-[.06em] text-foreground-muted">{cardLabel}</p>
         <p className="font-mono text-xs tabular-mono text-foreground-muted">
-          {rows.length} de {totalOpenCount}
+          {rows.length} de {charges.length}
         </p>
       </div>
 
