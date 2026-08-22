@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { subscriptionSchema } from './schema';
 import { createSubscription, updateSubscription, revealCredential } from './service';
-import { requireSession } from '@/features/auth/service';
+import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';

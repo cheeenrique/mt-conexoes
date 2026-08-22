@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
-import { requireSession } from '@/features/auth/service';
+import { requireSession } from '@/lib/auth';
 import { getSettings } from '@/lib/settings';
 import { SendingPausedProvider } from '@/features/settings/components/sending-paused-provider';
 import { UnauthorizedError } from '@/lib/errors';

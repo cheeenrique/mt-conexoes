@@ -1,6 +1,6 @@
 'use server';
 
-import { requireSession } from '@/features/auth/service';
+import { requireSession } from '@/lib/auth';
 import { getCustomerHead } from '@/features/customers/queries';
 import { listSubscriptionsForCustomer, type SubscriptionDTO } from '@/features/subscriptions/queries';
 import { getChargesForCustomer } from '@/features/charges/queries';

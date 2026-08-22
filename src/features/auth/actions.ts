@@ -2,8 +2,8 @@
 
 import { headers } from 'next/headers';
 import { changePasswordSchema, loginSchema } from './schema';
-import { changePassword, login, requireSession } from './service';
-import { setSessionCookie } from '@/lib/auth';
+import { changePassword, login } from './service';
+import { requireSession, setSessionCookie } from '@/lib/auth';
 import { getClientIp } from '@/lib/net';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';

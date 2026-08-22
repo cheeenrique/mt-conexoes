@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hash } from '@node-rs/argon2';
 import { db } from '@/lib/db';
-import { changePassword, isSessionValid, login, resolveSessionUser } from './service';
+import { changePassword, login } from './service';
+import { isSessionValid, resolveSessionUser } from '@/lib/auth';
 import { CurrentPasswordInvalidError, InvalidCredentialsError, TooManyLoginAttemptsError } from '@/lib/errors';
 
 const TEST_EMAIL = 'teste@mtconexoes.com.br';

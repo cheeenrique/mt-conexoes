@@ -2,8 +2,8 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { db } from '@/lib/db';
 import { GET } from './route';
 
-vi.mock('@/features/auth/service', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/features/auth/service')>();
+vi.mock('@/lib/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth')>();
   return { ...actual, requireSession: vi.fn().mockResolvedValue({ id: 'test-user', email: 'test@mtconexoes.com.br', name: 'Teste', sessionVersion: 0 }) };
 });
 
@@ -17,7 +17,7 @@ afterEach(async () => {
 
 describe('GET /api/reports/export', () => {
   it('sem sessão devolve 401', async () => {
-    const { requireSession } = await import('@/features/auth/service');
+    const { requireSession } = await import('@/lib/auth');
     vi.mocked(requireSession).mockRejectedValueOnce(new Error('unauthorized'));
 
     const req = new Request('http://localhost/api/reports/export?type=supplier&year=2026&month=8');

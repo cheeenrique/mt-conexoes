@@ -11,7 +11,7 @@ import {
   type PairingChallengeDTO,
 } from './pairing.service';
 import { sendManualBatch, type ManualQueueSummary } from './dispatch';
-import { requireSession } from '@/features/auth/service';
+import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';

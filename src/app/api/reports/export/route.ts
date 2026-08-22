@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireSession } from '@/features/auth/service';
+import { requireSession } from '@/lib/auth';
 import { toCsv } from '@/lib/csv';
 import { monthBoundsUtc } from '@/core/dates';
 import { getSettings } from '@/lib/settings';

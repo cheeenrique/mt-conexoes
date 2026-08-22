@@ -26,6 +26,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<Fil
 // features/charges/actions.ts
 'use server';
 
+import { requireSession } from '@/lib/auth';
+
 export async function registerPaymentAction(input: unknown) {
   const user = await requireSession();
   const data = registerPaymentSchema.parse(input);        // Zod — mesmo schema do form

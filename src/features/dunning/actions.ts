@@ -10,7 +10,7 @@ import {
 } from './schema';
 import { createStep, updateStep, deleteStep, activateDunningRule } from './service';
 import { createRule, renameRule, setDefaultRule, setRuleStatus } from './rule.service';
-import { requireSession } from '@/features/auth/service';
+import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';

@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { requireSession } from '@/features/auth/service';
+import { requireSession } from '@/lib/auth';
 import { customerFichaSchema } from '@/features/customers/ficha-schema';
 import { findCustomerIdByPhone } from '@/features/customers/service';
 import { DomainError } from '@/lib/errors';

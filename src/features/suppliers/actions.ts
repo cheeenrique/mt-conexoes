@@ -6,7 +6,7 @@ import Decimal from 'decimal.js';
 import { supplierSchema } from './schema';
 import { createSupplier, updateSupplier, applyBulkPriceAdjustment } from './service';
 import { listBulkAdjustPreview, type BulkAdjustPreviewRow } from './queries';
-import { requireSession } from '@/features/auth/service';
+import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';
