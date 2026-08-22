@@ -52,44 +52,61 @@ src/
     (auth)/login/
     (app)/
       page.tsx                    dashboard
-      clientes/
-      assinaturas/
-      cobrancas/
-      mensagens/
-      regua/
-      fornecedores/
-      planos/
-      configuracoes/
+      customers/[id]/             ficha do cliente — a assinatura mora aqui
+      charges/
+      messages/
+      dunning/
+      leads/
+      reports/
+      suppliers/
+      plans/
+      settings/                   abas Negócio e Canais
+      conta/                      troca de senha do operador
     api/
       cron/
         charges-mark-overdue/route.ts
         dunning-evaluate/route.ts
         messages-dispatch/route.ts
         ping/route.ts
+      webhooks/
+        evolution/route.ts
+        meta-cloud/route.ts
+      leads/route.ts              público — chamado pelo site de captação
+      health/route.ts
+      reports/export/route.ts     CSV
   features/
-    customers/    { actions.ts, queries.ts, service.ts, components/ }
+    customers/    { actions.ts, queries.ts, service.ts, schema.ts, components/ }
     subscriptions/
-    charges/
-    payments/
+    charges/                      cobrança e pagamento — não há feature `payments/`
     dunning/
-    messaging/
+    messaging/                    channels/ com os adapters
+    leads/
+    plans/
     suppliers/
     reports/
+    settings/
+    auth/
   core/                           puro, sem I/O — ver 03 e 04
     money.ts
     dates.ts
-    billing-cycle.ts
+    billing.ts
     dunning-rules.ts
+    …                             situação do cliente, balde de vencimento, throttle, telefone
   lib/
     db.ts                         cliente Prisma singleton
     auth.ts                       sessão
+    settings.ts                   configuração do negócio
     crypto.ts                     AES-256-GCM
     format.ts                     dinheiro, data, telefone
   components/ui/                  shadcn
+  components/layout/              chassi do painel
 prisma/
   schema.prisma
   migrations/
 ```
+
+⚠️ **Assinatura não tem rota própria** — vive na ficha do cliente. **Canal também não** — é a
+aba `Canais` de `/settings`. `/conta` é a única rota em pt-BR que sobrou, resíduo do rename.
 
 ### Direção de dependência
 
@@ -144,7 +161,7 @@ Um usuário. Sem OAuth, sem convite, sem recuperação por e-mail.
 - Tabela `users` com uma linha. Senha em **argon2id**.
 - Sessão em cookie `httpOnly`, `secure`, `sameSite=lax`, JWT assinado com `SESSION_SECRET`, validade de 30 dias com renovação deslizante.
 - Middleware do Next protege tudo em `(app)/`; `(auth)/login` e `/api/cron/*` ficam de fora.
-- Troca de senha pela tela de configurações.
+- Troca de senha em `/conta`, não em Ajustes.
 - ⚠️ O deploy é Cloud Run **direto** (`gcloud run deploy`), sem load balancer externo na frente. O rate limit de login (`src/lib/net.ts`) confia na **última** entrada de `X-Forwarded-For`, porque nesse modelo há só 1 hop confiável — a própria borda do Cloud Run. Se um load balancer for adicionado no futuro, esse parser precisa mudar junto (a posição confiável deixa de ser a última).
 
 A tabela existe (em vez de credencial em env var) porque permite trocar a senha sem redeploy e acrescentar um segundo operador depois sem redesenhar nada.
@@ -172,7 +189,7 @@ Todos idempotentes por constraint — detalhe em [`06-regua-e-canais.md`](./06-r
 
 | | Desenvolvimento | Produção |
 |---|---|---|
-| Banco | Neon branch de dev, dados anonimizados | Neon principal, na conta do cliente |
+| Banco | **Dois** Postgres locais em Docker — `db` na 5442 (dev) e `db-test` na 5443 (`pnpm test:integration`), dados anonimizados. Ver [`prisma/README.md`](../../../prisma/README.md) | Neon principal, na conta do cliente |
 | Chave de criptografia | `.env.local` | Secret Manager |
 | Deploy | `next dev` | `gcloud run deploy` a partir da branch `main` |
 

@@ -1,7 +1,10 @@
 # Projeto — Sistema de Gestão de Assinaturas
 
 > Single-tenant. Um cliente, um deploy, entrega fechada.
-> **Status:** especificação fechada, implementação não iniciada.
+> **Status:** painel implementado e rodando — 17 migrations, 468 testes unitários e 259 de
+> integração passando (conferido em 22/08/2026). O site de captação ainda não começou.
+> O inventário do que existe, e o que ainda não entrega, fica em [`CLAUDE.md`](../../CLAUDE.md)
+> §Estado atual — este índice não repete a lista para não voltar a divergir dela.
 
 ## O produto em uma frase
 
@@ -47,7 +50,7 @@ São **duas aplicações separadas**, com domínios e hospedagens distintos. A �
 | 03 | [Datas e ciclos](./tecnico/03-datas-e-ciclos.md) | Vencimento, âncora de fim de mês, ciclos, fuso |
 | 04 | [Dinheiro e margem](./tecnico/04-dinheiro-e-margem.md) | `BigInt` em centavos, arredondamento, lucro, queries |
 | 05 | [Credenciais e segurança](./tecnico/05-credenciais-e-seguranca.md) | Criptografia, auth, logs, LGPD, backup |
-| 06 | [Régua e canais](./tecnico/06-regua-e-canais.md) | Motor de cobrança, travas, os 3 adapters de WhatsApp |
+| 06 | [Régua e canais](./tecnico/06-regua-e-canais.md) | Motor de cobrança, travas, os adapters de WhatsApp |
 | 07 | [Plano de entrega](./tecnico/07-plano-de-entrega.md) | Etapas, critérios de pronto, testes, riscos |
 | 08 | [Site de captação](./tecnico/08-site.md) | Astro, arquitetura de conteúdo, SEO técnico, conversão, Core Web Vitals |
 
@@ -83,7 +86,7 @@ Violá-las é bug, não preferência.
 - Âncora de fim de mês nunca é sobrescrita: 31 vira 28 em fevereiro e volta a 31
 - `new Date()` não existe dentro de `core/`
 
-**Régua** — T5 opt-out global · T6 quiet hours 08–20 · T7 uma mensagem por cliente por dia · T8 kill switch imediato. Entregue em modo `REVIEW`.
+**Régua** — T5 opt-out global · T6 quiet hours no fuso do negócio, janela configurável em Ajustes (padrão 08–20) · T7 uma mensagem por cliente por dia · T8 kill switch imediato. Nasce `DRAFT`, passa por `REVIEW` (calcula tudo, não envia nada) e só então `ACTIVE`.
 
 **Credencial** — senha de acesso criptografada, mascarada, revelação auditada, fora de log, export e mensagem.
 

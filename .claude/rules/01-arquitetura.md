@@ -62,26 +62,30 @@ src/
     (auth)/login/
     (app)/
       page.tsx            dashboard
-      clientes/ assinaturas/ cobrancas/ mensagens/ regua/
-      fornecedores/ planos/ configuracoes/
-    api/cron/
-      charges-mark-overdue/route.ts
-      dunning-evaluate/route.ts
-      messages-dispatch/route.ts
-      ping/route.ts
+      customers/[id]/  charges/  messages/  dunning/  leads/  reports/
+      suppliers/  plans/  settings/  conta/
+    api/
+      cron/     charges-mark-overdue/  dunning-evaluate/  messages-dispatch/  ping/
+      webhooks/ evolution/  meta-cloud/
+      leads/  health/  reports/export/
   features/
-    customers/  subscriptions/  charges/  payments/
-    dunning/    messaging/      suppliers/  reports/
+    auth/       charges/    customers/  dunning/   leads/
+    messaging/  plans/      reports/    settings/  subscriptions/  suppliers/
       ├── actions.ts       Server Actions
       ├── queries.ts       leitura
       ├── service.ts       escrita e orquestração
       ├── schema.ts        Zod
       └── components/
-  core/     money.ts  dates.ts  billing-cycle.ts  dunning-rules.ts
-  lib/      db.ts  auth.ts  crypto.ts  format.ts  logger.ts
-  components/ui/
+  core/     money.ts  dates.ts  billing.ts  dunning-rules.ts  …
+  lib/      db.ts  auth.ts  settings.ts  crypto.ts  format.ts  logger.ts
+  components/ui/  components/layout/
 prisma/
 ```
+
+Duas coisas que a árvore não deixa óbvias: **assinatura não tem rota própria** — vive na ficha
+do cliente (`/customers/[id]`), e `features/subscriptions` é consumida por ela; e **não existe
+rota de canal** — canal é a aba `Canais` de `/settings`. `/conta` é a única rota que ficou em
+pt-BR, resíduo do rename, não o padrão a copiar.
 
 ## Orçamento de tamanho
 

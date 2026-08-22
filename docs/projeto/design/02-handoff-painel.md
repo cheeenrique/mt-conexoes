@@ -77,7 +77,7 @@ Nomear na UI exatamente assim, nunca pelo termo técnico interno:
 | **Fornecedor** | Quem vende o crédito revendido (`Supplier`) | "Supplier", "provider" |
 | **Cobrança** | Um ciclo faturado (`Charge`) | "fatura", "boleto" (não emite boleto) |
 | **Pagamento** | Dinheiro que entrou (`Payment`) | — |
-| **Canal de WhatsApp** | Um dos três adapters configurados | "provider de mensageria" |
+| **Canal de WhatsApp** | Um dos adapters configurados | "provider de mensageria" |
 | **Régua** | A sequência de passos de cobrança automática (`DunningRule`) | "dunning", "cadência" |
 
 ### Dinheiro — sempre `R$ 0,00`, nunca dado bruto
@@ -130,8 +130,13 @@ Vencimento é `23:59:59` local. "Hoje", "atraso" e corte de relatório de mês s
 
 Três canais possíveis (`META_CLOUD`, `EVOLUTION`, `SALVY`), um ativo por vez via "canal padrão". Diferenças que aparecem na tela:
 
+> ⚠️ **Atualização de 22/08/2026 — o Salvy saiu do produto.** O desenho acima fica como registro
+> do que foi desenhado; a tela construída tem **dois** canais. Não existe adapter, schema nem
+> registro de Salvy — o valor sobrevive só no enum do Postgres, inalcançável. Ver
+> [`../tecnico/06-regua-e-canais.md`](../tecnico/06-regua-e-canais.md) e `prisma/README.md`.
+
 - **Evolution** roda num servidor do próprio cliente (VPS dele, fora do controle do sistema) e viola os Termos do WhatsApp — a tela de configuração desse canal mostra o aviso e registra o aceite.
-- ⚠️ **Meta Cloud exige template pré-aprovado fora da janela de 24h por regra do WhatsApp, mas o sistema hoje não trata isso** — o motor de despacho manda o texto livre do passo direto pro adapter, sem checar se o canal exige template aprovado. Isso é um risco real de produto se a Meta Cloud virar canal padrão, não só um detalhe de tela. Não desenhar uma tela que finge que esse tratamento existe.
+- ⚠️ **Meta Cloud exige template pré-aprovado fora da janela de 24h por regra do WhatsApp.** Corrigido em 22/08/2026, e o texto anterior deste item ("o sistema hoje não trata isso") ficou desatualizado: `dunning/evaluate.ts` agora recusa o passo antes de enfileirar — passo sem `metaTemplateName` num canal que exige template vira `SKIPPED` com motivo `template_not_approved`, e o operador vê o motivo na tela de Mensagens. ⚠️ O que continua **não** existindo é o envio por template em si: nada preenche `templateRef` no despacho, então `META_CLOUD` recusa todo envio. Não desenhar tela que finja que esse canal entrega hoje.
 - Nenhum canal falha em silêncio: erro do provider aparece sanitizado (sem token) e a mensagem que não pôde sair mostra o motivo na timeline, nunca some sem explicação.
 - Credencial de canal **nunca** volta pra tela, nem mascarada — mostra só "configurado em DD/MM" e um botão de substituir.
 
@@ -295,13 +300,21 @@ Mensagem pode ser da régua automática (`DUNNING`) ou disparo manual assistido 
 
 ### Régua
 
-⚠️ **A tela já existe e está no ar** (`/regua`). Não é mais uma tela pra desenhar do zero — é documentação do que foi construído, em [`03-handoff-regua.md`](./03-handoff-regua.md). Cole os dois handoffs juntos no Claude Design antes de pedir qualquer ajuste nessa área.
+⚠️ **A tela já existe e está no ar**, em **`/dunning`** (era `/regua` até 22/08/2026). Não é mais uma tela pra desenhar do zero. Cole os dois handoffs juntos no Claude Design antes de pedir qualquer ajuste nessa área.
 
-Resumo do que existe de verdade: uma única régua (sem lista, sem "nova régua", sem trocar qual é padrão), header com nome + badge de estado, faixa de revisão quando `EM REVISÃO` com dois botões de ativação, e uma lista vertical de cards de passo — **não** um eixo horizontal D-5…D+5. Detalhe campo a campo, o que existe e o que não existe, está todo no handoff dedicado.
+Resumo do que existe de verdade, conferido no código em 22/08/2026: **várias** réguas, uma padrão, em tela mestre-detalhe — lista à esquerda (seleção em `searchParams`), detalhe à direita com nome editável, badge de estado, "Tornar padrão", "Pausar régua"/"Retomar régua", faixa de revisão quando `EM REVISÃO`, e os passos num **eixo horizontal** do vencimento.
+
+⚠️ [`03-handoff-regua.md`](./03-handoff-regua.md) descreve a versão de 11/08 — uma régua só, lista vertical de cards, campo de deslocamento com sinal. Aquele documento é um retrato datado, não o estado atual; ler o aviso no topo dele antes de usar.
 
 ### Canais
 
-Um card por provider (Meta Cloud, Evolution, Salvy). Cada card mostra: situação (configurado/não configurado, último teste de conexão ok/falhou), qual é o canal padrão (só um por vez), e nunca a credencial em si.
+Um card por provider. Cada card mostra: situação (configurado/não configurado, último teste de conexão ok/falhou), qual é o canal padrão (só um por vez), e nunca a credencial em si.
+
+> ⚠️ **Duas coisas mudaram depois deste desenho.** Não existe tela própria de canais: é a aba
+> **Canais de WhatsApp** de `/settings` (`?aba=canais`). E o card de **Salvy** não existe — o
+> desenho original previa três (Meta Cloud, Evolution, Salvy) e o Salvy saiu do produto em
+> 22/08/2026. A forma de cada card vem do `ChannelDescriptor` do adapter, não de `if` por
+> provider — ver [`../tecnico/06-regua-e-canais.md`](../tecnico/06-regua-e-canais.md).
 
 ⚠️ Canal padrão inativo ou falhando **não** faz failover automático pra outro canal — a tela mostra a falha, não troca de canal sozinha. Falha visível é melhor que mensagem saindo por um número que o cliente não esperava.
 
@@ -333,7 +346,9 @@ Tabela: nome · ciclo · preço sugerido · custo sugerido · fornecedor · assi
 
 ### Configurações
 
-Campos: nome do negócio, fuso horário (padrão `America/Sao_Paulo`), chave Pix e nome do titular (usada nos templates de cobrança), horário de silêncio da régua (início/fim, padrão 08h–20h), percentual de alerta de margem (padrão 30%), troca de senha do usuário.
+Campos: nome do negócio, fuso horário (padrão `America/Sao_Paulo`), chave Pix e nome do titular (usada nos templates de cobrança), horário de silêncio da régua (início/fim, padrão 08h–20h), percentual de alerta de margem (padrão 30%).
+
+⚠️ A **troca de senha** foi desenhada aqui e não foi construída aqui: mora em `/conta`, tela própria. A tela real é `/settings`, com duas abas — **Negócio** (os campos acima) e **Canais de WhatsApp** (a seção Canais).
 
 Kill switch **não** mora aqui — fica fixo na sidebar (ver acima). Esta tela é configuração de baixa frequência, não controle de emergência.
 

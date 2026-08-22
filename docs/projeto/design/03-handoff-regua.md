@@ -1,13 +1,38 @@
 # 03 — Handoff de design · Régua de cobrança
 
 > Cole isto no Claude Design **junto com** [`02-handoff-painel.md`](./02-handoff-painel.md) — aquele tem os tokens visuais (cor, tipografia, forma) que valem aqui também.
-> ⚠️ **A tela já existe e está no ar** (`/regua`, componentes em `src/features/dunning/components/`). Este documento descreve o que **realmente foi construído**, verificado direto no código em 2026-08-11 — não é mais um design especulativo. Pedido de ajuste visual incremental parte daqui. Pedido de feature nova (lista de réguas, template Meta, pausar por régua — ver seção final) é decisão de escopo, não de design, e precisa de brainstorm antes de virar tela.
+>
+> ⛔ **RETRATO DATADO — NÃO É O ESTADO ATUAL.** Este documento foi verificado no código em
+> **11/08/2026** e descrevia fielmente a tela daquele dia. A tela foi **reconstruída em
+> 22/08/2026** e quase toda afirmação abaixo virou falsa. Fica aqui como registro de como a
+> régua era antes da reconstrução; para o que existe hoje, ler o código
+> (`src/features/dunning/`) ou `CLAUDE.md` §Estado atual — não este arquivo.
 
-## O que existe hoje
+## O que mudou depois de 11/08 (o que abaixo não vale mais)
+
+| Este documento diz | Hoje |
+|---|---|
+| Rota `/regua` | **`/dunning`** |
+| Uma única régua, sem lista, sem "criar régua nova", sem "trocar qual é a padrão" | **Várias réguas**, tela mestre-detalhe: lista à esquerda (seleção em `searchParams`), botão "Nova régua", botão "Tornar padrão" com confirmação |
+| `PAUSED` não tem ação nenhuma que leve até lá | Existem **"Pausar régua"** e **"Retomar régua"** no cabeçalho |
+| Botões de ativação: "Ignorar retroativos e ativar" e **"Enviar todas"** | "Manter em revisão", **"Ativar sem descartar a revisão"** e "Ignorar retroativos e ativar". O rótulo mudou justamente porque "Enviar todas" não envia nada |
+| Faixa de revisão = contagem agregada por passo | Diálogo com o **texto real** de cada mensagem que sairia hoje, consolidado por cliente pelo mesmo `consolidate` do motor |
+| Passos em **lista vertical de cards**, sem eixo | **Eixo horizontal** do vencimento (`StepAxis`), um passo por coluna |
+| Deslocamento = um `number` com sinal (`-5` ou `5`) | **Dias** (positivo) + **"Em relação ao vencimento"** (antes/depois). O campo com sinal saiu porque digitar `5` em vez de `-5` cobrava a base inteira no dia errado, sem erro nenhum |
+| `metaTemplateName` **não existe** no schema | Existe, com campo próprio no drawer do passo. Passo sem ele, em canal que exige template, vira `SKIPPED` com motivo `template_not_approved` |
+| Nome da régua não é editável na tela | Editável no cabeçalho, campo não controlado, salva no blur |
+
+O resto — tabela de estados, ações do select, lista de variáveis do template, regra de que
+"Suspender assinatura" não corta acesso técnico — foi conferido em 11/08 e não foi
+reverificado. Tratar como indício, não como fonte.
+
+---
+
+## O que existia em 11/08/2026
 
 Uma única régua (`DunningRule`), sempre a mesma — não há tela de lista, não há "criar régua nova", não há "trocar qual é a padrão". `getDefaultRuleWithSteps()` busca a única régua marcada `isDefault` e é isso que a página `/regua` renderiza. O schema tem campo `isDefault` e suportaria mais de uma régua em tese, mas **não existe nenhuma ação no código pra criar uma segunda ou trocar qual está ativa** — a capacidade "múltiplas réguas por situação" não foi construída.
 
-## A tela `/regua`
+## A tela `/regua` — como era em 11/08/2026
 
 Página única, top-to-bottom, sem sub-rotas:
 
@@ -109,7 +134,12 @@ Nenhuma outra existe. Em especial, nenhuma variável de credencial de acesso do 
 
 ---
 
-## O que este documento descrevia antes e **não existe** — não redesenhar em cima disso sem decisão explícita
+## O que este documento descrevia antes e **não existia em 11/08** — não redesenhar em cima disso sem decisão explícita
+
+⚠️ Quatro dos cinco itens abaixo **foram construídos em 22/08/2026**: lista de réguas com "Nova
+régua" e "Tornar padrão", `metaTemplateName` no schema e no drawer do passo, pausar/retomar por
+régua, e o eixo horizontal. Só "chips de variável clicáveis" continua não existindo. A lista
+segue aqui como registro da decisão de escopo daquele momento.
 
 A versão anterior deste handoff (escrita antes de eu ler o código real) inventou as seguintes telas/campos, que **não têm nenhum suporte no backend hoje**:
 

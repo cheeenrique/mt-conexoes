@@ -7,7 +7,7 @@ O risco conhecido do App Router é regra de negócio vazando para dentro de `pag
 ## Leitura — Server Component
 
 ```tsx
-// app/(app)/cobrancas/page.tsx
+// app/(app)/charges/page.tsx
 export default async function Page({ searchParams }: { searchParams: Promise<Filters> }) {
   const filters = parseFilters(await searchParams);
   const charges = await listCharges(filters);        // features/charges/queries.ts
@@ -32,7 +32,7 @@ export async function registerPaymentAction(input: unknown) {
   const user = await requireSession();
   const data = registerPaymentSchema.parse(input);        // Zod — mesmo schema do form
   const payment = await chargesService.registerPayment(data, user.id);
-  revalidatePath('/cobrancas');
+  revalidatePath('/charges');
   return { paymentId: payment.id };
 }
 ```
