@@ -1,3 +1,8 @@
+# Nome do projeto fixo: sem isto o Docker deriva do diretório, e cada worktree
+# ("etapa-0-fundacao", "etapa-2-cobranca"...) cria um volume próprio — foi como
+# o banco de dev acabou vivendo em `etapa-0-fundacao_mt-conexoes-db-data`.
+name: mt-conexoes
+
 services:
   db:
     image: postgres:16-alpine
@@ -10,6 +15,27 @@ services:
       - "5442:5432" # host 5432 is commonly taken by other local projects; container stays on 5432
     volumes:
       - mt-conexoes-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mtconexoes -d mtconexoes"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Banco de integração, isolado do de dev (`db`). pnpm test:integration afirma
+  # totais globais (getMonthlySummary, getSupplierBreakdown) — semear dado de
+  # demonstração aqui derrubaria essas suítes de forma não determinística.
+  # Nunca rodar prisma/seed-demo.ts contra este serviço.
+  db-test:
+    image: postgres:16-alpine
+    container_name: mt-conexoes-db-test
+    environment:
+      POSTGRES_USER: mtconexoes
+      POSTGRES_PASSWORD: mtconexoes
+      POSTGRES_DB: mtconexoes
+    ports:
+      - "5443:5432"
+    volumes:
+      - mt-conexoes-db-test-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mtconexoes -d mtconexoes"]
       interval: 5s
@@ -32,3 +58,4 @@ services:
 
 volumes:
   mt-conexoes-db-data:
+  mt-conexoes-db-test-data:

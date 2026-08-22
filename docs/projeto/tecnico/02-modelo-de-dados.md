@@ -22,7 +22,7 @@ enum ChargeStatus       { OPEN OVERDUE PARTIALLY_PAID PAID CANCELLED }
 enum PaymentMethod      { PIX CASH TRANSFER CARD OTHER }
 enum PaymentSource      { MANUAL WEBHOOK }
 enum DiscountType       { PERCENT FIXED }
-enum ChannelProvider    { META_CLOUD EVOLUTION SALVY }
+enum ChannelProvider    { META_CLOUD EVOLUTION SALVY }   // SALVY sem adapter — ver prisma/README.md
 enum DunningStatus      { DRAFT REVIEW ACTIVE PAUSED }
 enum DunningAction      { SEND_MESSAGE SUSPEND NOTIFY_OWNER }
 enum MessageKind        { DUNNING MANUAL TEST }
@@ -324,6 +324,7 @@ model ChannelConfig {
   lastCheckAt  DateTime?
   lastCheckOk  Boolean?
   lastError    String?
+  disconnectedAt DateTime?                       // último `connection.update` state=close; null se conectado
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -388,9 +389,20 @@ ALTER TABLE charges  ADD CONSTRAINT charges_discount_bounded CHECK (discount_cen
 -- Apenas um canal padrão
 CREATE UNIQUE INDEX channel_configs_single_default ON channel_configs (is_default) WHERE is_default;
 
+-- No máximo uma régua de cobrança padrão
+CREATE UNIQUE INDEX dunning_rules_single_default ON dunning_rules (is_default) WHERE is_default;
+
 -- No máximo uma cobrança aberta por assinatura — vencimento só existe depois do pagamento anterior
 CREATE UNIQUE INDEX subscriptions_single_open_charge ON charges (subscription_id)
   WHERE status IN ('OPEN', 'OVERDUE', 'PARTIALLY_PAID');
+
+-- Tela de Mensagens: execuções da régua que pararam antes de virar Message
+-- (`messageId IS NULL AND outcome IN ('SKIPPED','PENDING_REVIEW')`). Parcial porque
+-- as execuções QUEUED (que têm messageId) nunca casam com o predicado — índice
+-- 1/3 do tamanho do não parcial pro mesmo tempo de leitura. Ver migration 00000000000013.
+CREATE INDEX dunning_executions_pending_idx
+  ON dunning_executions (outcome, created_at DESC)
+  WHERE message_id IS NULL;
 ```
 
 ---

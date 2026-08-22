@@ -161,7 +161,7 @@ Fora da régua, e sujeito às mesmas travas exceto a dedupe diária (que é uma 
 
 ## Adapters de canal
 
-Três providers, uma interface. **`if (provider === 'evolution')` fora da pasta do adapter não passa em review.** Se uma decisão precisa saber qual provider é, o modelo de capabilities está incompleto — corrige o modelo.
+Dois providers, uma interface. **`if (provider === 'evolution')` fora da pasta do adapter não passa em review.** Se uma decisão precisa saber qual provider é, o modelo de capabilities está incompleto — corrige o modelo.
 
 ```ts
 // features/messaging/channels/types.ts
@@ -196,7 +196,47 @@ export type SendResult =
 |---|---|---|---|---|
 | `META_CLOUD` | ❌ fora da janela de 24h | ✅ obrigatório | ✅ webhook | Cloud Run |
 | `EVOLUTION` | ✅ | ❌ | ✅ webhook | **servidor próprio do cliente** |
-| `SALVY` | ✅ | ❌ | ✅ | Cloud Run |
+
+> `SALVY` existiu como terceiro adapter e foi removido do produto. O valor continua no enum do
+> Postgres (remover valor de enum é migration destrutiva por benefício zero) e `resolveAdapter`
+> recusa explicitamente. Ver `prisma/README.md`.
+
+### Caminhos de conexão
+
+Cada canal declara **como** se conecta, e a tela percorre a declaração — nunca pergunta qual é o
+provider:
+
+```ts
+export type ChannelConnectionMethod = {
+  kind: 'PAIRING' | 'CREDENTIALS';
+  id: string;                 // 'qr' | 'manual'
+  label: string;
+  recommended: boolean;
+  requirements: string[];     // o "Antes de conectar" deste caminho
+  setupSteps: string[];
+  credentialFields: ChannelCredentialField[];
+};
+```
+
+| Canal | Caminhos |
+|---|---|
+| `META_CLOUD` | `manual` — colar ID do número, WABA, token permanente e chave secreta |
+| `EVOLUTION` | `qr` (recomendado) — o painel cria a instância e mostra o QR · `manual` — instância já pareada por fora |
+
+O caminho `PAIRING` exige um segundo contrato, **opcional e fora de `ChannelAdapter`**
+(`channels/pairing.ts`): `beginPairing`, `refreshChallenge`, `pairingState`, `unpair`. Ele não
+entra na interface principal porque a Meta não parea por QR — só poderia lançar, o que violaria
+LSP e ISP. `isPairable()` tem um consumidor: o service de pareamento, que falha alto se um
+descritor promete QR e o adapter não entrega.
+
+Na criação da instância, o painel fixa o que só dá para escolher naquele momento —
+`groupsIgnore`, `rejectCall`, `syncFullHistory: false` — e aponta o webhook para cá com o
+`webhookToken` em `webhook.headers.apikey`, que é o que faz **T5** funcionar. `instanceName` e
+`webhookToken` são gerados pelo painel; `ChannelConfig.phoneNumber` vem do `wuid` do
+`connection.update`, não de campo digitado.
+
+⚠️ O QR e o código de pareamento não são persistidos nem logados — Server Action → prop →
+`<img>`, e somem com o diálogo.
 
 ### ⚠️ A restrição da Meta que muda o produto
 
@@ -206,7 +246,7 @@ Consequência concreta no modelo:
 
 ```prisma
 model DunningStep {
-  templateBody       String?   // texto livre — Evolution e Salvy
+  templateBody       String?   // texto livre — Evolution
   metaTemplateName   String?   // nome do template aprovado na Meta
   metaTemplateParams Json?     // mapeamento posicional das variáveis
 }
@@ -224,6 +264,8 @@ Duas coisas ficam registradas na entrega, porque não estão na sua mão:
 
 - O canal viola os Termos do WhatsApp. Banimento é questão de quando, não de se. A tela de configuração mostra o aviso e registra o aceite.
 - A VPS, o número e a instância são do cliente. Você entrega o adapter funcionando contra um servidor válido; obter e manter o servidor é dele.
+
+Stack Docker de referência para subir esse servidor (versão fixada, Postgres e Redis próprios, TLS via Caddy, backup/restore, atualização sem perder sessão): [`infra/evolution/README.md`](../../../infra/evolution/README.md).
 
 ### Seleção do canal
 

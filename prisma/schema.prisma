@@ -19,13 +19,24 @@ model User {
   @@map("users")
 }
 
-/// Contagem de tentativas de login por IP, pro rate limit — sem Redis.
+enum LoginAttemptOutcome {
+  SUCCESS
+  INVALID_CREDENTIALS
+  RATE_LIMITED
+}
+
+/// Auditoria + rate limit de login por IP e por e-mail — sem Redis. Toda
+/// tentativa (sucesso, credencial inválida ou bloqueio) grava uma linha.
 model LoginAttempt {
   id        String   @id @default(uuid(7))
   ip        String
-  createdAt DateTime @default(now())
+  email     String?
+  outcome   LoginAttemptOutcome
+  userAgent String?
+  createdAt DateTime            @default(now())
 
   @@index([ip, createdAt])
+  @@index([email, createdAt])
   @@map("login_attempts")
 }
 
@@ -130,6 +141,7 @@ model Customer {
   subscriptions Subscription[]
   charges       Charge[]
   messages      Message[]
+  leads         Lead[]
 
   @@unique([phone])
   @@index([name])
@@ -175,6 +187,10 @@ model Subscription {
   @@index([status, nextDueAt])
   @@index([customerId])
   @@index([supplierId])
+  // listPlans conta assinaturas ativas por plano: `planId IN (...) AND status = 'ACTIVE'`.
+  // Composto e nao simples — o status na segunda posicao tira as canceladas do heap fetch,
+  // nao do filtro. Medido: 2,58 ms (seq scan) -> 2,43 ms (so planId) -> 1,20 ms (composto).
+  @@index([planId, status])
   @@map("subscriptions")
 }
 
@@ -260,6 +276,10 @@ model ChannelConfig {
   lastCheckAt    DateTime?
   lastCheckOk    Boolean?
   lastError      String?
+  // Quando o webhook `connection.update` reportou `state: 'close'` pela última vez, null
+  // enquanto conectado. Não é derivável de `lastCheckAt` (que é "quando testamos", não
+  // "desde quando caiu") — é o que a faixa do dashboard mostra ao operador.
+  disconnectedAt DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -351,6 +371,10 @@ model Message {
 
   @@index([status, scheduledFor])
   @@index([customerId, createdAt])
+  // A tela de Mensagens filtra por `occurredAt = sentAt ?? createdAt`, que vira
+  // `sentAt BETWEEN ... OR (sentAt IS NULL AND createdAt BETWEEN ...)`. O composto faz os
+  // dois ramos usarem o mesmo indice. Medido em 33.747 linhas: 5,82 ms -> 0,82 ms.
+  @@index([sentAt, createdAt])
   @@map("messages")
 }
 
@@ -375,5 +399,70 @@ model DunningExecution {
 
   @@unique([chargeId, stepId])
   @@index([messageId])
+  // ⚠️ Existe tambem `dunning_executions_pending_idx` — parcial, `WHERE messageId IS NULL`,
+  // para as execucoes que pararam antes de virar mensagem. Indice parcial nao e expressavel
+  // aqui: vive como SQL manual em `migrations/00000000000013_index_plan_message_dunning`.
   @@map("dunning_executions")
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  CONVERTED
+  DISCARDED
+}
+
+/// Captação do site público — ver `docs/projeto/tecnico/02-modelo-de-dados.md`.
+///
+/// ⚠️ `phone` **não** é único aqui, de propósito: a mesma pessoa pode preencher
+/// o formulário duas vezes, e recusar o segundo envio esconde um lead real. A
+/// deduplicação acontece na tela, não no schema. A unicidade de WhatsApp só
+/// vale em `customers`, e é resolvida na conversão.
+model Lead {
+  id           String     @id @default(uuid(7))
+  name         String
+  phone        String // E.164
+  city         String?
+  interestPlan String? // texto livre, vem do site
+  source       String // bloco do site que gerou o lead (data-cta), ex.: "site · planos"
+  campaign     String?
+  landingPath  String?
+  status       LeadStatus @default(NEW)
+  customerId   String? // preenchido na conversão
+  note         String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  // Filtro real da lista: chip de situação + ordenação por chegada.
+  @@index([status, createdAt])
+  @@index([phone])
+  @@index([customerId])
+  @@map("leads")
+}
+
+enum LeadAttemptOutcome {
+  ACCEPTED
+  INVALID
+  RATE_LIMITED
+}
+
+/// Rate limit por IP do endpoint público de captação, contado em tabela — sem
+/// Redis, mesmo desenho de `LoginAttempt`. Tabela própria de propósito: o
+/// limite de captação é generoso (pessoa real manda uma vez) e o de login é
+/// hostil; misturar os dois faria o spam de formulário travar o login do
+/// operador, e vice-versa.
+///
+/// ⚠️ Não guarda telefone nem nome — é registro de tráfego, não de PII.
+model LeadAttempt {
+  id        String             @id @default(uuid(7))
+  ip        String
+  outcome   LeadAttemptOutcome
+  createdAt DateTime           @default(now())
+
+  @@index([ip, createdAt])
+  // Poda da tabela: cresce com tráfego público e nunca é lida fora da janela.
+  @@index([createdAt])
+  @@map("lead_attempts")
 }

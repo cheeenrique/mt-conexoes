@@ -38,16 +38,21 @@ pnpm db:seed
 pnpm dev
 ```
 
+Quer ver o painel com dado de exemplo (fornecedor + planos reais)? `pnpm db:seed:demo`. **Só no banco de dev** — ver aviso abaixo e [`prisma/README.md`](prisma/README.md#dois-bancos-dev-e-teste).
+
 Testes:
 
 ```bash
-pnpm test              # suíte unitária
-pnpm test:integration  # suíte de integração — precisa do banco (docker compose up -d db)
+docker compose up -d db-test   # banco de integração, separado do de dev
+pnpm db:migrate:test
+pnpm db:seed:test              # usuário/settings/régua padrão que as suítes esperam já existir
+pnpm test                      # suíte unitária
+pnpm test:integration          # suíte de integração — roda contra db-test, nunca contra db
 ```
 
-⚠️ O `docker-compose.yml` mapeia o Postgres no host na porta **5442** (não 5432) — colisão com outro projeto local forçou esse remapeamento. `DATABASE_URL` em `.env.example`/`.env.local` já aponta para `localhost:5442`. Dentro da rede docker o container continua respondendo na 5432 padrão.
+⚠️ **Dois Postgres, nunca o mesmo para dev e teste.** `db` (porta **5442**) é o que `pnpm dev` usa; `db-test` (porta **5443**) é isolado, só `pnpm test:integration` usa. Semear dado de demonstração no de teste quebra a suíte de forma não determinística — detalhe completo em [`prisma/README.md`](prisma/README.md#dois-bancos-dev-e-teste). Dentro da rede docker os dois containers respondem na 5432 padrão.
 
-⚠️ O Prisma CLI não lê `.env.local` sozinho — só `.env`. `pnpm db:migrate` e `pnpm db:seed` já carregam `.env.local` por conta própria; use esses scripts em vez de chamar `prisma`/`tsx` direto no terminal.
+⚠️ O Prisma CLI não lê `.env.local` sozinho — só `.env`. `pnpm db:migrate`, `pnpm db:seed` e os equivalentes `:test`/`:demo` já carregam `.env.local` por conta própria; use esses scripts em vez de chamar `prisma`/`tsx` direto no terminal.
 
 ## Documentação
 

@@ -61,7 +61,7 @@ São **duas aplicações separadas**, com domínios e hospedagens distintos. A �
 | Hospedagem | Cloud Run `southamerica-east1` | Free tier cobre o volume inteiro |
 | Agendamento | Cloud Scheduler → Route Handler com OIDC | 3 jobs grátis, substitui fila |
 | Recebimento | Pix manual, baixa manual | Conciliação automática fica para fase futura |
-| WhatsApp | 3 adapters — Meta Cloud, Evolution, Salvy | Selecionáveis; capabilities decidem o comportamento |
+| WhatsApp | 2 adapters — Meta Cloud e Evolution | Selecionáveis; capabilities decidem o comportamento, e o descritor decide como conectar (QR ou credencial colada) |
 | Multi-tenancy | ❌ Não existe | Um cliente |
 | Ledger de partidas dobradas | ❌ Não existe | Receita e custo saem de `SUM` sobre `charges` e `payments` |
 | Site de captação | Astro + Cloudflare Pages | ~0 KB de JS por padrão. Numa página que é texto, ganha de Next por margem clara |

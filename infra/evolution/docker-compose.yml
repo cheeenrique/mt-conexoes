@@ -1,0 +1,151 @@
+name: mt-conexoes-evolution
+
+# Stack do canal de WhatsApp não oficial (provider EVOLUTION).
+# Roda numa VPS própria, fora do Cloud Run — ver README.md "Por que não é Cloud Run".
+#
+# ⚠️ Versão fixada em 2.3.7 (evoapicloud/evolution-api:v2.3.7), NUNCA "latest".
+# Ver README.md "Por que a versão 2.3.7" antes de trocar.
+
+services:
+  postgres:
+    image: postgres:15.10-alpine
+    container_name: mtc-evolution-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - evolution_postgres_data:/var/lib/postgresql/data
+    networks:
+      - evolution-internal
+    # Sem "ports:" de propósito — só a rede interna do compose fala com o Postgres.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: mtc-evolution-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - evolution_redis_data:/data
+    networks:
+      - evolution-internal
+    # Sem "ports:" — cache de instância/grupo, não precisa ser alcançável de fora.
+    healthcheck:
+      # Senha interpolada em tempo de "docker compose config" (a partir do
+      # .env), não em runtime dentro do container — o serviço redis não
+      # recebe REDIS_PASSWORD como env var própria, só via --requirepass.
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  evolution-api:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: mtc-evolution-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Construídas aqui (não em .env) pra não duplicar usuário/senha em dois lugares.
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=evolution_api
+      CACHE_REDIS_URI: redis://:${REDIS_PASSWORD}@redis:6379/6
+    volumes:
+      # ⚠️ Mantido por compatibilidade com o compose oficial e com o modo PROVIDER_FILES
+      # (desligado aqui). NA CONFIGURAÇÃO DESTE ARQUIVO, a credencial de sessão do
+      # WhatsApp NÃO mora neste volume — mora no Postgres acima (ver README.md
+      # "Divergência encontrada"). Não é o volume que salva o pareamento se ele
+      # sozinho for restaurado sem o Postgres.
+      - evolution_instances:/evolution/instances
+    networks:
+      - evolution-internal
+    # Sem "ports:" publicada — só o Caddy fala com a Evolution, via rede interna.
+    expose:
+      - "8080"
+    healthcheck:
+      # GET / não exige apikey nesta versão — devolve { version, ... }.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+        reservations:
+          memory: 512M
+
+  caddy:
+    image: caddy:2.9.1-alpine
+    container_name: mtc-evolution-caddy
+    restart: unless-stopped
+    depends_on:
+      evolution-api:
+        condition: service_healthy
+    environment:
+      # Só o que o Caddyfile precisa — não o .env inteiro (que carrega
+      # AUTHENTICATION_API_KEY e as senhas de banco). Menor superfície por
+      # container: o proxy não tem motivo pra conhecer esses segredos.
+      EVOLUTION_DOMAIN: ${EVOLUTION_DOMAIN}
+      CADDY_EMAIL: ${CADDY_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - evolution-internal
+    healthcheck:
+      # Admin API do Caddy só escuta em localhost:2019 dentro do container —
+      # confirma que o processo subiu, independe do domínio/DNS estar certo.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+volumes:
+  evolution_postgres_data:
+  evolution_redis_data:
+  evolution_instances:
+  caddy_data:
+  caddy_config:
+
+networks:
+  evolution-internal:
+    driver: bridge

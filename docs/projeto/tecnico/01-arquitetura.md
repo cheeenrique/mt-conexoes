@@ -65,6 +65,7 @@ src/
         charges-mark-overdue/route.ts
         dunning-evaluate/route.ts
         messages-dispatch/route.ts
+        ping/route.ts
   features/
     customers/    { actions.ts, queries.ts, service.ts, components/ }
     subscriptions/
@@ -157,6 +158,9 @@ Cloud Scheduler chama Route Handlers com token OIDC. O handler valida o token; s
 | `charges-mark-overdue` | diário 03:00 | Marca `OPEN` com `dueAt < agora` como `OVERDUE`. Não gera cobrança — cobrança nasce na criação da assinatura e no pagamento total, não por job. |
 | `dunning-evaluate` | diário 07:00 | Avalia a régua e cria as linhas `PENDING` em `messages` |
 | `messages-dispatch` | a cada 15 min, 08:00–20:00 | Envia as `PENDING` respeitando as travas; falha vira retry na próxima passada |
+| `ping` | não agendado em produção | Só valida o token e responde. Encanamento: confirma que o Cloud Scheduler alcança o Cloud Run com OIDC, sem tocar no banco. |
+
+⚠️ O Cloud Scheduler tem **3 jobs no plano free** (ver Stack, acima) e os três de produção (`charges-mark-overdue`, `dunning-evaluate`, `messages-dispatch`) já ocupam todos. `ping` não entra na conta — só é chamado manualmente ou por um scheduler de staging, nunca registrado como o 4º job em produção.
 
 ⚠️ **Não existe mais job de geração de cobrança.** No modelo anterior (âncora fixa de calendário) um job diário antecipava a emissão. Hoje o vencimento do próximo ciclo só existe depois que o cliente paga o atual — ver [`03-datas-e-ciclos.md`](./03-datas-e-ciclos.md) — então a emissão é evento (transação de criação de assinatura / transação de registro de pagamento), não cron.
 

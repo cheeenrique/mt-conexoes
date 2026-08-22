@@ -51,7 +51,7 @@ Job recebe `now` por parâmetro e desce até `core/`. É o que torna o cron test
 
 ## Mocks
 
-- **Não mockar o que você não possui.** Meta, Evolution e Salvy são abstraídos por adapter; o teste usa um fake do **nosso** adapter.
+- **Não mockar o que você não possui.** Meta e Evolution são abstraídos por adapter; o teste usa um fake do **nosso** adapter.
 - Não mockar `core/` — é puro e rápido, usa de verdade.
 - Mock demais é sintoma de acoplamento: se testar exige montar cinco mocks, o desenho está errado.
 

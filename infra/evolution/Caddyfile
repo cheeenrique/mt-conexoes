@@ -1,0 +1,31 @@
+# infra/evolution/Caddyfile
+#
+# Caddy é o único serviço com porta pública (80/443). Tudo mais fica na rede
+# interna do compose — ver README.md "Segurança".
+#
+# {$EVOLUTION_DOMAIN} e {$CADDY_EMAIL} vêm do .env (docker compose já injeta
+# as env vars do serviço `caddy` no processo do Caddy).
+{
+	email {$CADDY_EMAIL}
+}
+
+{$EVOLUTION_DOMAIN} {
+	encode gzip
+
+	# Evolution não expõe /manager nesta stack (SERVER_DISABLE_MANAGER=true).
+	# Se precisar ligar temporariamente pra depurar pareamento, ver README.md
+	# "Evolution Manager" — o bloco de basicauth fica comentado ali, não aqui,
+	# pra não esquecer ligado depois de usar uma vez.
+
+	# Caddy já envia Host, X-Forwarded-For e X-Forwarded-Proto por padrão no
+	# reverse_proxy — sem overrides aqui (caddy validate avisa se forem
+	# redundantes).
+	reverse_proxy evolution-api:8080
+
+	log {
+		output stdout
+		format json
+		# Sem log de corpo de request/response: evita capturar texto de
+		# mensagem em trânsito (webhook de inbound, corpo de sendText).
+	}
+}

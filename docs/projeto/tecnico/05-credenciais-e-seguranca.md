@@ -77,7 +77,6 @@ Procedimento, para constar no runbook de entrega: gera chave nova, publica como 
 ```ts
 type MetaCloudCredentials  = { phoneNumberId: string; accessToken: string; wabaId: string };
 type EvolutionCredentials  = { baseUrl: string; apiKey: string; instance: string };
-type SalvyCredentials      = { apiKey: string };
 ```
 
 - Nunca voltam para o cliente, nem mascaradas. A tela mostra "configurado em DD/MM" e um botão de substituir.

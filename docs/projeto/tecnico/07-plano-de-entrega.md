@@ -78,7 +78,6 @@ O que o script faz, e que dá errado se for ignorado:
 - [ ] Interface `ChannelAdapter` + modelo de capabilities
 - [ ] Adapter Meta Cloud API, com template aprovado
 - [ ] Adapter Evolution API
-- [ ] Adapter Salvy
 - [ ] Tela de configuração de canal, com teste de conexão e aviso de risco no Evolution
 - [ ] Editor de template com variáveis e prévia usando dados reais
 - [ ] Envio manual assistido, individual e em lote, com prévia e confirmação acima de 100
@@ -176,7 +175,7 @@ Fora dessas áreas: teste junto ou depois, sem cerimônia. Formulário e tela de
 
 | Risco | Sinal | Resposta |
 |---|---|---|
-| Verificação da Meta reprovada ou lenta | Passou de 2 semanas sem aprovação | Entrega a etapa 3 com Evolution e Salvy funcionando; Meta fica pendente da credencial dele, documentado |
+| Verificação da Meta reprovada ou lenta | Passou de 2 semanas sem aprovação | Entrega a etapa 3 com a Evolution funcionando; Meta fica pendente da credencial dele, documentado |
 | Cliente não provisiona a VPS do Evolution | Semana 4 sem servidor | Mesma resposta: adapter pronto, entrega condicionada à credencial |
 | Planilha pior que o esperado | Passou de 4 horas de tratamento | Para, mostra o relatório de recusa, orça o excedente antes de continuar |
 | Pedido novo no meio ("só mais uma coisinha") | Qualquer item fora dos documentos | R$ 150/hora, orçado e aprovado antes. Combinado no início justamente para não virar negociação caso a caso |

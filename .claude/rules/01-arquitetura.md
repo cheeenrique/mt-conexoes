@@ -50,6 +50,7 @@ components/ui/ ──> nada do domínio
 | Leitura para tela e relatório | `features/*/queries.ts` | Separada da escrita — cresce por outro motivo |
 | SQL de relatório | `features/reports/sql/*.sql` | Versionado e revisável, não string dentro do service |
 | Schema de entrada | `features/*/schema.ts` (Zod) | Mesmo schema no formulário e na Server Action |
+| Server Action que **compõe** queries de várias features | `app/<rota>/<nome>-action.ts` | `app/` é a única camada que pode importar de várias features. Ex.: `app/(app)/customers/ficha-action.ts` monta a ficha do cliente com `customers`, `subscriptions`, `charges`, `messaging` e `reports`. O componente cliente recebe a action **por prop** — é isso que deixa a mesma gaveta abrir de Início, Cobranças e Mensagens sem que `features/customers` importe as outras |
 | Componente visual sem domínio | `components/ui/` | shadcn + o que for genérico |
 | Criptografia, sessão, formatação, cliente Prisma | `lib/` | Infra compartilhada |
 
@@ -64,9 +65,10 @@ src/
       clientes/ assinaturas/ cobrancas/ mensagens/ regua/
       fornecedores/ planos/ configuracoes/
     api/cron/
-      charges-generate/route.ts
+      charges-mark-overdue/route.ts
       dunning-evaluate/route.ts
       messages-dispatch/route.ts
+      ping/route.ts
   features/
     customers/  subscriptions/  charges/  payments/
     dunning/    messaging/      suppliers/  reports/

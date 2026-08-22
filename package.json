@@ -13,7 +13,10 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:all": "pnpm test && pnpm test:integration",
     "db:migrate": "dotenv -e .env.local -- prisma migrate deploy",
+    "db:migrate:test": "tsx scripts/with-test-db.ts pnpm exec prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:test": "tsx scripts/with-test-db.ts tsx prisma/seed.ts",
+    "db:seed:demo": "tsx prisma/seed-demo.ts",
     "import:customers": "dotenv -e .env.local -- tsx scripts/import-customers.ts"
   },
   "prisma": {
