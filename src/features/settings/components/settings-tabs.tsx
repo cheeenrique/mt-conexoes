@@ -2,13 +2,11 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Store, MessageSquare } from 'lucide-react';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { SettingsForm } from './settings-form';
-import { ChannelsTab } from './channels-tab';
 import type { SettingsDTO } from '@/lib/settings';
-import type { ChannelConfigDTO } from '@/features/messaging/queries';
 
 const TAB_CLASS =
   'flex h-10 items-center gap-2 rounded-sm px-4 text-sm font-semibold';
@@ -23,13 +21,13 @@ const TAB_SUPPORT: Record<'negocio' | 'canais', string> = {
 export function SettingsTabs({
   initial,
   aba,
-  channelConfigs,
-  timezone,
+  canaisContent,
 }: {
   initial: SettingsDTO;
   aba: 'negocio' | 'canais';
-  channelConfigs: ChannelConfigDTO[];
-  timezone: string;
+  /** Renderizado no servidor por `app/(app)/settings/page.tsx` — este componente é
+   *  client e não conhece `features/messaging`, só recebe o elemento pronto. */
+  canaisContent: ReactNode;
 }) {
   const router = useRouter();
   const [dirty, setDirty] = useState(false);
@@ -71,11 +69,7 @@ export function SettingsTabs({
         </button>
       </div>
       <p className="mb-4 text-xs text-foreground-muted">{TAB_SUPPORT[aba]}</p>
-      {aba === 'negocio' ? (
-        <SettingsForm initial={initial} onDirtyChange={handleDirtyChange} />
-      ) : (
-        <ChannelsTab configs={channelConfigs} timezone={timezone} />
-      )}
+      {aba === 'negocio' ? <SettingsForm initial={initial} onDirtyChange={handleDirtyChange} /> : canaisContent}
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}

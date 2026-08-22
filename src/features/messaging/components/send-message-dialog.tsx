@@ -31,8 +31,11 @@ export function SendMessageDialog({
         toastError(result.error);
         return;
       }
+      const timing = result.summary.queuedOutsideQuietHours
+        ? 'Fora do horário permitido agora — o envio começa automaticamente na próxima janela.'
+        : 'O envio respeita o ritmo do canal e pode levar alguns minutos.';
       toastSuccess(
-        `Enfileirado: ${result.summary.queued} · Opt-out: ${result.summary.skippedOptedOut} · Sem telefone: ${result.summary.skippedNoPhone}. O envio respeita o ritmo do canal e pode levar alguns minutos.`,
+        `Enfileirado: ${result.summary.queued} · Opt-out: ${result.summary.skippedOptedOut} · Sem telefone: ${result.summary.skippedNoPhone}. ${timing}`,
       );
       setBody('');
       setConfirmOpen(false);

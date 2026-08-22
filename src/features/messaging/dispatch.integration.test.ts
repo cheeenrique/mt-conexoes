@@ -4,7 +4,6 @@ import { encrypt } from '@/lib/crypto';
 import {
   sendManualBatch,
   NoDefaultChannelError,
-  OutsideQuietHoursError,
   ChannelDoesNotSupportFreeTextError,
   ChargeVariablesNotAllowedInManualSendError,
 } from './dispatch';
@@ -101,16 +100,34 @@ describe('sendManualBatch', () => {
     ).rejects.toThrow(NoDefaultChannelError);
   });
 
-  it('rejeita fora de quiet hours, sem criar nenhuma Message', async () => {
+  it('fora de quiet hours enfileira igual, sinalizado — quem reagenda é dispatchPendingMessages (T6)', async () => {
     await seedActiveDefaultChannel();
     const customer = await seedCustomer();
 
-    await expect(
-      sendManualBatch({ customerIds: [customer.id], body: 'Olá {{cliente.primeiro_nome}}', now: OUT_OF_HOURS_NOW }),
-    ).rejects.toThrow(OutsideQuietHoursError);
+    const summary = await sendManualBatch({
+      customerIds: [customer.id],
+      body: 'Olá {{cliente.primeiro_nome}}',
+      now: OUT_OF_HOURS_NOW,
+    });
 
-    const count = await db.message.count({ where: { customerId: customer.id } });
-    expect(count).toBe(0);
+    expect(summary.queued).toBe(1);
+    expect(summary.queuedOutsideQuietHours).toBe(true);
+    const message = await db.message.findFirstOrThrow({ where: { customerId: customer.id } });
+    expect(message.status).toBe('PENDING');
+    expect(message.kind).toBe('MANUAL');
+  });
+
+  it('dentro de quiet hours não sinaliza', async () => {
+    await seedActiveDefaultChannel();
+    const customer = await seedCustomer();
+
+    const summary = await sendManualBatch({
+      customerIds: [customer.id],
+      body: 'Olá {{cliente.primeiro_nome}}',
+      now: IN_HOURS_NOW,
+    });
+
+    expect(summary.queuedOutsideQuietHours).toBe(false);
   });
 
   it('rejeita canal padrão sem suporte a texto livre, sem criar nenhuma Message', async () => {
@@ -133,7 +150,7 @@ describe('sendManualBatch', () => {
 
     const summary = await sendManualBatch({ customerIds: [optedOut.id], body: 'Olá {{cliente.primeiro_nome}}', now: IN_HOURS_NOW });
 
-    expect(summary).toEqual({ queued: 0, skippedOptedOut: 1, skippedNoPhone: 0 });
+    expect(summary).toEqual({ queued: 0, skippedOptedOut: 1, skippedNoPhone: 0, queuedOutsideQuietHours: false });
     const count = await db.message.count({ where: { customerId: optedOut.id } });
     expect(count).toBe(0);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -145,7 +162,7 @@ describe('sendManualBatch', () => {
 
     const summary = await sendManualBatch({ customerIds: [noPhone.id], body: 'Olá {{cliente.primeiro_nome}}', now: IN_HOURS_NOW });
 
-    expect(summary).toEqual({ queued: 0, skippedOptedOut: 0, skippedNoPhone: 1 });
+    expect(summary).toEqual({ queued: 0, skippedOptedOut: 0, skippedNoPhone: 1, queuedOutsideQuietHours: false });
   });
 
   // O disparo manual assistido é o caminho de maior volume por clique (confirmação por
@@ -168,7 +185,7 @@ describe('sendManualBatch', () => {
       now: IN_HOURS_NOW,
     });
 
-    expect(summary).toEqual({ queued: 2, skippedOptedOut: 0, skippedNoPhone: 0 });
+    expect(summary).toEqual({ queued: 2, skippedOptedOut: 0, skippedNoPhone: 0, queuedOutsideQuietHours: false });
     expect(fetchSpy).not.toHaveBeenCalled();
 
     const created = await db.message.findMany({ where: { customerId: { in: [first.id, second.id] } } });

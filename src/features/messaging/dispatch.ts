@@ -11,12 +11,6 @@ export class NoDefaultChannelError extends DomainError {
   }
 }
 
-export class OutsideQuietHoursError extends DomainError {
-  constructor(cause?: unknown) {
-    super('Fora do horário permitido. Tente novamente dentro da janela configurada.', 'OUTSIDE_QUIET_HOURS', { cause });
-  }
-}
-
 export class ChannelDoesNotSupportFreeTextError extends DomainError {
   constructor(cause?: unknown) {
     super(
@@ -46,11 +40,17 @@ export class ChargeVariablesNotAllowedInManualSendError extends DomainError {
  * hours (T6), opt-out (T5) e canal fora do ar, é `dispatchPendingMessages`
  * (`messages-dispatch`) — o mesmo motor que já serve a régua. `Message.kind` distingue
  * a origem (`MANUAL` aqui, `DUNNING` na régua); o despacho em si não olha para `kind`.
+ *
+ * Por isso `sendManualBatch` não recusa fora da janela 08–20h (T6): enfileira igual, e
+ * `dispatchPendingMessages` reagenda pro início da próxima janela na primeira passada —
+ * mesmo comportamento de uma `Message` `DUNNING` criada fora de hora por `dunning/evaluate.ts`.
+ * `queuedOutsideQuietHours` só existe pra tela avisar o operador que o clique não sai na hora.
  */
 export interface ManualQueueSummary {
   queued: number;
   skippedOptedOut: number;
   skippedNoPhone: number;
+  queuedOutsideQuietHours: boolean;
 }
 
 export async function sendManualBatch(input: { customerIds: string[]; body: string; now: Date }): Promise<ManualQueueSummary> {
@@ -74,9 +74,12 @@ export async function sendManualBatch(input: { customerIds: string[]; body: stri
   if (!adapter.capabilities.supportsFreeText) throw new ChannelDoesNotSupportFreeTextError();
 
   const settings = await getSettings();
-  if (!isWithinLocalHourRange(input.now, settings.quietHourStart, settings.quietHourEnd, settings.timezone)) {
-    throw new OutsideQuietHoursError();
-  }
+  const queuedOutsideQuietHours = !isWithinLocalHourRange(
+    input.now,
+    settings.quietHourStart,
+    settings.quietHourEnd,
+    settings.timezone,
+  );
 
   const uniqueIds = [...new Set(input.customerIds)];
   const customers = await db.customer.findMany({ where: { id: { in: uniqueIds } } });
@@ -115,5 +118,5 @@ export async function sendManualBatch(input: { customerIds: string[]; body: stri
     await db.message.createMany({ data: rows });
   }
 
-  return { queued: rows.length, skippedOptedOut, skippedNoPhone };
+  return { queued: rows.length, skippedOptedOut, skippedNoPhone, queuedOutsideQuietHours };
 }

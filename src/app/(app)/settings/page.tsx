@@ -2,6 +2,7 @@ import { Settings } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { getSettings } from '@/lib/settings';
 import { listChannelConfigs } from '@/features/messaging/queries';
+import { ChannelGrid } from '@/features/messaging/components/channel-grid';
 import { SettingsTabs } from '@/features/settings/components/settings-tabs';
 import { SettingsSaveButton } from '@/features/settings/components/settings-save-button';
 
@@ -24,7 +25,11 @@ export default async function SettingsPage({
       icon={<Settings size={22} />}
       primaryAction={aba === 'negocio' ? <SettingsSaveButton /> : undefined}
     >
-      <SettingsTabs initial={settings} aba={aba} channelConfigs={channelConfigs} timezone={settings.timezone} />
+      <SettingsTabs
+        initial={settings}
+        aba={aba}
+        canaisContent={<ChannelGrid configs={channelConfigs} timezone={settings.timezone} />}
+      />
     </AppShell>
   );
 }
