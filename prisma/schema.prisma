@@ -315,12 +315,17 @@ model DunningRule {
 }
 
 model DunningStep {
-  id           String        @id @default(uuid(7))
-  ruleId       String
-  offsetDays   Int
-  action       DunningAction @default(SEND_MESSAGE)
-  templateBody String?
-  isActive     Boolean       @default(true)
+  id               String        @id @default(uuid(7))
+  ruleId           String
+  offsetDays       Int
+  action           DunningAction @default(SEND_MESSAGE)
+  templateBody     String?
+  /// Nome do template aprovado na Meta pra este passo — `null` até o operador
+  /// modelar o template. Canal com `requiresApprovedTemplate` e passo sem isto
+  /// vira execução `SKIPPED` (motivo `template_not_approved`) em vez de tentar
+  /// texto livre que a Meta recusa fora da janela de 24h. Ver 06-regua-e-canais.md.
+  metaTemplateName String?
+  isActive         Boolean       @default(true)
 
   rule         DunningRule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
   executions   DunningExecution[]

@@ -4,12 +4,12 @@
  * ⚠️ Nenhuma credencial chega aqui, nem mascarada — só o nome do canal e o que
  * a escolha dele significa para os passos.
  *
- * ⚠️ O texto descreve o que o código **faz hoje**. O handoff diz que passo sem
- * template aprovado "fica pulado com o motivo template não aprovado"; esse
- * `SKIPPED` não existe: `meta-cloud/adapter.ts` devolve
- * `{ ok: false, retryable: false }` e a mensagem termina como `FAILED` com esse
- * motivo, visível na tela de Mensagens. Prometer "pulado" aqui faria o operador
- * procurar um estado que nunca aparece.
+ * ⚠️ O texto descreve o que o código **faz hoje**: passo `SEND_MESSAGE` sem
+ * `metaTemplateName`, num canal `requiresApprovedTemplate`, vira execução
+ * `SKIPPED` (motivo `template_not_approved`) em `dunning-evaluate` — nunca
+ * chega a virar `Message`, então nunca aparece como falha na tela de
+ * Mensagens. Preencher o template não muda esse texto: o envio de fato por
+ * template ainda não está implementado (ver `docs/projeto/tecnico/06-regua-e-canais.md`).
  *
  * O comportamento é decidido por `requiresApprovedTemplate`, não por
  * `if (provider === ...)`: quem entende de template é o adapter.
@@ -28,8 +28,8 @@ export function ChannelNote({
         {!channel
           ? 'Sem canal ativo, nenhum passo de mensagem chega ao cliente. Configure um canal em Ajustes antes de ativar a régua.'
           : channel.requiresApprovedTemplate
-            ? 'Este canal só entrega template aprovado fora de conversa iniciada pelo cliente. Passo com texto livre não chega: o envio volta como falha, com o motivo do provedor, na tela de Mensagens.'
-            : 'Aceita texto livre. Trocar para a Meta Cloud muda isso — lá, fora da janela de 24 horas, só template aprovado chega, e passo sem template volta como falha em vez de sair.'}
+            ? 'Este canal só entrega template aprovado fora de conversa iniciada pelo cliente. Passo sem um template aprovado marcado é pulado automaticamente — não tenta um texto livre que a Meta recusaria.'
+            : 'Aceita texto livre. Trocar para a Meta Cloud muda isso — lá, fora da janela de 24 horas, só template aprovado chega, e passo sem template marcado é pulado em vez de tentar sair.'}
       </p>
     </section>
   );

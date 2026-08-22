@@ -1,11 +1,17 @@
-import type { ChannelConfig, Prisma } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { decrypt } from '@/lib/crypto';
 import { isWithinLocalHourRange, nextQuietHourStart, localDateOnly } from '@/core/dates';
-import { CHANNEL_PROVIDERS, resolveAdapter, resolveDescriptor } from './channels/registry';
-import { redactSecrets } from './channels/redact';
+import { dispatchBatchSize, sendDelayMs } from '@/core/send-throttle';
+import { CHANNEL_PROVIDERS, resolveAdapter } from './channels/registry';
+import { refreshChannelHealth } from './channel-health';
 import type { ChannelAdapter } from './channels/types';
 import { logger } from '@/lib/logger';
+
+/** Espera real entre envios — o teste injeta uma função instantânea no lugar. */
+function realWait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export type DispatchResult = {
   sent: number;
@@ -17,8 +23,7 @@ export type DispatchResult = {
   rescheduled: number;
   /** Canal padrão fora do ar (`lastCheckOk === false`): mensagem não foi tentada e
    *  continua PENDING, recuperável se o operador reparear o canal em até 24h (T8 `stale`
-   *  cuida do resto). Sem isso a queda vira "envios pausados" invisível na tela — ver
-   *  antipadrão registrado sobre `scheduled-dispatch.ts:131`. */
+   *  cuida do resto). Sem isso a queda vira "envios pausados" invisível na tela. */
   blockedChannelDown: number;
 };
 
@@ -35,14 +40,9 @@ function emptyResult(): DispatchResult {
   };
 }
 
-const BATCH_SIZE = 60;
 const STALE_MS = 24 * 60 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 const OPEN_CHARGE_STATUSES = new Set(['OPEN', 'OVERDUE', 'PARTIALLY_PAID']);
-// Mesma cadência do próprio job (`messages-dispatch`, a cada 15 min entre 08h-20h) —
-// não é um cron novo, é um GET na frente da passada existente. Cobre o caso que
-// `connection.update` estruturalmente não reporta: a VPS/instância inteira fora do ar.
-const HEALTH_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 
 type PendingMessage = Prisma.MessageGetPayload<{ include: { customer: { select: { optedOut: true } } } }>;
 
@@ -59,25 +59,6 @@ async function isFullyPaidOrCancelled(messageId: string): Promise<boolean> {
   });
   if (executions.length === 0) return false;
   return executions.every((e) => !OPEN_CHARGE_STATUSES.has(e.charge.status));
-}
-
-/**
- * Reconfere a saúde do canal padrão no máximo uma vez por `HEALTH_CHECK_INTERVAL_MS`.
- * `connection.update` cobre a sessão do WhatsApp cair; isto cobre a VPS inteira cair,
- * que não emite webhook nenhum. Persiste em `lastCheckAt/lastCheckOk/lastError` — a
- * mesma tripla que a tela de Canais e o teste manual (`service.ts`) já leem.
- */
-async function refreshChannelHealth(channelRow: ChannelConfig, adapter: ChannelAdapter, credentials: unknown, now: Date): Promise<boolean> {
-  const dueForCheck = !channelRow.lastCheckAt || now.getTime() - channelRow.lastCheckAt.getTime() >= HEALTH_CHECK_INTERVAL_MS;
-  if (!dueForCheck) return channelRow.lastCheckOk === true;
-
-  const result = await adapter.healthCheck(credentials);
-  const reason = result.ok ? null : redactSecrets(result.reason, credentials, resolveDescriptor(channelRow.provider));
-  await db.channelConfig.update({
-    where: { id: channelRow.id },
-    data: { lastCheckAt: now, lastCheckOk: result.ok, lastError: reason },
-  });
-  return result.ok;
 }
 
 type Outcome = keyof DispatchResult | 'none';
@@ -104,6 +85,11 @@ async function rescheduleOutOfQuietHours(
   }
 }
 
+/** `calledProvider` distingue quem tocou a rede de quem só mudou de status no
+ *  banco (stale, reagendado, opt-out, pago, canal caído, corrida perdida) — é
+ *  o que decide se o jitter de `sendDelayMs` entra antes da próxima mensagem. */
+type ProcessOutcome = { outcome: Outcome; calledProvider: boolean };
+
 async function processMessage(
   msg: PendingMessage,
   now: Date,
@@ -113,31 +99,40 @@ async function processMessage(
   credentials: unknown,
   adapter: ChannelAdapter,
   channelHealthy: boolean,
-): Promise<Outcome> {
+): Promise<ProcessOutcome> {
   if (now.getTime() - msg.createdAt.getTime() > STALE_MS) {
     await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'stale' } });
-    return 'cancelledStale';
+    return { outcome: 'cancelledStale', calledProvider: false };
   }
 
   if (!isWithinQuietHours) {
-    return rescheduleOutOfQuietHours(msg, now, settings);
+    const outcome = await rescheduleOutOfQuietHours(msg, now, settings);
+    return { outcome, calledProvider: false };
   }
 
   if (msg.customer.optedOut) {
     await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'opted_out' } });
-    return 'cancelledOptedOut';
+    return { outcome: 'cancelledOptedOut', calledProvider: false };
   }
 
   if (await isFullyPaidOrCancelled(msg.id)) {
     await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'charge_closed' } });
-    return 'cancelledPaid';
+    return { outcome: 'cancelledPaid', calledProvider: false };
   }
 
   // Canal fora do ar: não tenta enviar e não queima a mensagem em FAILED — fica PENDING,
   // recuperável se o operador reparear em até 24h (depois disso o check de `stale` acima,
   // na próxima passada, cuida do resto). Roda depois de stale/quiet-hour/opt-out/pago:
   // esses continuam valendo mesmo com o canal caído.
-  if (!channelHealthy) return 'blockedChannelDown';
+  if (!channelHealthy) return { outcome: 'blockedChannelDown', calledProvider: false };
+
+  // Corpo maior que o teto do provider (`maxBodyLength`): falha aqui, explícita, em vez
+  // de mandar pro provider e deixar ele rejeitar ou truncar em silêncio. Não conta como
+  // tentativa contra o provider — não há claim nem chamada de rede.
+  if (msg.body.length > adapter.capabilities.maxBodyLength) {
+    await db.message.update({ where: { id: msg.id }, data: { status: 'FAILED', failReason: 'body_too_long', channelId } });
+    return { outcome: 'failed', calledProvider: false };
+  }
 
   // Claim atômico: só quem consegue incrementar `attempts` a partir do valor lido pode enviar.
   // Uma segunda execução concorrente (retry do Scheduler, disparo manual, lote lento sobreposto)
@@ -146,7 +141,7 @@ async function processMessage(
     where: { id: msg.id, status: 'PENDING', attempts: msg.attempts },
     data: { attempts: msg.attempts + 1 },
   });
-  if (claim.count === 0) return 'none';
+  if (claim.count === 0) return { outcome: 'none', calledProvider: false };
 
   const result = await adapter.send({ toPhone: msg.toPhone, body: msg.body }, credentials);
   const attempts = msg.attempts + 1;
@@ -156,7 +151,7 @@ async function processMessage(
       where: { id: msg.id },
       data: { status: 'SENT', sentAt: new Date(), externalId: result.externalId, channelId },
     });
-    return 'sent';
+    return { outcome: 'sent', calledProvider: true };
   }
 
   if (!result.retryable || attempts >= MAX_ATTEMPTS) {
@@ -164,14 +159,20 @@ async function processMessage(
       where: { id: msg.id },
       data: { status: 'FAILED', failReason: result.reason, channelId },
     });
-    return 'failed';
+    return { outcome: 'failed', calledProvider: true };
   }
 
   // attempts já subiu no claim acima — nada mais a persistir, PENDING segue pra próxima passada.
-  return 'none';
+  return { outcome: 'none', calledProvider: true };
 }
 
-export async function dispatchPendingMessages(now: Date): Promise<DispatchResult> {
+/** `random`/`wait` injetados como `now`: produção usa `Math.random` e o relógio
+ *  de verdade, o teste passa algo determinístico e instantâneo. */
+export async function dispatchPendingMessages(
+  now: Date,
+  random: () => number = Math.random,
+  wait: (ms: number) => Promise<void> = realWait,
+): Promise<DispatchResult> {
   const settings = await db.settings.findUniqueOrThrow({ where: { id: 'singleton' } });
   if (settings.sendingPaused) return emptyResult();
 
@@ -196,21 +197,27 @@ export async function dispatchPendingMessages(now: Date): Promise<DispatchResult
   }
 
   const channelHealthy = await refreshChannelHealth(channelRow, adapter, credentials, now);
+  const rateLimitPerMinute = adapter.capabilities.rateLimitPerMinute;
 
   const messages = await db.message.findMany({
     where: { status: 'PENDING', scheduledFor: { lte: now } },
     orderBy: { createdAt: 'asc' },
-    take: BATCH_SIZE,
+    take: dispatchBatchSize(rateLimitPerMinute),
     include: { customer: { select: { optedOut: true } } },
   });
 
   const result = emptyResult();
   const isWithinQuietHours = isWithinLocalHourRange(now, settings.quietHourStart, settings.quietHourEnd, settings.timezone);
 
-  for (const msg of messages) {
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
     try {
-      const outcome = await processMessage(msg, now, isWithinQuietHours, settings, channelRow.id, credentials, adapter, channelHealthy);
+      const { outcome, calledProvider } = await processMessage(msg, now, isWithinQuietHours, settings, channelRow.id, credentials, adapter, channelHealthy);
       if (outcome !== 'none') result[outcome]++;
+      // Jitter só entre chamadas reais ao provider, e só se sobrar mensagem depois
+      // desta — cancelar, reagendar ou pular por canal caído não toca a rede, e
+      // atrasar a última mensagem do lote só deixaria a passada mais lenta à toa.
+      if (calledProvider && i < messages.length - 1) await wait(sendDelayMs(rateLimitPerMinute, random));
     } catch (err) {
       logger.error({ job: 'messages-dispatch', messageId: msg.id, error: String(err) });
     }

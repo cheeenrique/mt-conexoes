@@ -24,6 +24,8 @@ export interface DunningStepDTO {
   offsetDays: number;
   action: string;
   templateBody: string | null;
+  /** Nome do template aprovado na Meta — `null` até o operador modelar. Ver `evaluate.ts`. */
+  metaTemplateName: string | null;
   isActive: boolean;
 }
 
@@ -32,6 +34,21 @@ export interface DunningRuleDTO {
   name: string;
   status: string;
   isDefault: boolean;
+}
+
+type StepRow = { id: string; offsetDays: number; action: string; templateBody: string | null; metaTemplateName: string | null; isActive: boolean };
+
+/** Usado pelas duas leituras de régua com passos — `getDefaultRuleWithSteps` (motor) e
+ *  `getRuleWithSteps` (tela) — pra não divergir o shape do DTO entre as duas. */
+function toStepDTO(step: StepRow): DunningStepDTO {
+  return {
+    id: step.id,
+    offsetDays: step.offsetDays,
+    action: step.action,
+    templateBody: step.templateBody,
+    metaTemplateName: step.metaTemplateName,
+    isActive: step.isActive,
+  };
 }
 
 export async function getDefaultRuleWithSteps(): Promise<DunningRuleDTO & { steps: DunningStepDTO[] }> {
@@ -45,13 +62,7 @@ export async function getDefaultRuleWithSteps(): Promise<DunningRuleDTO & { step
     name: rule.name,
     status: rule.status,
     isDefault: rule.isDefault,
-    steps: rule.steps.map((s) => ({
-      id: s.id,
-      offsetDays: s.offsetDays,
-      action: s.action,
-      templateBody: s.templateBody,
-      isActive: s.isActive,
-    })),
+    steps: rule.steps.map(toStepDTO),
   };
 }
 
@@ -113,13 +124,7 @@ export async function getRuleWithSteps(
     name: rule.name,
     status: rule.status,
     isDefault: rule.isDefault,
-    steps: rule.steps.map((s) => ({
-      id: s.id,
-      offsetDays: s.offsetDays,
-      action: s.action,
-      templateBody: s.templateBody,
-      isActive: s.isActive,
-    })),
+    steps: rule.steps.map(toStepDTO),
   };
 }
 

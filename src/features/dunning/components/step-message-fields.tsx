@@ -6,12 +6,15 @@ import { TemplateEditor } from './template-editor';
 import { TemplatePreview } from './template-preview';
 import type { PreviewChargeDTO } from '../queries';
 
+const FIELD = 'h-11 rounded-badge border border-border bg-surface-elevated px-3 text-sm text-foreground';
+
 /** Texto do passo + prévia com dados reais. Só existe quando a ação é Mensagem. */
 export function StepMessageFields({
   templateBody,
   registration,
   onValueChange,
   error,
+  metaTemplateNameRegistration,
   charges,
   settings,
 }: {
@@ -19,6 +22,7 @@ export function StepMessageFields({
   registration: UseFormRegisterReturn;
   onValueChange: (next: string) => void;
   error?: string;
+  metaTemplateNameRegistration: UseFormRegisterReturn;
   charges: PreviewChargeDTO[];
   settings: { timezone: string; pixKey: string | null; businessName: string };
 }) {
@@ -34,6 +38,24 @@ export function StepMessageFields({
       </DrawerSection>
       <DrawerSection label="Prévia com dados reais">
         <TemplatePreview templateBody={templateBody} charges={charges} settings={settings} />
+      </DrawerSection>
+      <DrawerSection label="Template aprovado na Meta (opcional)">
+        <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-foreground">
+          Nome do template
+          <input
+            id="metaTemplateName"
+            type="text"
+            placeholder="ex.: renovacao_hoje"
+            {...metaTemplateNameRegistration}
+            className={`${FIELD} font-mono tabular-mono`}
+          />
+        </label>
+        <p className="text-xs leading-relaxed text-foreground-muted">
+          Documenta qual template já foi aprovado na Meta para este passo. Passo sem
+          isto, num canal que exige template aprovado, é pulado automaticamente em vez
+          de tentar um texto livre que a Meta recusaria. O Evolution não exige isto e
+          continua mandando o texto acima normalmente.
+        </p>
       </DrawerSection>
     </>
   );

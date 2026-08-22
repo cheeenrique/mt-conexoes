@@ -50,9 +50,10 @@ export function StepDrawer({
           direction: directionOf(step.offsetDays),
           action: step.action as FormValues['action'],
           templateBody: step.templateBody ?? '',
+          metaTemplateName: step.metaTemplateName ?? '',
           isActive: step.isActive,
         }
-      : { days: 1, direction: 'after', action: 'SEND_MESSAGE', templateBody: '', isActive: true },
+      : { days: 1, direction: 'after', action: 'SEND_MESSAGE', templateBody: '', metaTemplateName: '', isActive: true },
   });
 
   const templateBody = watch('templateBody') ?? '';
@@ -111,6 +112,7 @@ export function StepDrawer({
                   registration={register('templateBody')}
                   onValueChange={(next) => setValue('templateBody', next, { shouldDirty: true })}
                   error={errors.templateBody?.message}
+                  metaTemplateNameRegistration={register('metaTemplateName')}
                   charges={charges}
                   settings={settings}
                 />

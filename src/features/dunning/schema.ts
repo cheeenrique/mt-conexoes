@@ -20,6 +20,9 @@ export const dunningStepSchema = z.object({
   direction: z.enum(STEP_DIRECTIONS),
   action: z.enum(['SEND_MESSAGE', 'SUSPEND', 'NOTIFY_OWNER']),
   templateBody: z.string().optional(),
+  // Nome do template já aprovado na Meta pra este passo. Sem valor, e com o canal
+  // padrão exigindo template, o motor pula o passo em vez de tentar texto livre.
+  metaTemplateName: z.string().trim().max(512).optional(),
   isActive: z.boolean().default(true),
 });
 

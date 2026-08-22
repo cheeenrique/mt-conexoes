@@ -304,12 +304,12 @@ describe('dispatchPendingMessages', () => {
     expect(reloaded?.attempts).toBe(1);
   });
 
-  it('respeita o lote de 60 e a ordem de criação', async () => {
+  it('respeita o lote derivado da capability do canal (Evolution 20/min → 40) e a ordem de criação', async () => {
     await seedActiveDefaultChannel();
     const customer = await seedCustomer();
     // scheduledDate varia por mensagem: T7 (messages_dunning_daily_dedupe) permite só uma
     // DUNNING pendente por customer/dia — aqui o alvo é testar o corte do lote, não o dedupe diário.
-    for (let i = 0; i < 65; i++) {
+    for (let i = 0; i < 45; i++) {
       await seedPendingMessage(customer.id, {
         createdAt: new Date(IN_HOURS_NOW.getTime() + i * 1000),
         scheduledDate: new Date(Date.UTC(2026, 7, 8 + i)),
@@ -317,11 +317,33 @@ describe('dispatchPendingMessages', () => {
     }
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ key: { id: 'wamid-batch' } }) }));
 
-    const result = await dispatchPendingMessages(IN_HOURS_NOW);
+    // `wait` instantâneo: só interessa que o jitter foi *chamado* entre os 40 envios do
+    // lote, não esperar de verdade — 40 mensagens a ~3s de intervalo seriam ~2min reais.
+    const result = await dispatchPendingMessages(IN_HOURS_NOW, Math.random, async () => {});
 
-    expect(result.sent).toBe(60);
+    expect(result.sent).toBe(40);
     const stillPending = await db.message.count({ where: { customerId: customer.id, status: 'PENDING' } });
     expect(stillPending).toBe(5);
+  });
+
+  it('aplica jitter entre envios reais ao provider, mas não depois do último da leva', async () => {
+    await seedActiveDefaultChannel();
+    const customer = await seedCustomer();
+    for (let i = 0; i < 3; i++) {
+      await seedPendingMessage(customer.id, {
+        createdAt: new Date(IN_HOURS_NOW.getTime() + i * 1000),
+        scheduledDate: new Date(Date.UTC(2026, 7, 8 + i)),
+      });
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ key: { id: 'wamid-jitter' } }) }));
+    const wait = vi.fn().mockResolvedValue(undefined);
+
+    const result = await dispatchPendingMessages(IN_HOURS_NOW, () => 0.5, wait);
+
+    expect(result.sent).toBe(3);
+    // 3 envios reais → 2 atrasos entre eles, nenhum depois do terceiro.
+    expect(wait).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenCalledWith(3_000); // 60_000 / 20 (rateLimitPerMinute do Evolution), sem jitter (random=0.5)
   });
 
   describe('canal padrão fora do ar — não envia e não queima a mensagem', () => {

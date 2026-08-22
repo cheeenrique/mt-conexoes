@@ -158,8 +158,6 @@ export const evolutionAdapter: ChannelAdapter & PairableChannel = {
   capabilities: {
     supportsFreeText: true,
     requiresApprovedTemplate: false,
-    supportsInboundReply: true,
-    supportsDeliveryReceipt: true,
     maxBodyLength: 4096,
     rateLimitPerMinute: 20,
   },

@@ -34,7 +34,7 @@ describe('evaluateDunningRule', () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'DRAFT' } });
     const { customer, charge } = await seedFixture();
 
-    const result = await evaluateDunningRule(NOW);
+    const result = await evaluateDunningRule(NOW, false);
 
     expect(result).toEqual({ queued: 0, skipped: 0, pendingReview: 0, suspended: 0 });
     const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
@@ -47,7 +47,7 @@ describe('evaluateDunningRule', () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'PAUSED' } });
     const { customer, charge } = await seedFixture();
 
-    const result = await evaluateDunningRule(NOW);
+    const result = await evaluateDunningRule(NOW, false);
 
     expect(result).toEqual({ queued: 0, skipped: 0, pendingReview: 0, suspended: 0 });
     const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
@@ -60,7 +60,7 @@ describe('evaluateDunningRule', () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'REVIEW' } });
     const { customer, charge } = await seedFixture();
 
-    await evaluateDunningRule(NOW);
+    await evaluateDunningRule(NOW, false);
 
     const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
     expect(executions).toHaveLength(1);
@@ -73,7 +73,7 @@ describe('evaluateDunningRule', () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
     const { customer, charge } = await seedFixture({ optedOut: true });
 
-    await evaluateDunningRule(NOW);
+    await evaluateDunningRule(NOW, false);
 
     const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
     expect(executions).toHaveLength(1);
@@ -83,11 +83,46 @@ describe('evaluateDunningRule', () => {
     expect(messages).toHaveLength(0);
   });
 
+  it('régua ACTIVE, canal exige template aprovado e o passo não tem metaTemplateName: SKIPPED reason=template_not_approved, zero Message', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { customer, charge } = await seedFixture();
+
+    await evaluateDunningRule(NOW, true);
+
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+    expect(executions).toHaveLength(1);
+    expect(executions[0].outcome).toBe('SKIPPED');
+    expect(executions[0].reason).toBe('template_not_approved');
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(0);
+  });
+
+  it('régua ACTIVE, canal exige template aprovado mas o passo já tem metaTemplateName: segue normalmente, sem SKIPPED', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    const step = await db.dunningStep.findFirstOrThrow({ where: { ruleId: rule.id, offsetDays: 0 } });
+    await db.dunningStep.update({ where: { id: step.id }, data: { metaTemplateName: 'renovacao_hoje' } });
+    const { customer, charge } = await seedFixture();
+
+    try {
+      await evaluateDunningRule(NOW, true);
+
+      const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+      expect(executions).toHaveLength(1);
+      expect(executions[0].outcome).toBe('QUEUED');
+      expect(executions[0].reason).toBeNull();
+      const messages = await db.message.findMany({ where: { customerId: customer.id } });
+      expect(messages).toHaveLength(1);
+    } finally {
+      await db.dunningStep.update({ where: { id: step.id }, data: { metaTemplateName: null } });
+    }
+  });
+
   it('régua ACTIVE, sem telefone: SKIPPED reason=no_phone', async () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
     const { charge } = await seedFixture({ phone: null });
 
-    await evaluateDunningRule(NOW);
+    await evaluateDunningRule(NOW, false);
 
     const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
     expect(executions[0].outcome).toBe('SKIPPED');
@@ -98,8 +133,8 @@ describe('evaluateDunningRule', () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
     const { charge } = await seedFixture();
 
-    await evaluateDunningRule(NOW);
-    await evaluateDunningRule(NOW);
+    await evaluateDunningRule(NOW, false);
+    await evaluateDunningRule(NOW, false);
 
     const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
     expect(executions).toHaveLength(1);
@@ -118,7 +153,7 @@ describe('evaluateDunningRule', () => {
       data: { subscriptionId: subscription2.id, customerId: customer.id, supplierId: supplier.id, principalCents: 4000n, periodStart: NOW, periodEnd: NOW, dueAt: new Date('2026-08-10T23:59:59-03:00'), status: 'OPEN' },
     });
 
-    await evaluateDunningRule(NOW);
+    await evaluateDunningRule(NOW, false);
 
     const messages = await db.message.findMany({ where: { customerId: customer.id } });
     expect(messages).toHaveLength(1);
@@ -137,7 +172,7 @@ describe('evaluateDunningRule', () => {
     const { customer, subscription, charge } = await seedFixture();
     await db.charge.update({ where: { id: charge.id }, data: { dueAt: new Date('2026-08-05T23:59:59-03:00') } });
 
-    await evaluateDunningRule(new Date('2026-08-10T12:00:00-03:00'));
+    await evaluateDunningRule(new Date('2026-08-10T12:00:00-03:00'), false);
 
     const refreshedSub = await db.subscription.findUniqueOrThrow({ where: { id: subscription.id } });
     expect(refreshedSub.status).toBe('SUSPENDED');
@@ -160,7 +195,7 @@ describe('evaluateDunningRule', () => {
       },
     });
 
-    await evaluateDunningRule(NOW);
+    await evaluateDunningRule(NOW, false);
 
     const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
     expect(executions).toHaveLength(1);

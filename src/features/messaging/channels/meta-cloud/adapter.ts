@@ -126,8 +126,6 @@ export const metaCloudAdapter: ChannelAdapter = {
   capabilities: {
     supportsFreeText: false,
     requiresApprovedTemplate: true,
-    supportsInboundReply: true,
-    supportsDeliveryReceipt: true,
     maxBodyLength: 1024,
     rateLimitPerMinute: 80,
   },

@@ -12,19 +12,18 @@ import { NewRuleButton } from '@/features/dunning/components/new-rule-button';
 import { RuleList } from '@/features/dunning/components/rule-list';
 import { RuleDetail } from '@/features/dunning/components/rule-detail';
 import { getSettings } from '@/lib/settings';
-import { listChannelConfigs } from '@/features/messaging/queries';
-import { resolveAdapter } from '@/features/messaging/channels/registry';
+import { getDefaultChannelSummary } from '@/features/messaging/queries';
 
 export default async function DunningRulePage({
   searchParams,
 }: {
   searchParams: Promise<{ regua?: string }>;
 }) {
-  const [{ regua }, rules, settings, channels, evaluableSubscriptions] = await Promise.all([
+  const [{ regua }, rules, settings, defaultChannel, evaluableSubscriptions] = await Promise.all([
     searchParams,
     listDunningRules(),
     getSettings(),
-    listChannelConfigs(),
+    getDefaultChannelSummary(),
     countEvaluableSubscriptions(),
   ]);
 
@@ -52,8 +51,6 @@ export default async function DunningRulePage({
     listReviewMessages(selectedId),
   ]);
 
-  const activeChannel = channels.find((channel) => channel.isActive) ?? null;
-
   return (
     <AppShell title="Réguas" icon={<GitCommitHorizontal size={22} />} primaryAction={newRuleButton}>
       <div className="grid items-start gap-4 md:grid-cols-[minmax(220px,280px)_1fr]">
@@ -64,15 +61,7 @@ export default async function DunningRulePage({
             reviewMessages={reviewMessages}
             charges={charges}
             settings={{ timezone: settings.timezone, pixKey: settings.pixKey, businessName: settings.businessName }}
-            channel={
-              activeChannel
-                ? {
-                    label: activeChannel.descriptor.label,
-                    requiresApprovedTemplate: resolveAdapter(activeChannel.provider).capabilities
-                      .requiresApprovedTemplate,
-                  }
-                : null
-            }
+            channel={defaultChannel}
             currentDefaultName={rules.find((item) => item.isDefault)?.name ?? null}
             evaluableSubscriptions={evaluableSubscriptions}
           />

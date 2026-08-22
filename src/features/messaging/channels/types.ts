@@ -23,9 +23,11 @@ export class UnsupportedChannelError extends DomainError {
 export type ChannelCapabilities = {
   supportsFreeText: boolean;
   requiresApprovedTemplate: boolean;
-  supportsInboundReply: boolean;
-  supportsDeliveryReceipt: boolean;
+  /** Teto do provider — `scheduled-dispatch.ts` recusa mandar corpo maior em vez
+   *  de deixar o provider rejeitar ou truncar em silêncio. */
   maxBodyLength: number;
+  /** Envios por minuto que o canal tolera — `core/send-throttle.ts` deriva o
+   *  jitter entre envios e o tamanho do lote a partir daqui. */
   rateLimitPerMinute: number;
 };
 

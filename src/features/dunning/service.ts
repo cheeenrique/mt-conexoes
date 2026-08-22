@@ -30,12 +30,21 @@ function validateTemplate(templateBody: string | undefined): void {
   }
 }
 
+/** Campos comuns entre criar e atualizar — só `ruleId` (obrigatório só na criação) fica de fora. */
+function stepFields(input: DunningStepInput) {
+  return {
+    offsetDays: offsetDaysFrom(input.days, input.direction),
+    action: input.action,
+    templateBody: input.templateBody ?? null,
+    metaTemplateName: input.metaTemplateName ?? null,
+    isActive: input.isActive,
+  };
+}
+
 export async function createStep(ruleId: string, input: DunningStepInput) {
   validateTemplate(input.templateBody);
   try {
-    return await db.dunningStep.create({
-      data: { ruleId, offsetDays: offsetDaysFrom(input.days, input.direction), action: input.action, templateBody: input.templateBody ?? null, isActive: input.isActive },
-    });
+    return await db.dunningStep.create({ data: { ruleId, ...stepFields(input) } });
   } catch (err) {
     if (isUniqueViolation(err)) throw new DuplicateStepOffsetError(err);
     throw err;
@@ -45,10 +54,7 @@ export async function createStep(ruleId: string, input: DunningStepInput) {
 export async function updateStep(id: string, input: DunningStepInput) {
   validateTemplate(input.templateBody);
   try {
-    return await db.dunningStep.update({
-      where: { id },
-      data: { offsetDays: offsetDaysFrom(input.days, input.direction), action: input.action, templateBody: input.templateBody ?? null, isActive: input.isActive },
-    });
+    return await db.dunningStep.update({ where: { id }, data: stepFields(input) });
   } catch (err) {
     if (isUniqueViolation(err)) throw new DuplicateStepOffsetError(err);
     throw err;

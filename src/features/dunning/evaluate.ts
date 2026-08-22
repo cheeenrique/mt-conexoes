@@ -26,17 +26,25 @@ type PairOutcome =
   | { kind: 'pending'; step: PendingStep }
   | { kind: 'none' };
 
-/** Avalia um par (cobrança, passo): guarda de régua, opt-out, telefone, SUSPEND/NOTIFY_OWNER, ou monta o passo pendente pra consolidação. */
+/** Avalia um par (cobrança, passo): guarda de régua, template aprovado, opt-out, telefone, SUSPEND/NOTIFY_OWNER, ou monta o passo pendente pra consolidação. */
 async function evaluateChargeStepPair(
   charge: ChargeForStep & { subscriptionId: string },
-  step: StepForEvaluation & { action: string },
+  step: StepForEvaluation & { action: string; metaTemplateName: string | null },
   ruleStatus: string,
+  requiresApprovedTemplate: boolean,
   settings: SettingsDTO,
   now: Date,
 ): Promise<PairOutcome> {
   if (ruleStatus === 'REVIEW') {
     const ok = await recordExecution(charge.id, step.id, 'PENDING_REVIEW', 'review');
     return ok ? { kind: 'pendingReview' } : { kind: 'none' };
+  }
+  // Canal padrão só entrega template aprovado (Meta, fora da janela de 24h) e este
+  // passo ainda não tem um modelado: falha aqui, explícita, em vez de tentar texto
+  // livre que a Meta recusa — ver CLAUDE.md §Providers de WhatsApp.
+  if (step.action === 'SEND_MESSAGE' && requiresApprovedTemplate && !step.metaTemplateName) {
+    const ok = await recordExecution(charge.id, step.id, 'SKIPPED', 'template_not_approved');
+    return ok ? { kind: 'skipped' } : { kind: 'none' };
   }
   if (charge.customer.optedOut) {
     const ok = await recordExecution(charge.id, step.id, 'SKIPPED', 'opted_out');
@@ -118,7 +126,13 @@ async function persistConsolidatedMessage(msg: ConsolidatedMessage, now: Date, t
 
 const EMPTY_EVALUATION_RESULT = { queued: 0, skipped: 0, pendingReview: 0, suspended: 0 } as const;
 
-export async function evaluateDunningRule(now: Date): Promise<{
+/**
+ * `requiresApprovedTemplate` entra por parâmetro, resolvido pelo chamador
+ * (`app/api/cron/dunning-evaluate/route.ts`) — `dunning` não importa de
+ * `messaging` (.claude/rules/01-arquitetura.md), quem cruza as duas features
+ * é a rota, igual `page.tsx` já faz pro lado da tela (`ChannelNote`).
+ */
+export async function evaluateDunningRule(now: Date, requiresApprovedTemplate: boolean): Promise<{
   queued: number; skipped: number; pendingReview: number; suspended: number;
 }> {
   const rule = await getDefaultRuleWithSteps();
@@ -157,7 +171,7 @@ export async function evaluateDunningRule(now: Date): Promise<{
   const pending: PendingStep[] = [];
 
   for (const { charge, step } of newPairs) {
-    const outcome = await evaluateChargeStepPair(charge, step, rule.status, settings, now);
+    const outcome = await evaluateChargeStepPair(charge, step, rule.status, requiresApprovedTemplate, settings, now);
     if (outcome.kind === 'pending') pending.push(outcome.step);
     else if (outcome.kind === 'skipped') skipped++;
     else if (outcome.kind === 'pendingReview') pendingReview++;
