@@ -2,6 +2,7 @@ import { RuleHeader } from './rule-header';
 import { RuleStateBanner } from './rule-state-banner';
 import { StepAxis } from './step-axis';
 import { ChannelNote } from './channel-note';
+import { formatRunSummary } from '../run-summary';
 import type { DunningRuleDTO, DunningStepDTO, PreviewChargeDTO, ReviewMessageDTO } from '../queries';
 
 /**
@@ -26,17 +27,14 @@ export function RuleDetail({
   currentDefaultName: string | null;
   evaluableSubscriptions: number;
 }) {
+  const runSummary = formatRunSummary(rule, settings.timezone, new Date());
+
   return (
     <section className="flex min-w-0 flex-col gap-4">
       <RuleHeader
         key={rule.id}
-        rule={{
-          id: rule.id,
-          name: rule.name,
-          status: rule.status,
-          isDefault: rule.isDefault,
-          activeStepCount: rule.steps.filter((step) => step.isActive).length,
-        }}
+        rule={{ id: rule.id, name: rule.name, status: rule.status, isDefault: rule.isDefault }}
+        runSummary={runSummary}
         currentDefaultName={currentDefaultName}
         evaluableSubscriptions={evaluableSubscriptions}
       />

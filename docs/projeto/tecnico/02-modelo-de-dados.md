@@ -261,12 +261,16 @@ Regras duras:
 
 ```prisma
 model DunningRule {
-  id         String         @id @default(uuid(7))
-  name       String
-  status     DunningStatus  @default(DRAFT)
-  isDefault  Boolean        @default(false)
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  id                   String         @id @default(uuid(7))
+  name                 String
+  status               DunningStatus  @default(DRAFT)
+  isDefault            Boolean        @default(false)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  lastRunAt            DateTime?      // última passada de evaluateDunningRule; null = motor nunca rodou esta régua
+  lastRunMessagesSent  Int?           // Message novas nessa passada — sempre 0 em REVIEW
+  lastRunPendingReview Int?           // passos que viraram PENDING_REVIEW nessa passada — só cresce em REVIEW
 
   steps      DunningStep[]
 

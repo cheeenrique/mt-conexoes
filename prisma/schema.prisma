@@ -309,6 +309,21 @@ model DunningRule {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
+  /// Carimbo da última passada de `evaluateDunningRule` para esta régua — `null`
+  /// enquanto ela nunca rodou (DRAFT, ou REVIEW/ACTIVE que o cron ainda não
+  /// alcançou). Só é escrito quando a régua está REVIEW ou ACTIVE (as únicas que
+  /// o motor avalia); DRAFT e PAUSED não tocam esta coluna, então continuam
+  /// mostrando o carimbo de antes de pausar.
+  lastRunAt DateTime?
+
+  /// Quantas Message novas esta passada de fato criou (mensagens que vão pro
+  /// WhatsApp) — sempre 0 numa passada em REVIEW, que nunca cria Message.
+  lastRunMessagesSent Int?
+
+  /// Quantos passos viraram PENDING_REVIEW nesta passada — só cresce quando a
+  /// régua está em REVIEW; ACTIVE nunca produz este outcome.
+  lastRunPendingReview Int?
+
   steps     DunningStep[]
 
   @@map("dunning_rules")

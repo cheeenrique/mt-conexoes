@@ -34,6 +34,12 @@ export interface DunningRuleDTO {
   name: string;
   status: string;
   isDefault: boolean;
+  /** Última passada de `evaluateDunningRule` para esta régua. `null` enquanto o motor nunca rodou (DRAFT, ou REVIEW/ACTIVE que o cron ainda não alcançou). */
+  lastRunAt: string | null;
+  /** Message novas criadas na última passada — sempre 0 numa passada em REVIEW. */
+  lastRunMessagesSent: number | null;
+  /** Passos que viraram PENDING_REVIEW na última passada — só cresce em REVIEW. */
+  lastRunPendingReview: number | null;
 }
 
 type StepRow = { id: string; offsetDays: number; action: string; templateBody: string | null; metaTemplateName: string | null; isActive: boolean };
@@ -62,6 +68,9 @@ export async function getDefaultRuleWithSteps(): Promise<DunningRuleDTO & { step
     name: rule.name,
     status: rule.status,
     isDefault: rule.isDefault,
+    lastRunAt: rule.lastRunAt?.toISOString() ?? null,
+    lastRunMessagesSent: rule.lastRunMessagesSent,
+    lastRunPendingReview: rule.lastRunPendingReview,
     steps: rule.steps.map(toStepDTO),
   };
 }
@@ -124,6 +133,9 @@ export async function getRuleWithSteps(
     name: rule.name,
     status: rule.status,
     isDefault: rule.isDefault,
+    lastRunAt: rule.lastRunAt?.toISOString() ?? null,
+    lastRunMessagesSent: rule.lastRunMessagesSent,
+    lastRunPendingReview: rule.lastRunPendingReview,
     steps: rule.steps.map(toStepDTO),
   };
 }

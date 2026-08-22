@@ -27,10 +27,16 @@ afterEach(async () => {
   await db.customer.deleteMany({ where: { name: 'Dunning Teste' } });
   await db.plan.deleteMany({ where: { name: 'Plano Teste' } });
   await db.supplier.deleteMany({ where: { name: 'Fornecedor Teste' } });
+  // Reseta o carimbo da régua padrão pra não vazar entre testes deste arquivo
+  // (o Postgres de integração é compartilhado — ver memória de antipadrões).
+  await db.dunningRule.updateMany({
+    where: { isDefault: true },
+    data: { lastRunAt: null, lastRunMessagesSent: null, lastRunPendingReview: null },
+  });
 });
 
 describe('evaluateDunningRule', () => {
-  it('régua em DRAFT não avalia nada: zero DunningExecution, zero Message, contadores zerados', async () => {
+  it('régua em DRAFT não avalia nada: zero DunningExecution, zero Message, contadores zerados, sem carimbo de passada', async () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'DRAFT' } });
     const { customer, charge } = await seedFixture();
 
@@ -41,9 +47,12 @@ describe('evaluateDunningRule', () => {
     expect(executions).toHaveLength(0);
     const messages = await db.message.findMany({ where: { customerId: customer.id } });
     expect(messages).toHaveLength(0);
+    // "Rascunho: o motor nem avalia esta régua" — sem passada, sem carimbo.
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    expect(rule.lastRunAt).toBeNull();
   });
 
-  it('régua em PAUSED não avalia nada: zero DunningExecution, zero Message, contadores zerados', async () => {
+  it('régua em PAUSED não avalia nada: zero DunningExecution, zero Message, contadores zerados, sem carimbo de passada', async () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'PAUSED' } });
     const { customer, charge } = await seedFixture();
 
@@ -54,6 +63,10 @@ describe('evaluateDunningRule', () => {
     expect(executions).toHaveLength(0);
     const messages = await db.message.findMany({ where: { customerId: customer.id } });
     expect(messages).toHaveLength(0);
+    // "Pausada: nada sai por esta régua" — não roda, então não atualiza o carimbo
+    // (a tela continua mostrando a última passada de antes de pausar).
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    expect(rule.lastRunAt).toBeNull();
   });
 
   it('régua em REVIEW gera PENDING_REVIEW, zero Message', async () => {
@@ -201,5 +214,68 @@ describe('evaluateDunningRule', () => {
     expect(executions).toHaveLength(1);
     expect(executions[0].outcome).toBe('SKIPPED');
     expect(executions[0].reason).toBe('daily_dedupe');
+  });
+});
+
+describe('carimbo da passada (lastRunAt)', () => {
+  it('régua ACTIVE grava lastRunAt e lastRunMessagesSent = Message criadas, não passos', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { customer } = await seedFixture();
+    const supplier = await db.supplier.findFirstOrThrow({ where: { name: 'Fornecedor Teste' } });
+    const plan = await db.plan.findFirstOrThrow({ where: { name: 'Plano Teste' } });
+    // segunda cobrança do mesmo customer, no mesmo passo: consolida em 1 Message só.
+    const subscription2 = await db.subscription.create({
+      data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 4000n, costCents: 500n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: NOW, nextDueAt: NOW },
+    });
+    await db.charge.create({
+      data: { subscriptionId: subscription2.id, customerId: customer.id, supplierId: supplier.id, principalCents: 4000n, periodStart: NOW, periodEnd: NOW, dueAt: new Date('2026-08-10T23:59:59-03:00'), status: 'OPEN' },
+    });
+
+    await evaluateDunningRule(NOW, false);
+
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(1);
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    expect(rule.lastRunAt).toEqual(NOW);
+    // 1 Message só (consolidada), não 2 — "N mensagens" conta Message, não passo.
+    expect(rule.lastRunMessagesSent).toBe(1);
+    expect(rule.lastRunPendingReview).toBe(0);
+  });
+
+  it('régua REVIEW grava lastRunPendingReview, e lastRunMessagesSent fica em 0 — revisão nunca cria Message', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'REVIEW' } });
+    await seedFixture();
+
+    await evaluateDunningRule(NOW, false);
+
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    expect(rule.lastRunAt).toEqual(NOW);
+    expect(rule.lastRunPendingReview).toBe(1);
+    expect(rule.lastRunMessagesSent).toBe(0);
+  });
+
+  it('sem nenhum par (cobrança, passo) hoje: passada roda e zera o carimbo mesmo assim — motor rodou, só não achou nada', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    // Nenhuma fixture: nenhuma charge em aberto bate com o offsetDays de hoje.
+
+    await evaluateDunningRule(NOW, false);
+
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    expect(rule.lastRunAt).toEqual(NOW);
+    expect(rule.lastRunMessagesSent).toBe(0);
+    expect(rule.lastRunPendingReview).toBe(0);
+  });
+
+  it('rodar duas vezes no mesmo now não quebra o carimbo — idempotente igual ao resto da passada', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    await seedFixture();
+
+    await evaluateDunningRule(NOW, false);
+    await evaluateDunningRule(NOW, false);
+
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    expect(rule.lastRunAt).toEqual(NOW);
+    // segunda passada não encontra passo novo (já executado) — mensagem zero na segunda leitura.
+    expect(rule.lastRunMessagesSent).toBe(0);
   });
 });

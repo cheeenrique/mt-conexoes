@@ -10,10 +10,12 @@ import { SetDefaultRuleDialog } from './set-default-rule-dialog';
 
 export function RuleHeader({
   rule,
+  runSummary,
   currentDefaultName,
   evaluableSubscriptions,
 }: {
-  rule: { id: string; name: string; status: string; isDefault: boolean; activeStepCount: number };
+  rule: { id: string; name: string; status: string; isDefault: boolean };
+  runSummary: string | null;
   currentDefaultName: string | null;
   evaluableSubscriptions: number;
 }) {
@@ -74,14 +76,7 @@ export function RuleHeader({
           </Button>
           <RuleStatusBadge status={rule.status} />
         </div>
-        {/* Sem "última passada às 07:00 · N mensagens": `DunningRule` não guarda
-            `lastRunAt`/`lastRunCount`, e inventar o dado na apresentação seria
-            pior que não mostrá-lo. A linha diz o que dá para afirmar. */}
-        <span className="text-[13px] text-foreground-muted">
-          <span className="font-mono tabular-mono">{rule.activeStepCount}</span>{' '}
-          {rule.activeStepCount === 1 ? 'passo ativo' : 'passos ativos'} ·{' '}
-          {rule.isDefault ? 'é a régua que roda hoje' : 'não é a régua padrão, não roda'}
-        </span>
+        {runSummary && <span className="text-[13px] text-foreground-muted">{runSummary}</span>}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

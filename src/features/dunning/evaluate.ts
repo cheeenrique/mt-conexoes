@@ -76,6 +76,25 @@ async function evaluateChargeStepPair(
   return { kind: 'pending', step: buildPendingStep(charge, step, settings, now) };
 }
 
+/**
+ * Grava o carimbo da passada na régua — só chega aqui se `evaluateDunningRule`
+ * rodou até o fim (o `await` está no último passo da função). Uma exceção no
+ * meio da avaliação propaga antes de tocar esta linha, então o carimbo nunca
+ * afirma sucesso para uma passada que falhou. Roda mesmo com zero pares
+ * (cobrança, passo) hoje — é o que distingue "motor rodou e não achou nada"
+ * de "motor parou", para quem olha a tela.
+ */
+async function recordRuleRun(ruleId: string, now: Date, counts: { messagesSent: number; pendingReview: number }): Promise<void> {
+  try {
+    await db.dunningRule.update({
+      where: { id: ruleId },
+      data: { lastRunAt: now, lastRunMessagesSent: counts.messagesSent, lastRunPendingReview: counts.pendingReview },
+    });
+  } catch (err) {
+    logger.error({ job: 'dunning-evaluate', ruleId, error: String(err) });
+  }
+}
+
 /** Persiste a Message consolidada + os DunningExecution correspondentes numa transação. Retorna quantos passos foram enfileirados. */
 async function persistConsolidatedMessage(msg: ConsolidatedMessage, now: Date, timezone: string): Promise<number> {
   try {
@@ -156,7 +175,10 @@ export async function evaluateDunningRule(now: Date, requiresApprovedTemplate: b
       .map((step) => ({ charge, step })),
   );
 
-  if (chargeStepPairs.length === 0) return { ...EMPTY_EVALUATION_RESULT };
+  if (chargeStepPairs.length === 0) {
+    await recordRuleRun(rule.id, now, { messagesSent: 0, pendingReview: 0 });
+    return { ...EMPTY_EVALUATION_RESULT };
+  }
 
   const existing = await db.dunningExecution.findMany({
     where: { OR: chargeStepPairs.map(({ charge, step }) => ({ chargeId: charge.id, stepId: step.id })) },
@@ -180,10 +202,18 @@ export async function evaluateDunningRule(now: Date, requiresApprovedTemplate: b
 
   const consolidated = consolidate(pending);
   let queued = 0;
+  // Message de fato criada nesta passada — diferente de `queued`, que soma
+  // passos consolidados. Um cliente com 2 cobranças no mesmo passo vira 1
+  // Message só; "N mensagens" na tela precisa contar a Message, não o passo.
+  let messagesSent = 0;
 
   for (const msg of consolidated) {
-    queued += await persistConsolidatedMessage(msg, now, settings.timezone);
+    const stepsQueued = await persistConsolidatedMessage(msg, now, settings.timezone);
+    queued += stepsQueued;
+    if (stepsQueued > 0) messagesSent++;
   }
+
+  await recordRuleRun(rule.id, now, { messagesSent, pendingReview });
 
   return { queued, skipped, pendingReview, suspended };
 }

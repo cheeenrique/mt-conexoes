@@ -1,5 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { db } from '@/lib/db';
 import { POST } from './route';
+
+// Roda a passada de verdade contra a régua padrão (singleton, compartilhado
+// com outras suítes — ver `.claude/rules/06-testes.md` e a memória de
+// antipadrões deste repo). Sem este reset, `lastRunAt` fica com um valor real
+// que faz `evaluate.integration.test.ts` falhar ao afirmar "sem carimbo de
+// passada" numa régua DRAFT, dependendo da ordem de execução dos arquivos.
+afterEach(async () => {
+  await db.dunningRule.updateMany({
+    where: { isDefault: true },
+    data: { lastRunAt: null, lastRunMessagesSent: null, lastRunPendingReview: null },
+  });
+});
 
 describe('POST /api/cron/dunning-evaluate', () => {
   it('sem token válido devolve 401', async () => {
