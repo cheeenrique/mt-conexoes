@@ -29,7 +29,12 @@ export function ChargeRowActions({
       {paymentDisabled ? (
         <IconActionButton icon={Banknote} label="Registrar pagamento" disabled disabledReason={paymentDisabled} />
       ) : (
-        <IconActionButton icon={Banknote} label="Registrar pagamento" onClick={() => onRegisterPayment(charge)} />
+        <IconActionButton
+          icon={Banknote}
+          label="Registrar pagamento"
+          tone="success"
+          onClick={() => onRegisterPayment(charge)}
+        />
       )}
       {charge.customerPhone ? (
         <IconActionButton

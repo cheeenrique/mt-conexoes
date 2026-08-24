@@ -54,4 +54,26 @@ describe('IconActionButton', () => {
 
     expect(screen.getByRole('button', { name: 'Registrar pagamento' })).toBeInTheDocument();
   });
+
+  it('sem tone, o botão sai no cinza neutro padrão', () => {
+    renderWithProvider(<IconActionButton icon={Pencil} label="Editar cliente" onClick={() => {}} />);
+
+    expect(screen.getByRole('button', { name: 'Editar cliente' })).toHaveClass('text-foreground-muted');
+  });
+
+  it('tone="success" chega como classe no botão — mesmo verde do badge "Paga"', () => {
+    renderWithProvider(
+      <IconActionButton icon={Pencil} label="Registrar pagamento" tone="success" onClick={() => {}} />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Registrar pagamento' })).toHaveClass('text-success');
+  });
+
+  it('tone="brand" chega como classe no link — mesmo laranja do badge "Novo"', () => {
+    renderWithProvider(
+      <IconActionButton icon={Pencil} label="Converter em cliente" tone="brand" href="https://wa.me/551199999999" />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Converter em cliente' })).toHaveClass('text-brand-light');
+  });
 });

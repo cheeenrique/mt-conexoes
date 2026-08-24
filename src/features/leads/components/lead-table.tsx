@@ -89,7 +89,12 @@ export function LeadTable({
         <div className="flex items-center justify-end gap-1.5">
           <IconActionButton icon={MessageCircle} label="Abrir conversa no WhatsApp" href={whatsAppUrl(row.phone)} />
           {row.status !== 'CONVERTED' && (
-            <IconActionButton icon={UserPlus} label="Converter em cliente" onClick={() => setSelected(row)} />
+            <IconActionButton
+              icon={UserPlus}
+              label="Converter em cliente"
+              tone="brand"
+              onClick={() => setSelected(row)}
+            />
           )}
         </div>
       ),

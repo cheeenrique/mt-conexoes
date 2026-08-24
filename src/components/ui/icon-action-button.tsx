@@ -4,8 +4,26 @@ import type { ReactElement } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-const CLASS_NAME =
-  'flex size-11 items-center justify-center rounded-badge border border-border text-foreground-muted transition-colors hover:text-foreground md:size-8';
+/**
+ * Tom que reforça o significado da ação — nunca é o único sinal (o ícone e o
+ * tooltip já identificam a ação; ver handoff §"Nada depende só de cor").
+ * `success` = mesmo verde do badge "Paga" (dinheiro entrando). `brand` =
+ * mesmo laranja do badge "Novo" (ação primária de conversão). `neutral` é o
+ * padrão: ação frequente ou sem carga semântica própria (editar, WhatsApp).
+ */
+export type IconActionTone = 'neutral' | 'success' | 'brand';
+
+const BASE_CLASS_NAME =
+  'flex size-11 items-center justify-center rounded-badge border border-border transition-colors md:size-8';
+
+const TONE_CLASS_NAMES: Record<IconActionTone, string> = {
+  neutral: 'text-foreground-muted hover:text-foreground',
+  // Hover mantém a cor (nunca vira `text-foreground`, que apagaria o tom) e
+  // ganha um fundo levemente tingido como affordance — mesmo recurso do
+  // botão destrutivo em `button.tsx` (`bg-destructive/10` → `/20` no hover).
+  success: 'text-success hover:bg-success/10',
+  brand: 'text-brand-light hover:bg-brand/10',
+};
 
 const DISABLED_CLASS_NAME =
   'flex size-11 items-center justify-center rounded-badge border border-border text-foreground-muted opacity-40 cursor-not-allowed md:size-8';
@@ -18,6 +36,8 @@ type IconActionButtonBaseProps = {
 
 type IconActionButtonActiveProps = IconActionButtonBaseProps & {
   disabled?: false;
+  /** Reforço de cor da ação. Omitido = `neutral`. */
+  tone?: IconActionTone;
 } & (
     | { onClick: () => void; href?: never }
     | { href: string; onClick?: never }
@@ -28,6 +48,11 @@ type IconActionButtonDisabledProps = IconActionButtonBaseProps & {
   /** Por que a ação não está disponível agora — ex.: "Cobrança já paga". Sem
    *  isso, o tooltip repete `label`, o que é pouco útil num botão que não clica. */
   disabledReason?: string;
+  // Sem `tone`: desabilitado sempre sai no cinza neutro do estado disabled,
+  // de propósito — um ícone colorido (ex.: verde de "pode") contradiria o
+  // estado desabilitado (ex.: "não pode"). Omitir a prop do tipo em vez de
+  // ignorá-la em runtime torna o conflito um erro de compilação, não uma
+  // decisão de estilo escondida no componente.
   onClick?: never;
   href?: never;
 };
@@ -55,10 +80,13 @@ export function IconActionButton(props: IconActionButtonProps) {
     trigger = (
       <button type="button" aria-disabled="true" aria-label={tooltipText} className={DISABLED_CLASS_NAME} />
     );
-  } else if (props.href) {
-    trigger = <a href={props.href} target="_blank" rel="noreferrer" aria-label={label} className={CLASS_NAME} />;
   } else {
-    trigger = <button type="button" onClick={props.onClick} aria-label={label} className={CLASS_NAME} />;
+    const className = `${BASE_CLASS_NAME} ${TONE_CLASS_NAMES[props.tone ?? 'neutral']}`;
+    trigger = props.href ? (
+      <a href={props.href} target="_blank" rel="noreferrer" aria-label={label} className={className} />
+    ) : (
+      <button type="button" onClick={props.onClick} aria-label={label} className={className} />
+    );
   }
 
   return (
