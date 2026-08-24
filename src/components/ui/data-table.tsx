@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Select } from './select';
 import { Skeleton } from './skeleton';
 import { DataTableCard } from './data-table-card';
 
@@ -102,23 +103,18 @@ export function DataTable<T>({
           {from}–{to} de {total}
         </span>
         <div className="flex items-center gap-3">
-          <select
+          <Select
             aria-label="Por página"
-            value={perPage}
-            onChange={(e) => {
-              const value = Number(e.target.value);
+            value={String(perPage)}
+            onValueChange={(next) => {
+              const value = Number(next);
               if (PER_PAGE_OPTIONS.includes(value as (typeof PER_PAGE_OPTIONS)[number])) {
                 onPerPageChange(value as 8 | 12 | 20);
               }
             }}
-            className="h-11 rounded-badge border border-border bg-surface-elevated px-2 text-xs md:h-8"
-          >
-            {PER_PAGE_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
+            className="h-11 w-20 rounded-badge px-2 text-xs md:h-8"
+            options={PER_PAGE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
+          />
           <button
             type="button"
             aria-label="Página anterior"

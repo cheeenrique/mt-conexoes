@@ -1,7 +1,8 @@
 import { Controller } from 'react-hook-form';
-import type { Control, FieldErrors, UseFormRegister } from 'react-hook-form';
+import type { Control, FieldErrors } from 'react-hook-form';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { marginPercent } from '@/core/money';
 import { marginBadgeTone } from '@/lib/margin-tone';
@@ -13,7 +14,6 @@ type FormValues = z.input<typeof subscriptionSchema>;
 type PlanOption = { id: string; name: string; priceCents: string; costCents: string; cycle: string; supplierId: string | null };
 
 export function SubscriptionCommercialFields({
-  register,
   control,
   errors,
   planOptions,
@@ -22,7 +22,6 @@ export function SubscriptionCommercialFields({
   priceCents,
   costCents,
 }: {
-  register: UseFormRegister<FormValues>;
   control: Control<FormValues>;
   errors: FieldErrors<FormValues>;
   planOptions: PlanOption[];
@@ -43,15 +42,18 @@ export function SubscriptionCommercialFields({
     <>
       <div className="space-y-1.5">
         <Label htmlFor="planId">Plano</Label>
-        <select
-          id="planId"
-          {...register('planId')}
-          onChange={(e) => onPlanChange(e.target.value)}
-          className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
-        >
-          <option value="">Nenhum</option>
-          {planOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <Controller
+          control={control}
+          name="planId"
+          render={({ field }) => (
+            <Select
+              id="planId"
+              value={field.value ?? ''}
+              onValueChange={onPlanChange}
+              options={[{ value: '', label: 'Nenhum' }, ...planOptions.map((p) => ({ value: p.id, label: p.name }))]}
+            />
+          )}
+        />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="priceCents">Preço</Label>
@@ -73,18 +75,26 @@ export function SubscriptionCommercialFields({
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="cycle">Ciclo</Label>
-        <select id="cycle" {...register('cycle')} className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground">
-          {CYCLE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+        <Controller
+          control={control}
+          name="cycle"
+          render={({ field }) => <Select id="cycle" value={field.value} onValueChange={field.onChange} options={[...CYCLE_OPTIONS]} />}
+        />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="supplierId">Fornecedor</Label>
-        <select id="supplierId" {...register('supplierId')} className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground">
-          <option value="">Nenhum</option>
-          {supplierOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
+        <Controller
+          control={control}
+          name="supplierId"
+          render={({ field }) => (
+            <Select
+              id="supplierId"
+              value={field.value ?? ''}
+              onValueChange={field.onChange}
+              options={[{ value: '', label: 'Nenhum' }, ...supplierOptions.map((s) => ({ value: s.id, label: s.name }))]}
+            />
+          )}
+        />
       </div>
     </>
   );

@@ -1,8 +1,10 @@
 'use client';
 
-import type { FieldErrors, UseFormRegister } from 'react-hook-form';
+import { Controller } from 'react-hook-form';
+import type { Control, FieldErrors, UseFormRegister } from 'react-hook-form';
 import type { z } from 'zod';
 import { DrawerSection } from '@/components/ui/drawer';
+import { Select } from '@/components/ui/select';
 import { DUNNING_ACTION_OPTIONS } from '@/lib/labels';
 import type { dunningStepSchema } from '../schema';
 
@@ -19,10 +21,12 @@ const FIELD = 'h-11 rounded-badge border border-border bg-surface-elevated px-3 
  */
 export function StepScheduleFields({
   register,
+  control,
   errors,
   action,
 }: {
   register: UseFormRegister<FormValues>;
+  control: Control<FormValues>;
   errors: FieldErrors<FormValues>;
   action: FormValues['action'];
 }) {
@@ -42,20 +46,32 @@ export function StepScheduleFields({
         </label>
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-foreground">
           Em relação ao vencimento
-          <select id="direction" {...register('direction')} className={FIELD}>
-            <option value="before">antes do vencimento</option>
-            <option value="after">depois do vencimento</option>
-          </select>
+          <Controller
+            control={control}
+            name="direction"
+            render={({ field }) => (
+              <Select
+                id="direction"
+                value={field.value}
+                onValueChange={field.onChange}
+                className={FIELD}
+                options={[
+                  { value: 'before', label: 'antes do vencimento' },
+                  { value: 'after', label: 'depois do vencimento' },
+                ]}
+              />
+            )}
+          />
         </label>
         <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-foreground">
           Ação
-          <select id="action" {...register('action')} className={FIELD}>
-            {DUNNING_ACTION_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <Controller
+            control={control}
+            name="action"
+            render={({ field }) => (
+              <Select id="action" value={field.value} onValueChange={field.onChange} className={FIELD} options={[...DUNNING_ACTION_OPTIONS]} />
+            )}
+          />
         </label>
       </div>
 

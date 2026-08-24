@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { Select } from '@/components/ui/select';
 import { localDateOnly } from '@/core/dates';
 import { formatLocalDate } from '@/lib/format';
 import { toastError } from '@/lib/toast';
@@ -90,17 +91,13 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="method">Forma</Label>
-          <select
-            id="method"
-            {...register('method')}
-            className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
-          >
-            {PAYMENT_METHOD_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <Controller
+            control={control}
+            name="method"
+            render={({ field }) => (
+              <Select id="method" value={field.value} onValueChange={field.onChange} options={[...PAYMENT_METHOD_OPTIONS]} />
+            )}
+          />
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onDone}>

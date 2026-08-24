@@ -1,6 +1,8 @@
-import type { FieldErrors, UseFormRegister } from 'react-hook-form';
+import { Controller } from 'react-hook-form';
+import type { Control, FieldErrors, UseFormRegister } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import type { SettingsFormValues } from '../schema';
 
 // América/Cuiabá primeiro: é o fuso do cliente (produto "MT Conexões",
@@ -14,9 +16,11 @@ const TIMEZONE_OPTIONS = [
 
 export function IdentificationSection({
   register,
+  control,
   errors,
 }: {
   register: UseFormRegister<SettingsFormValues>;
+  control: Control<SettingsFormValues>;
   errors: FieldErrors<SettingsFormValues>;
 }) {
   return (
@@ -31,15 +35,11 @@ export function IdentificationSection({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="timezone">Fuso horário</Label>
-          <select
-            id="timezone"
-            {...register('timezone')}
-            className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
-          >
-            {TIMEZONE_OPTIONS.map((tz) => (
-              <option key={tz.value} value={tz.value}>{tz.label}</option>
-            ))}
-          </select>
+          <Controller
+            control={control}
+            name="timezone"
+            render={({ field }) => <Select id="timezone" value={field.value} onValueChange={field.onChange} options={TIMEZONE_OPTIONS} />}
+          />
         </div>
       </div>
     </section>

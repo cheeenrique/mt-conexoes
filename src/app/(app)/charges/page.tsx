@@ -1,4 +1,5 @@
 import { Receipt } from 'lucide-react';
+import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/layout/app-shell';
 import { listCharges } from '@/features/charges/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
@@ -6,7 +7,7 @@ import { getSettings } from '@/lib/settings';
 import { ChargeFilters } from '@/features/charges/components/charge-filters';
 import { ChargeTable } from '@/features/charges/components/charge-table';
 import { SendMessageButton } from '@/features/messaging/components/send-message-button';
-import { startOfLocalDay, endOfLocalDay } from '@/core/dates';
+import { startOfLocalDay, endOfLocalDay, defaultDateRangeLocal } from '@/core/dates';
 
 /** Converte 'YYYY-MM-DD' em limite de dia local, sem cair na armadilha do fuso do navegador. */
 function parseLocalDateBoundary(value: string | undefined, timezone: string, boundary: 'start' | 'end') {
@@ -37,13 +38,29 @@ export default async function ChargesPage({
   }>;
 }) {
   const params = await searchParams;
+  const settings = await getSettings();
+
+  // Link "cru" (sem recorte de data): nasce com os últimos 30 dias, no fuso
+  // do negócio, e a URL vira a canônica — quem recebe o link compartilhado
+  // vê o mesmo recorte, não a lista inteira sem filtro nenhum. `dueFrom`/
+  // `dueTo` presentes (mesmo vazios, via "Limpar") nunca disparam este redirect.
+  if (params.dueFrom === undefined && params.dueTo === undefined) {
+    const { from, to } = defaultDateRangeLocal(new Date(), settings.timezone);
+    const canonical = new URLSearchParams();
+    if (params.status) canonical.set('status', params.status);
+    if (params.customerId) canonical.set('customerId', params.customerId);
+    if (params.supplierId) canonical.set('supplierId', params.supplierId);
+    canonical.set('dueFrom', from);
+    canonical.set('dueTo', to);
+    redirect(`/charges?${canonical.toString()}`);
+  }
+
   const status = params.status ?? '';
   const customerId = params.customerId ?? '';
   const supplierId = params.supplierId ?? '';
   const dueFrom = params.dueFrom ?? '';
   const dueTo = params.dueTo ?? '';
 
-  const settings = await getSettings();
   const filters = {
     status: status || undefined,
     customerId: customerId || undefined,

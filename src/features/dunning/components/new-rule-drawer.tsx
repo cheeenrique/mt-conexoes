@@ -1,12 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Check, Loader2 } from 'lucide-react';
 import type { z } from 'zod';
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerHeader, DrawerSection } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { createDunningRuleSchema } from '../schema';
 import { createDunningRuleAction } from '../actions';
@@ -33,6 +34,7 @@ export function NewRuleDrawer({
   const router = useRouter();
   const {
     register,
+    control,
     handleSubmit,
     watch,
     formState: { errors, isSubmitting },
@@ -80,22 +82,38 @@ export function NewRuleDrawer({
               </span>
               <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-foreground">
                 Como começar
-                <select {...register('stepsSource')} className={FIELD}>
-                  <option value="suggested">Começar com a régua sugerida</option>
-                  <option value="copy">Copiar os passos de outra régua</option>
-                  <option value="empty">Montar do zero</option>
-                </select>
+                <Controller
+                  control={control}
+                  name="stepsSource"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ?? 'suggested'}
+                      onValueChange={field.onChange}
+                      className={FIELD}
+                      options={[
+                        { value: 'suggested', label: 'Começar com a régua sugerida' },
+                        { value: 'copy', label: 'Copiar os passos de outra régua' },
+                        { value: 'empty', label: 'Montar do zero' },
+                      ]}
+                    />
+                  )}
+                />
               </label>
               {watch('stepsSource') === 'copy' && (
                 <label className="flex flex-col gap-1.5 text-[13px] font-semibold text-foreground">
                   Copiar de
-                  <select {...register('copyFromRuleId')} className={FIELD}>
-                    {rules.map((rule) => (
-                      <option key={rule.id} value={rule.id}>
-                        {rule.name} ({rule.stepCount} passos)
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="copyFromRuleId"
+                    render={({ field }) => (
+                      <Select
+                        value={field.value ?? ''}
+                        onValueChange={field.onChange}
+                        className={FIELD}
+                        options={rules.map((rule) => ({ value: rule.id, label: `${rule.name} (${rule.stepCount} passos)` }))}
+                      />
+                    )}
+                  />
                 </label>
               )}
               {errors.copyFromRuleId && <p className="text-[13px] text-danger">{errors.copyFromRuleId.message}</p>}

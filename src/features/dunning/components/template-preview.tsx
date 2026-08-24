@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Select } from '@/components/ui/select';
 import { daysBetweenLocalDates } from '@/core/dates';
 import { renderTemplate, type TemplateContext } from '@/core/dunning-template';
 import { formatCents, formatLocalDate } from '@/lib/format';
@@ -44,18 +45,13 @@ export function TemplatePreview({
 
   return (
     <div className="flex flex-col gap-2">
-      <select
+      <Select
         aria-label="Cobrança pra prévia"
         value={chargeId}
-        onChange={(e) => setChargeId(e.target.value)}
-        className="h-9 w-full rounded-badge border border-border bg-surface-elevated px-2 text-sm text-foreground"
-      >
-        {charges.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.customerName} — {formatCents(c.netCents)}
-          </option>
-        ))}
-      </select>
+        onValueChange={setChargeId}
+        className="h-9 rounded-badge"
+        options={charges.map((c) => ({ value: c.id, label: `${c.customerName} — ${formatCents(c.netCents)}` }))}
+      />
       {/* Fundo `#0B0B0C` (bg-background), como no handoff: a prévia imita a
           bolha do WhatsApp e precisa se destacar do cartão da seção. */}
       <pre className="whitespace-pre-wrap rounded border border-border bg-background p-3.5 font-sans text-sm leading-relaxed text-foreground">

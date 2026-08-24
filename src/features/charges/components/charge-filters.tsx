@@ -2,6 +2,8 @@
 
 import { Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { DateRangeInput } from '@/components/ui/date-range-input';
+import { Select } from '@/components/ui/select';
 import { CHARGE_STATUS_OPTIONS } from '@/lib/labels';
 
 export function ChargeFilters({
@@ -30,6 +32,24 @@ export function ChargeFilters({
     router.push(`/charges?${params.toString()}`);
   }
 
+  // `dueFrom`/`dueTo` nunca somem da URL, mesmo vazios — sumir faria a página
+  // reaplicar o padrão de 30 dias no próximo load (ver `ChargesPage`), o que
+  // reverteria em silêncio um "ver tudo" que o operador pediu de propósito.
+  function setDateParam(key: 'dueFrom' | 'dueTo', value: string) {
+    const params = new URLSearchParams(searchParams);
+    params.set(key, value);
+    params.delete('cursor');
+    router.push(`/charges?${params.toString()}`);
+  }
+
+  function clearDateRange() {
+    const params = new URLSearchParams(searchParams);
+    params.set('dueFrom', '');
+    params.set('dueTo', '');
+    params.delete('cursor');
+    router.push(`/charges?${params.toString()}`);
+  }
+
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
       <div className="flex h-11 items-center gap-2 rounded-sm border border-border bg-surface-elevated px-3">
@@ -41,45 +61,26 @@ export function ChargeFilters({
           className="h-full w-40 bg-transparent text-sm text-foreground outline-none placeholder:text-foreground-muted"
         />
       </div>
-      <select
+      <Select
         aria-label="Situação"
         value={status}
-        onChange={(e) => setParam('status', e.target.value)}
-        className="h-11 rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
-      >
-        <option value="">Todas as situações</option>
-        {CHARGE_STATUS_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-      <select
+        onValueChange={(next) => setParam('status', next)}
+        className="w-48"
+        options={[{ value: '', label: 'Todas as situações' }, ...CHARGE_STATUS_OPTIONS]}
+      />
+      <Select
         aria-label="Fornecedor"
         value={supplierId}
-        onChange={(e) => setParam('supplierId', e.target.value)}
-        className="h-11 rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
-      >
-        <option value="">Todos os fornecedores</option>
-        {suppliers.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-      </select>
-      <input
-        type="date"
-        aria-label="Vencimento de"
-        defaultValue={dueFrom}
-        onChange={(e) => setParam('dueFrom', e.target.value)}
-        className="h-11 rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
+        onValueChange={(next) => setParam('supplierId', next)}
+        className="w-48"
+        options={[{ value: '', label: 'Todos os fornecedores' }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]}
       />
-      <input
-        type="date"
-        aria-label="Vencimento até"
-        defaultValue={dueTo}
-        onChange={(e) => setParam('dueTo', e.target.value)}
-        className="h-11 rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground"
+      <DateRangeInput
+        from={dueFrom}
+        to={dueTo}
+        onFromChange={(next) => setDateParam('dueFrom', next)}
+        onToChange={(next) => setDateParam('dueTo', next)}
+        onClear={clearDateRange}
       />
     </div>
   );

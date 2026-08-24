@@ -45,24 +45,37 @@ export function LeadConvertFields({
     <>
       <div className="space-y-1.5">
         <Label htmlFor="convert-plan">Plano</Label>
-        <Select id="convert-plan" {...register('planId')} onChange={(event) => applyPlan(event.target.value)}>
-          <option value="">Nenhum</option>
-          {plans.map((plan) => (
-            <option key={plan.id} value={plan.id}>
-              {plan.name} · {CYCLE_LABELS[plan.cycle] ?? plan.cycle}
-            </option>
-          ))}
-        </Select>
+        <Controller
+          control={control}
+          name="planId"
+          render={({ field }) => (
+            <Select
+              id="convert-plan"
+              value={field.value ?? ''}
+              onValueChange={applyPlan}
+              options={[
+                { value: '', label: 'Nenhum' },
+                ...plans.map((plan) => ({ value: plan.id, label: `${plan.name} · ${CYCLE_LABELS[plan.cycle] ?? plan.cycle}` })),
+              ]}
+            />
+          )}
+        />
       </div>
 
       <div className="space-y-1.5">
         <Label htmlFor="convert-supplier">Fornecedor</Label>
-        <Select id="convert-supplier" {...register('supplierId')}>
-          <option value="">Nenhum</option>
-          {suppliers.map((supplier) => (
-            <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-          ))}
-        </Select>
+        <Controller
+          control={control}
+          name="supplierId"
+          render={({ field }) => (
+            <Select
+              id="convert-supplier"
+              value={field.value ?? ''}
+              onValueChange={field.onChange}
+              options={[{ value: '', label: 'Nenhum' }, ...suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))]}
+            />
+          )}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3">

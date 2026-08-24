@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { marginPercent } from '@/core/money';
 import { marginBadgeTone } from '@/lib/margin-tone';
@@ -80,20 +81,26 @@ export function PlanDrawer({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="cycle">Ciclo</Label>
-                  <select id="cycle" {...register('cycle')} className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground">
-                    {CYCLE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="cycle"
+                    render={({ field }) => <Select id="cycle" value={field.value} onValueChange={field.onChange} options={[...CYCLE_OPTIONS]} />}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="supplierId">Fornecedor</Label>
-                  <select id="supplierId" {...register('supplierId')} className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground">
-                    <option value="">Nenhum</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="supplierId"
+                    render={({ field }) => (
+                      <Select
+                        id="supplierId"
+                        value={field.value ?? ''}
+                        onValueChange={field.onChange}
+                        options={[{ value: '', label: 'Nenhum' }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]}
+                      />
+                    )}
+                  />
                 </div>
               </div>
             </DrawerSection>

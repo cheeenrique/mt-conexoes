@@ -3,6 +3,7 @@ import type { Control, FieldErrors, UseFormRegister } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DateInput } from '@/components/ui/date-input';
+import { Select } from '@/components/ui/select';
 import type { z } from 'zod';
 import type { subscriptionSchema } from '../schema';
 
@@ -21,11 +22,22 @@ export function SubscriptionDiscountFields({
     <>
       <div className="space-y-1.5">
         <Label htmlFor="discountType">Desconto</Label>
-        <select id="discountType" {...register('discountType')} className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground">
-          <option value="">Nenhum</option>
-          <option value="PERCENT">Percentual</option>
-          <option value="FIXED">Fixo</option>
-        </select>
+        <Controller
+          control={control}
+          name="discountType"
+          render={({ field }) => (
+            <Select
+              id="discountType"
+              value={(field.value as string | undefined) ?? ''}
+              onValueChange={field.onChange}
+              options={[
+                { value: '', label: 'Nenhum' },
+                { value: 'PERCENT', label: 'Percentual' },
+                { value: 'FIXED', label: 'Fixo' },
+              ]}
+            />
+          )}
+        />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="discountValue">Valor do desconto</Label>

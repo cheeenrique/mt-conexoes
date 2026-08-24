@@ -100,3 +100,21 @@ export function daysBetweenLocalDates(from: Date, to: Date, timezone: string): n
   const diffMs = toLocal.getTime() - fromLocal.getTime();
   return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
 }
+
+function isoDateString(year: number, month: number, day: number): string {
+  return `${String(year).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * Recorte padrão do filtro de data: os últimos `days` dias corridos no fuso
+ * do negócio, terminando hoje — ambos em `YYYY-MM-DD` local, prontos pra
+ * `searchParams`. `now` entra por parâmetro pra manter a função pura.
+ */
+export function defaultDateRangeLocal(now: Date, timezone: string, days = 30): { from: string; to: string } {
+  const today = new TZDate(now, timezone);
+  const start = addDays(today, -(days - 1));
+  return {
+    from: isoDateString(start.getFullYear(), start.getMonth(), start.getDate()),
+    to: isoDateString(today.getFullYear(), today.getMonth(), today.getDate()),
+  };
+}

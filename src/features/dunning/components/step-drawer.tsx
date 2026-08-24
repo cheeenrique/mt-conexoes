@@ -37,6 +37,7 @@ export function StepDrawer({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const {
     register,
+    control,
     handleSubmit,
     watch,
     setValue,
@@ -104,7 +105,7 @@ export function StepDrawer({
           />
           <form onSubmit={handleSubmit(onSubmit)} className="flex min-h-0 flex-1 flex-col">
             <DrawerBody>
-              <StepScheduleFields register={register} errors={errors} action={action} />
+              <StepScheduleFields register={register} control={control} errors={errors} action={action} />
 
               {action === 'SEND_MESSAGE' && (
                 <StepMessageFields

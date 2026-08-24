@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   daysBetweenLocalDates,
+  defaultDateRangeLocal,
   endOfLocalDay,
   firstDueDate,
   isWithinLocalHourRange,
@@ -250,5 +251,28 @@ describe('localDayBoundsUtc', () => {
     const { from, to } = localDayBoundsUtc(new Date('2028-02-29T15:00:00Z'), TZ);
     expect(from.toISOString()).toBe('2028-02-29T03:00:00.000Z');
     expect(to.toISOString()).toBe('2028-03-01T03:00:00.000Z');
+  });
+});
+
+describe('defaultDateRangeLocal', () => {
+  const TZ = 'America/Sao_Paulo';
+
+  it('30 dias termina hoje e começa 29 dias atrás, no fuso local', () => {
+    // 15h UTC = meio-dia em São Paulo (UTC-3): ainda 23/08 local.
+    const { from, to } = defaultDateRangeLocal(new Date('2026-08-23T15:00:00Z'), TZ);
+    expect(to).toBe('2026-08-23');
+    expect(from).toBe('2026-07-25');
+  });
+
+  it('atravessa virada de ano', () => {
+    const { from, to } = defaultDateRangeLocal(new Date('2026-01-10T12:00:00Z'), TZ, 30);
+    expect(to).toBe('2026-01-10');
+    expect(from).toBe('2025-12-12');
+  });
+
+  it('aceita janela custom de dias', () => {
+    const { from, to } = defaultDateRangeLocal(new Date('2026-08-22T12:00:00Z'), TZ, 7);
+    expect(to).toBe('2026-08-22');
+    expect(from).toBe('2026-08-16');
   });
 });

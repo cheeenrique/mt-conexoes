@@ -105,7 +105,6 @@ export function SubscriptionDrawer({
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <SubscriptionCommercialFields
-            register={register}
             control={control}
             errors={errors}
             planOptions={planOptions}

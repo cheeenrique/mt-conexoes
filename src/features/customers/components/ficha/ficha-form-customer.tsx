@@ -77,10 +77,22 @@ export function FichaFormCustomer({
         error={errors.status?.message}
         hint="Suspender muda a situação e avisa o operador; não corta o acesso no fornecedor."
       >
-        <Select id="ficha-status" disabled={disabled} {...register('status')}>
-          <option value="ACTIVE">Ativa</option>
-          <option value="SUSPENDED">Suspensa</option>
-        </Select>
+        <Controller
+          control={control}
+          name="status"
+          render={({ field }) => (
+            <Select
+              id="ficha-status"
+              disabled={disabled}
+              value={field.value ?? 'ACTIVE'}
+              onValueChange={field.onChange}
+              options={[
+                { value: 'ACTIVE', label: 'Ativa' },
+                { value: 'SUSPENDED', label: 'Suspensa' },
+              ]}
+            />
+          )}
+        />
       </FichaField>
 
       <FichaField id="ficha-email" label="E-mail" error={errors.email?.message}>

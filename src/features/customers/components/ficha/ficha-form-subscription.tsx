@@ -61,21 +61,33 @@ export function FichaFormSubscription({
   return (
     <DrawerSection label="Assinatura">
       <FichaField id="ficha-plan" label="Plano" error={errors.planId?.message}>
-        <Select id="ficha-plan" {...register('planId')} onChange={(event) => applyPlan(event.target.value)}>
-          <option value="">Nenhum</option>
-          {plans.map((plan) => (
-            <option key={plan.id} value={plan.id}>{plan.name}</option>
-          ))}
-        </Select>
+        <Controller
+          control={control}
+          name="planId"
+          render={({ field }) => (
+            <Select
+              id="ficha-plan"
+              value={field.value ?? ''}
+              onValueChange={applyPlan}
+              options={[{ value: '', label: 'Nenhum' }, ...plans.map((plan) => ({ value: plan.id, label: plan.name }))]}
+            />
+          )}
+        />
       </FichaField>
 
       <FichaField id="ficha-supplier" label="Fornecedor" error={errors.supplierId?.message}>
-        <Select id="ficha-supplier" {...register('supplierId')}>
-          <option value="">Nenhum</option>
-          {suppliers.map((supplier) => (
-            <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
-          ))}
-        </Select>
+        <Controller
+          control={control}
+          name="supplierId"
+          render={({ field }) => (
+            <Select
+              id="ficha-supplier"
+              value={field.value ?? ''}
+              onValueChange={field.onChange}
+              options={[{ value: '', label: 'Nenhum' }, ...suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))]}
+            />
+          )}
+        />
       </FichaField>
 
       <FichaField id="ficha-price" label="Valor cobrado por ciclo" error={errors.priceCents?.message}>
@@ -100,11 +112,11 @@ export function FichaFormSubscription({
       </div>
 
       <FichaField id="ficha-cycle" label="Ciclo" error={errors.cycle?.message}>
-        <Select id="ficha-cycle" {...register('cycle')}>
-          {CYCLE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </Select>
+        <Controller
+          control={control}
+          name="cycle"
+          render={({ field }) => <Select id="ficha-cycle" value={field.value} onValueChange={field.onChange} options={[...CYCLE_OPTIONS]} />}
+        />
       </FichaField>
 
       <FichaField
