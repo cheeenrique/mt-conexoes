@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { LayoutDashboard } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { localDateOnly, localDayBoundsUtc, monthBoundsUtc } from '@/core/dates';
 import { DUE_DATE_BUCKETS, type DueDateBucket } from '@/core/due-date-buckets';
@@ -65,7 +66,7 @@ export default async function DashboardPage({
   const monthLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: timezone }).format(now);
 
   return (
-    <AppShell title="Início">
+    <AppShell title="Início" icon={<LayoutDashboard size={22} />}>
       <div className="flex flex-col gap-6">
         <MonthlySummaryCard summary={summary} monthLabel={monthLabel} />
         <DashboardKpis kpis={kpis} summary={summary} />

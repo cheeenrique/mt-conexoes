@@ -1,3 +1,4 @@
+import { MessageSquare } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { listMessages } from '@/features/messaging/queries';
 import { getSettings } from '@/lib/settings';
@@ -23,7 +24,7 @@ export default async function MessagesPage({
   ]);
 
   return (
-    <AppShell title="Mensagens">
+    <AppShell title="Mensagens" icon={<MessageSquare size={22} />}>
       <MessageLog
         entries={entries}
         truncated={truncated}

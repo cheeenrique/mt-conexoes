@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ChartNoAxesColumn } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { getSettings } from '@/lib/settings';
 import { monthBoundsUtc, localDateOnly } from '@/core/dates';
@@ -51,7 +52,7 @@ export default async function ReportsPage({
   const monthLabel = `${MONTH_LABEL[month]}/${year}`;
 
   return (
-    <AppShell title="Relatórios">
+    <AppShell title="Relatórios" icon={<ChartNoAxesColumn size={22} />}>
       <div className="mb-4 flex items-center gap-3">
         <Link href={adjacentMonthHref(year, month, -1)} className="text-sm text-foreground-muted hover:text-foreground">‹ anterior</Link>
         <Link href={adjacentMonthHref(year, month, 1)} className="text-sm text-foreground-muted hover:text-foreground">próximo ›</Link>

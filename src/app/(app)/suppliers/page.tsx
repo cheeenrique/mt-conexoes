@@ -1,3 +1,4 @@
+import { Truck } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { listSuppliers } from '@/features/suppliers/queries';
 import { getSettings } from '@/lib/settings';
@@ -23,7 +24,7 @@ export default async function SuppliersPage({
   ]);
 
   return (
-    <AppShell title="Fornecedores" primaryAction={<NewSupplierButton marginAlertPercent={settings.marginAlertPercent} />}>
+    <AppShell title="Fornecedores" icon={<Truck size={22} />} primaryAction={<NewSupplierButton marginAlertPercent={settings.marginAlertPercent} />}>
       <SupplierTable
         rows={rows}
         total={total}

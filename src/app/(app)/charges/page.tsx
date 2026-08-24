@@ -1,3 +1,4 @@
+import { Receipt } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { listCharges } from '@/features/charges/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
@@ -61,7 +62,7 @@ export default async function ChargesPage({
   const uniqueRecipients = uniqueRecipientsFrom(allFilteredRows);
 
   return (
-    <AppShell title="Cobranças">
+    <AppShell title="Cobranças" icon={<Receipt size={22} />}>
       <div className="flex items-center justify-between gap-4">
         <ChargeFilters
           status={status}

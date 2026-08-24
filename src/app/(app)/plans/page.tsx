@@ -1,3 +1,4 @@
+import { Layers } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { listPlans } from '@/features/plans/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
@@ -23,7 +24,7 @@ export default async function PlansPage({
   ]);
 
   return (
-    <AppShell title="Planos" primaryAction={<NewPlanButton suppliers={suppliers} />}>
+    <AppShell title="Planos" icon={<Layers size={22} />} primaryAction={<NewPlanButton suppliers={suppliers} />}>
       <PlanTable rows={rows} total={total} page={page} perPage={perPage} suppliers={suppliers} />
     </AppShell>
   );
