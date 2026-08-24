@@ -140,6 +140,16 @@
   html {
     @apply font-sans;
   }
+  /*
+   * Produto permanentemente escuro. Sem esta declaração o navegador desenha
+   * todo controle nativo em modo claro: o ícone do seletor de data sai preto,
+   * a lista do `<select>` abre branca por cima do tema, e a barra de rolagem
+   * fica clara. Não é preferência — é o que informa ao user agent qual paleta
+   * usar nos widgets que não são nossos.
+   */
+  :root {
+    color-scheme: dark;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
