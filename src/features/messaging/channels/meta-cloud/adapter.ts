@@ -4,6 +4,7 @@ import type { ChannelAdapter, HealthResult, InboundMessage, SendInput, SendResul
 import { ChannelCredentialsInvalidError } from '../types';
 import { metaCloudCredentialsSchema, type MetaCloudCredentials } from './schema';
 import { metaCloudDescriptor } from './descriptor';
+import { providerFailureReason } from '../provider-error';
 
 const GRAPH_BASE = 'https://graph.facebook.com/v20.0';
 const RATE_LIMIT_CODES = new Set([4, 80007, 130429]);
@@ -61,7 +62,15 @@ async function send(input: SendInput, rawCredentials: unknown): Promise<SendResu
     }
     return { ok: true, externalId };
   } catch (err) {
-    return { ok: false, retryable: true, reason: err instanceof Error ? err.message : 'Falha de rede ao falar com a Meta Cloud API.' };
+    return {
+      ok: false,
+      retryable: true,
+      reason: providerFailureReason(
+        { provider: 'META_CLOUD', op: 'send' },
+        err,
+        'Não foi possível alcançar a Meta Cloud API. Tente de novo em instantes.',
+      ),
+    };
   }
 }
 
@@ -76,7 +85,14 @@ async function healthCheck(rawCredentials: unknown): Promise<HealthResult> {
     const payload = await response.json();
     return { ok: false, reason: payload.error?.message ?? 'Falha ao validar credencial da Meta Cloud API.' };
   } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : 'Falha de rede ao falar com a Meta Cloud API.' };
+    return {
+      ok: false,
+      reason: providerFailureReason(
+        { provider: 'META_CLOUD', op: 'healthCheck' },
+        err,
+        'Não foi possível alcançar a Meta Cloud API. Tente de novo em instantes.',
+      ),
+    };
   }
 }
 

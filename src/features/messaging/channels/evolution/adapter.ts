@@ -6,6 +6,7 @@ import type { PairableChannel } from '../pairing';
 import { evolutionCredentialsSchema, type EvolutionCredentials } from './schema';
 import { evolutionDescriptor } from './descriptor';
 import { evolutionPairing } from './pairing';
+import { providerFailureReason } from '../provider-error';
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -40,7 +41,15 @@ async function send(input: SendInput, rawCredentials: unknown): Promise<SendResu
     }
     return { ok: true, externalId };
   } catch (err) {
-    return { ok: false, retryable: true, reason: err instanceof Error ? err.message : 'Falha de rede ao falar com o Evolution.' };
+    return {
+      ok: false,
+      retryable: true,
+      reason: providerFailureReason(
+        { provider: 'EVOLUTION', op: 'send' },
+        err,
+        'Não foi possível alcançar o servidor Evolution. Confira o endereço e se ele está no ar.',
+      ),
+    };
   }
 }
 
@@ -57,7 +66,14 @@ async function healthCheck(rawCredentials: unknown): Promise<HealthResult> {
     if (state === 'open') return { ok: true };
     return { ok: false, reason: `Instância Evolution desconectada (state: ${state}).` };
   } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : 'Falha de rede ao falar com o servidor Evolution.' };
+    return {
+      ok: false,
+      reason: providerFailureReason(
+        { provider: 'EVOLUTION', op: 'healthCheck' },
+        err,
+        'Não foi possível alcançar o servidor Evolution. Confira o endereço e se ele está no ar.',
+      ),
+    };
   }
 }
 

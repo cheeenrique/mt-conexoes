@@ -36,7 +36,7 @@ describe('evolutionAdapter.send', () => {
 
     const result = await evolutionAdapter.send({ toPhone: '+5511999998888', body: 'Olá!' }, CREDENTIALS);
 
-    expect(result).toEqual({ ok: false, retryable: true, reason: 'fetch failed' });
+    expect(result).toEqual({ ok: false, retryable: true, reason: 'Não foi possível alcançar o servidor Evolution. Confira o endereço e se ele está no ar.' });
   });
 
   it('marca retryable=false em número inválido (HTTP 400)', async () => {
@@ -195,11 +195,13 @@ describe('evolutionAdapter.healthCheck', () => {
     expect(await evolutionAdapter.healthCheck(CREDENTIALS)).toEqual({ ok: false, reason: 'Instância Evolution desconectada (state: close).' });
   });
 
-  it('resolve com ok=false quando o fetch rejeita (rede instável)', async () => {
+  // ⚠️ O motivo mostrado ao operador nunca é a mensagem do erro técnico: `fetch failed`
+  // já chegou na tela de Canais como toast, em inglês e sem dizer o que fazer.
+  it('resolve com ok=false e motivo em pt-BR quando o fetch rejeita (rede instável)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fetch failed')));
 
     const result = await evolutionAdapter.healthCheck(CREDENTIALS);
 
-    expect(result).toEqual({ ok: false, reason: 'fetch failed' });
+    expect(result).toEqual({ ok: false, reason: 'Não foi possível alcançar o servidor Evolution. Confira o endereço e se ele está no ar.' });
   });
 });

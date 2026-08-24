@@ -92,7 +92,7 @@ describe('metaCloudAdapter.send', () => {
       CREDENTIALS,
     );
 
-    expect(result).toEqual({ ok: false, retryable: true, reason: 'fetch failed' });
+    expect(result).toEqual({ ok: false, retryable: true, reason: 'Não foi possível alcançar a Meta Cloud API. Tente de novo em instantes.' });
   });
 });
 
@@ -113,7 +113,7 @@ describe('metaCloudAdapter.healthCheck', () => {
 
   it('devolve ok=false quando o fetch rejeita (rede instável)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fetch failed')));
-    expect(await metaCloudAdapter.healthCheck(CREDENTIALS)).toEqual({ ok: false, reason: 'fetch failed' });
+    expect(await metaCloudAdapter.healthCheck(CREDENTIALS)).toEqual({ ok: false, reason: 'Não foi possível alcançar a Meta Cloud API. Tente de novo em instantes.' });
   });
 });
 

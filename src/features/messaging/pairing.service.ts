@@ -10,6 +10,7 @@ import { isPairable, type PairableChannel, type PairingChallenge } from './chann
 import { redactSecrets } from './channels/redact';
 import type { BeginChannelPairingInput } from './schema';
 import { ChannelNotConfiguredError, ChannelRiskNotAcceptedError } from './service';
+import { providerFailureReason } from './channels/provider-error';
 
 export class ChannelPairingNotSupportedError extends DomainError {
   constructor(cause?: unknown) {
@@ -56,7 +57,11 @@ async function storedCredentials(provider: ChannelProvider): Promise<Record<stri
 }
 
 function failure(err: unknown, provider: ChannelProvider, credentials: unknown): never {
-  const reason = err instanceof Error ? err.message : 'Falha ao falar com o servidor do canal.';
+  const reason = providerFailureReason(
+    { provider, op: 'pairing' },
+    err,
+    'Não foi possível falar com o servidor do canal. Confira o endereço e se ele está no ar.',
+  );
   throw new ChannelPairingFailedError(redactSecrets(reason, credentials, resolveDescriptor(provider)), err);
 }
 
