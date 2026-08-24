@@ -31,9 +31,9 @@ function todayLocalIso(timezone: string): string {
 }
 
 /**
- * Formulário em si. `key={charge.id}` no chamador garante um mount novo por
- * cobrança selecionada — o que dá um `idempotencyKey` novo sem efeito
- * disparando `setState` (react-hooks/set-state-in-effect).
+ * Formulário em si. A `key` do chamador garante um mount novo a cada abertura —
+ * o que dá um `idempotencyKey` novo sem efeito disparando `setState`
+ * (react-hooks/set-state-in-effect).
  */
 function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; timezone: string; onDone: () => void }) {
   const [idempotencyKey] = useState(() => crypto.randomUUID());
@@ -124,13 +124,38 @@ export function RegisterPaymentDialog({
   onOpenChange: (open: boolean) => void;
   timezone: string;
 }) {
+  const session = useOpenSession(open);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[420px] bg-surface">
         {charge && (
-          <RegisterPaymentForm key={charge.id} charge={charge} timezone={timezone} onDone={() => onOpenChange(false)} />
+          <RegisterPaymentForm
+            key={`${charge.id}:${session}`}
+            charge={charge}
+            timezone={timezone}
+            onDone={() => onOpenChange(false)}
+          />
         )}
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * Conta as aberturas do diálogo. O conteúdo continua montado enquanto a animação
+ * de saída roda (senão sobra caixa vazia sumindo), e por isso `key={charge.id}`
+ * sozinha não bastava: cancelar e reabrir a **mesma** cobrança reaproveitava o
+ * formulário sujo — o diálogo voltava com o valor digitado no lugar do saldo, e
+ * com o mesmo `idempotencyKey`, que faria o segundo pagamento ser descartado
+ * como repetido.
+ */
+function useOpenSession(open: boolean): number {
+  const [session, setSession] = useState(0);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setSession((current) => current + 1);
+  }
+  return session;
 }

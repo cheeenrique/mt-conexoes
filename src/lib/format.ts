@@ -69,17 +69,3 @@ export function formatLocalDayMonth(iso: string, timezone: string): string {
     new Date(iso),
   );
 }
-
-/** Centavos como decimal com vírgula, sem separador de milhar — é o valor
- *  inicial que o `CurrencyInput` entrega ao IMaskInput, que aplica seu próprio
- *  agrupamento na exibição. Diferente de `formatCents`: sem símbolo de moeda,
- *  sem `Intl.NumberFormat`, pensado para alimentar um campo editável, não para
- *  exibição final. */
-export function centsToDecimalString(cents: string): string {
-  const total = BigInt(cents || '0');
-  const negative = total < 0n;
-  const abs = negative ? -total : total;
-  const integerPart = abs / 100n;
-  const fractionalPart = (abs % 100n).toString().padStart(2, '0');
-  return `${negative ? '-' : ''}${integerPart},${fractionalPart}`;
-}

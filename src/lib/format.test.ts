@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  centsToDecimalString,
   formatCents,
   formatLocalDayMonth,
   formatLocalMonthYear,
@@ -74,29 +73,5 @@ describe('formatação local de data e hora', () => {
 
   it('dia e mês curtos para a coluna de vencimento', () => {
     expect(formatLocalDayMonth('2026-08-22T23:59:59-03:00', TZ)).toBe('22/08');
-  });
-});
-
-describe('centsToDecimalString', () => {
-  // Sem separador de milhar de propósito: é o valor inicial que o CurrencyInput
-  // entrega ao IMaskInput, que aplica seu próprio agrupamento na exibição.
-  it('formata zero', () => {
-    expect(centsToDecimalString('0')).toBe('0,00');
-  });
-
-  it('1 centavo', () => {
-    expect(centsToDecimalString('1')).toBe('0,01');
-  });
-
-  it('sem separador de milhar, só o decimal com vírgula', () => {
-    expect(centsToDecimalString('123456')).toBe('1234,56');
-  });
-
-  it('valor negativo mantém o sinal', () => {
-    expect(centsToDecimalString('-500')).toBe('-5,00');
-  });
-
-  it('ida e volta com parseDecimalStringToCents fecha exatamente para uma dízima', () => {
-    expect(centsToDecimalString('3333')).toBe('33,33');
   });
 });

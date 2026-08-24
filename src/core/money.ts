@@ -58,26 +58,21 @@ export function classifySubscriptionMargin(
   return margin.lessThan(alertPercent) ? 'below_threshold' : 'ok';
 }
 
-/** Converte um valor decimal digitado para centavos. Espera ponto como separador
- *  decimal — é o formato que o `unmaskedValue` do imask sempre devolve, mesmo com
- *  `radix: ','` configurado na máscara (ver `CurrencyInput`). Arredonda round half
- *  up, uma vez, no fim, se aparecer mais de 2 casas fracionárias. */
-export function parseDecimalStringToCents(decimal: string): string {
-  const trimmed = decimal.trim();
-  if (trimmed === '') return '0';
+/** Teto de dígitos do campo de dinheiro. 15 dígitos são R$ 9.999.999.999.999,99 —
+ *  folgado para qualquer valor deste domínio e curto o bastante para o campo não
+ *  virar um número que ninguém consegue ler. */
+export const CURRENCY_MAX_DIGITS = 15;
 
-  const negative = trimmed.startsWith('-');
-  const unsigned = negative ? trimmed.slice(1) : trimmed;
-  const [integerPart, fractionalPart = ''] = unsigned.split('.');
-
-  const integerDigits = integerPart.replace(/\D/g, '') || '0';
-  const fractionalDigits = fractionalPart.replace(/\D/g, '');
-
-  const fractionalCents =
-    fractionalDigits.length <= 2
-      ? BigInt(fractionalDigits.padEnd(2, '0') || '00')
-      : divRoundHalfUp(BigInt(fractionalDigits), 10n ** BigInt(fractionalDigits.length - 2));
-
-  const cents = BigInt(integerDigits) * 100n + fractionalCents;
-  return negative && cents !== 0n ? String(-cents) : String(cents);
+/** Converte o conteúdo digitado no campo de dinheiro em centavos.
+ *
+ *  O campo é um **acumulador de centavos**: o operador digita os dígitos que vê,
+ *  da direita para a esquerda, e tudo que não é dígito (o `R$`, o ponto de milhar,
+ *  a vírgula) é ruído de formatação. Não existe separador decimal para interpretar,
+ *  então não existe cursor para perder — foi o que quebrou a versão anterior do
+ *  campo, mascarada e controlada, que descartava dígito silenciosamente.
+ *
+ *  Sem sinal: nenhum campo de dinheiro do painel aceita valor negativo. */
+export function digitsToCents(typed: string): string {
+  const digits = typed.replace(/\D/g, '').replace(/^0+/, '').slice(0, CURRENCY_MAX_DIGITS);
+  return digits === '' ? '0' : digits;
 }

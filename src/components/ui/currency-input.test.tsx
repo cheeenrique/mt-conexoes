@@ -1,19 +1,20 @@
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CurrencyInput } from './currency-input';
 
 /**
- * ⚠️ O que este arquivo cobre é a **ligação** do componente: exibir centavos e
- * devolver centavos. A conversão em si é função pura e está testada onde mora
- * — `parseDecimalStringToCents` em `src/core/money.test.ts` e
- * `centsToDecimalString` em `src/lib/format.test.ts`, com os casos do bug de
- * 100x (0,50 · 0,01 · 33,33 · 1.234,56).
+ * ⚠️ Este arquivo existe porque a versão anterior do campo — `IMaskInput`
+ * controlado — **perdia dígito**: digitar 1, 2, 3, 4 parava em `R$ 1,00`, e o
+ * resultado variava entre passadas. O valor voltava do estado do pai num
+ * formato diferente do que a máscara mostrava, a máscara reescrevia o campo, o
+ * cursor ia para o fim e o dígito seguinte caía depois da vírgula, onde a
+ * escala de 2 casas o descartava. Digitar R$ 12,34 era impossível.
  *
- * A digitação de vírgula e ponto **não é testável aqui**: no jsdom, o
- * `userEvent` não entrega esses caracteres nem a um `<input>` comum, quanto
- * mais a um campo mascarado. Teste que simula isso passa a medir o jsdom em
- * vez do nosso código. Digitação real é verificação de navegador.
+ * Agora o campo é um acumulador de centavos sobre um `<input>` comum: o que
+ * está na tela são os dígitos digitados, e a digitação é testável aqui — foi
+ * justamente o que a versão antiga só conseguia verificar no navegador.
  */
 describe('CurrencyInput', () => {
   it('exibe o valor formatado em reais a partir de centavos', () => {
@@ -31,16 +32,42 @@ describe('CurrencyInput', () => {
     expect(screen.getByRole('textbox')).toHaveValue('R$ 0,00');
   });
 
+  it('digitar 1234 num campo vazio dá R$ 12,34 — nenhum dígito se perde', async () => {
+    function Controlado() {
+      const [cents, setCents] = useState('0');
+      return <CurrencyInput value={cents} onValueChange={setCents} />;
+    }
+    render(<Controlado />);
+    const input = screen.getByRole('textbox');
+
+    await userEvent.click(input);
+    await userEvent.keyboard('1234');
+
+    expect(input).toHaveValue('R$ 12,34');
+  });
+
+  it('apagar volta um dígito de cada vez', async () => {
+    function Controlado() {
+      const [cents, setCents] = useState('1234');
+      return <CurrencyInput value={cents} onValueChange={setCents} />;
+    }
+    render(<Controlado />);
+    const input = screen.getByRole('textbox');
+
+    await userEvent.click(input);
+    await userEvent.keyboard('{Backspace}');
+
+    expect(input).toHaveValue('R$ 1,23');
+  });
+
   it('devolve centavos como string, nunca number', async () => {
     const onValueChange = vi.fn();
     render(<CurrencyInput value="0" onValueChange={onValueChange} />);
-    const input = screen.getByRole('textbox') as HTMLInputElement;
 
-    await userEvent.click(input);
-    input.setSelectionRange(3, 4);
+    await userEvent.click(screen.getByRole('textbox'));
     await userEvent.keyboard('5');
 
-    expect(onValueChange).toHaveBeenLastCalledWith('500');
+    expect(onValueChange).toHaveBeenLastCalledWith('5');
     expect(typeof onValueChange.mock.lastCall?.[0]).toBe('string');
   });
 });

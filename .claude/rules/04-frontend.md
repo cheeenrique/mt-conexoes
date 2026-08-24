@@ -43,7 +43,11 @@ src/features/charges/
 - `react-hook-form` + **o mesmo schema Zod da Server Action** como resolver. Validação duplicada à mão é divergência garantida.
 - Erro do servidor mapeado para o campo quando o `code` permite; o resto vira erro de formulário.
 - Botão de submit desabilita durante a mutation. Duplo clique em "Registrar pagamento" não pode gerar dois pagamentos — o service é a defesa real, o `disabled` é conveniência.
-- Campo de dinheiro usa componente de moeda que trabalha em centavos. ❌ `parseFloat` no valor digitado.
+- Campo de dinheiro usa `CurrencyInput`, que trabalha em centavos. ❌ `parseFloat` no valor digitado.
+- ⚠️ **Campo de dinheiro é acumulador de centavos, não campo decimal mascarado.** O dígito entra pela
+  direita: digitar `1`,`2`,`3`,`4` num campo zerado dá `R$ 12,34`. Máscara controlada com separador
+  decimal já custou um bug de dígito perdido — o valor voltava do estado do pai num formato diferente
+  do exibido, a máscara reescrevia o campo e o dígito seguinte caía fora da escala.
 
 ## Dinheiro, data e texto
 

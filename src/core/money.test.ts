@@ -7,7 +7,8 @@ import {
   classifySubscriptionMargin,
   classifyMarginTone,
   resolveAdjustedPriceCents,
-  parseDecimalStringToCents,
+  digitsToCents,
+  CURRENCY_MAX_DIGITS,
 } from './money';
 
 describe('divRoundHalfUp', () => {
@@ -122,44 +123,42 @@ describe('classifyMarginTone', () => {
   });
 });
 
-describe('parseDecimalStringToCents', () => {
-  // O `unmaskedValue` do imask usa sempre ponto como separador decimal, mesmo
-  // com `radix: ','` configurado na máscara — é essa string que chega aqui.
-  it('string vazia é zero', () => {
-    expect(parseDecimalStringToCents('')).toBe('0');
+describe('digitsToCents', () => {
+  // O campo de dinheiro é acumulador de centavos: o que o operador digita são os
+  // dígitos que ele vê na tela, da direita para a esquerda. Digitar 1,2,3,4 tem
+  // que dar R$ 12,34 — o bug que motivou esta função parava em R$ 1,00.
+  it('acumula dígito a dígito da direita para a esquerda', () => {
+    expect(digitsToCents('1')).toBe('1');
+    expect(digitsToCents('12')).toBe('12');
+    expect(digitsToCents('123')).toBe('123');
+    expect(digitsToCents('1234')).toBe('1234');
   });
 
-  it('zero é zero', () => {
-    expect(parseDecimalStringToCents('0')).toBe('0');
+  it('ignora tudo que não é dígito — prefixo, milhar e vírgula da máscara', () => {
+    expect(digitsToCents('R$ 12,34')).toBe('1234');
+    expect(digitsToCents('R$ 1.234,56')).toBe('123456');
   });
 
-  it('inteiro sem parte fracionária multiplica por 100', () => {
-    expect(parseDecimalStringToCents('10')).toBe('1000');
+  it('campo vazio é zero, não NaN', () => {
+    expect(digitsToCents('')).toBe('0');
+    expect(digitsToCents('R$ ,')).toBe('0');
   });
 
-  it('1 centavo', () => {
-    expect(parseDecimalStringToCents('0.01')).toBe('1');
+  it('1 centavo não vira 1 real', () => {
+    expect(digitsToCents('R$ 0,01')).toBe('1');
   });
 
-  it('R$ 0,50 é 50 centavos, não 500', () => {
-    expect(parseDecimalStringToCents('0.5')).toBe('50');
+  it('zeros à esquerda não entram no valor', () => {
+    expect(digitsToCents('000123')).toBe('123');
+    expect(digitsToCents('0000')).toBe('0');
   });
 
-  it('dízima: R$ 33,33', () => {
-    expect(parseDecimalStringToCents('33.33')).toBe('3333');
+  it('trunca acima do teto de dígitos em vez de crescer sem limite', () => {
+    const acima = '9'.repeat(CURRENCY_MAX_DIGITS + 3);
+    expect(digitsToCents(acima)).toBe('9'.repeat(CURRENCY_MAX_DIGITS));
   });
 
-  it('R$ 1.234,56 digitado com milhar — o ponto de milhar já foi removido pelo imask antes de chegar aqui', () => {
-    expect(parseDecimalStringToCents('1234.56')).toBe('123456');
-  });
-
-  it('parte inteira negativa preserva o sinal', () => {
-    expect(parseDecimalStringToCents('-5')).toBe('-500');
-    expect(parseDecimalStringToCents('-0.5')).toBe('-50');
-  });
-
-  it('mais de 2 casas decimais arredonda half up, uma vez, no fim', () => {
-    expect(parseDecimalStringToCents('1.005')).toBe('101');
-    expect(parseDecimalStringToCents('1.004')).toBe('100');
+  it('nunca devolve negativo — o campo não tem sinal', () => {
+    expect(digitsToCents('-500')).toBe('500');
   });
 });
