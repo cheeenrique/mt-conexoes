@@ -93,7 +93,7 @@ export function StepDrawer({
   return (
     <>
       <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent width={560}>
+        <DrawerContent size="lg">
           <DrawerHeader
             title={step ? `Passo ${stepLabel(step.offsetDays)}` : 'Novo passo'}
             subtitle={

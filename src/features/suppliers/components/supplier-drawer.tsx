@@ -74,7 +74,7 @@ export function SupplierDrawer({
   return (
     <>
       <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent width={520} aria-label={supplier ? 'Editar fornecedor' : 'Novo fornecedor'}>
+        <DrawerContent size="default" aria-label={supplier ? 'Editar fornecedor' : 'Novo fornecedor'}>
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-1 flex-col">
             <DrawerHeader
               title={supplier ? 'Editar fornecedor' : 'Novo fornecedor'}

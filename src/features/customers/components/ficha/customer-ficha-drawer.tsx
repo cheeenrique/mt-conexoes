@@ -45,15 +45,19 @@ export function CustomerFichaDrawer({
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
   const [shownCustomerId, setShownCustomerId] = useState(customerId);
 
+  // `customerId` vira nulo antes da animação de saída do painel terminar
+  // (~150ms) — `shownCustomerId` só troca ao abrir um cliente novo, nunca ao
+  // fechar, e é ele quem decide o conteúdo do `DrawerContent`.
+  const displayCustomerId = customerId ?? shownCustomerId;
+
   // A chave carrega o cliente e o contador de recarga: o "carregando" sai da
   // comparação com ela, não de um setState dentro do efeito.
-  const key = `${customerId ?? ''}#${reloadToken}`;
+  const key = `${displayCustomerId ?? ''}#${reloadToken}`;
 
-  // Cliente diferente: nem edição nem faixa de sucesso do anterior sobrevivem.
-  // Ajuste durante o render (não em efeito) — é o padrão que o React recomenda
-  // para "resetar estado quando uma prop muda", sem o render em cascata de um
-  // `setState` síncrono dentro de `useEffect`.
-  if (customerId !== shownCustomerId) {
+  // Cliente novo: nem edição nem faixa de sucesso do anterior sobrevivem.
+  // Ajuste durante o render — padrão do React para "resetar estado quando
+  // uma prop muda", sem cascata de `setState` dentro de `useEffect`.
+  if (customerId && customerId !== shownCustomerId) {
     setShownCustomerId(customerId);
     setEditing(false);
     setSavedBanner(null);
@@ -74,8 +78,8 @@ export function CustomerFichaDrawer({
 
   return (
     <Drawer open={!!customerId} onOpenChange={(next) => { if (!next) closeCustomer(); }}>
-      <DrawerContent width={560} aria-label="Ficha do cliente">
-        {customerId && (
+      <DrawerContent size="lg" aria-label="Ficha do cliente">
+        {displayCustomerId && (
           <>
             <DrawerHeader title={data?.name ?? 'Carregando…'} subtitle={data ? fichaSubtitle(data) : undefined}>
               {data && !editing && (
@@ -131,7 +135,7 @@ export function CustomerFichaDrawer({
                 <DrawerFooter>
                   {/* `nativeButton={false}` porque o base-ui avisa quando um
                       componente com semântica de botão renderiza um <a>. */}
-                  <Button size="lg" nativeButton={false} render={<Link href={`/customers/${customerId}`} />}>
+                  <Button size="lg" nativeButton={false} render={<Link href={`/customers/${displayCustomerId}`} />}>
                     Abrir ficha completa
                   </Button>
                   <Button variant="outline" size="lg" onClick={closeCustomer}>Fechar</Button>

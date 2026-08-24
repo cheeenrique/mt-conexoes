@@ -67,7 +67,7 @@ export function PlanDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent width={520} aria-label={plan ? 'Editar plano' : 'Novo plano'}>
+      <DrawerContent size="default" aria-label={plan ? 'Editar plano' : 'Novo plano'}>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-1 flex-col">
           <DrawerHeader title={plan ? 'Editar plano' : 'Novo plano'} />
           <DrawerBody>

@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Check, Loader2 } from 'lucide-react';
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerHeader, DrawerSection } from '@/components/ui/drawer';
+import { useStableWhileClosing } from '@/components/ui/use-stable-while-closing';
 import { Button } from '@/components/ui/button';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { convertLeadSchema, type ConvertLeadFormInput, type ConvertLeadInput } from '../schema';
@@ -59,7 +60,14 @@ export function LeadDrawer({
   checkPhone?: FindCustomerByPhone;
 }) {
   const [linkedTo, setLinkedTo] = useState<{ customerId: string; name: string } | null>(null);
-  const existingByPhone = useExistingCustomerByPhone(lead?.phone, checkPhone);
+
+  // `lead` vira nulo assim que o fechamento começa (mesmo instante em que
+  // `open` vira falso). Sem isto o `Drawer` desmontaria com ele — como um
+  // `if (!lead) return null` fazia antes — e a animação de saída nunca
+  // chegava a rodar.
+  const shownLead = useStableWhileClosing(lead, (a, b) => a.id === b.id);
+
+  const existingByPhone = useExistingCustomerByPhone(shownLead?.phone, checkPhone);
   const {
     register,
     control,
@@ -68,7 +76,7 @@ export function LeadDrawer({
     formState: { errors, isSubmitting },
   } = useForm<ConvertLeadFormInput, unknown, ConvertLeadInput>({
     resolver: zodResolver(convertLeadSchema),
-    values: lead ? initialValues(lead, plans) : undefined,
+    values: shownLead ? initialValues(shownLead, plans) : undefined,
   });
 
   async function onSubmit(values: ConvertLeadInput) {
@@ -85,53 +93,55 @@ export function LeadDrawer({
     onOpenChange(false);
   }
 
-  if (!lead) return null;
-
   return (
     <Drawer open={open} onOpenChange={(next) => { if (!next) setLinkedTo(null); onOpenChange(next); }}>
-      <DrawerContent width={560} aria-label="Converter lead em cliente">
-        <DrawerHeader title="Converter em cliente" subtitle={`Lead de ${lead.source}`} />
-        {linkedTo ? (
-          <LeadConvertedNotice
-            customerId={linkedTo.customerId}
-            customerName={linkedTo.name}
-            onClose={() => onOpenChange(false)}
-          />
-        ) : (
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <DrawerBody>
-              <DrawerSection label="Cliente">
-                <LeadCustomerFields register={register} control={control} errors={errors} />
-              </DrawerSection>
-
-              <LeadConvertSubscriptionSection
-                register={register}
-                control={control}
-                errors={errors}
-                setValue={setValue}
-                plans={plans}
-                suppliers={suppliers}
-                existingByPhone={existingByPhone}
+      <DrawerContent size="lg" aria-label="Converter lead em cliente">
+        {shownLead && (
+          <>
+            <DrawerHeader title="Converter em cliente" subtitle={`Lead de ${shownLead.source}`} />
+            {linkedTo ? (
+              <LeadConvertedNotice
+                customerId={linkedTo.customerId}
+                customerName={linkedTo.name}
+                onClose={() => onOpenChange(false)}
               />
+            ) : (
+              <form onSubmit={handleSubmit(onSubmit)}>
+                <DrawerBody>
+                  <DrawerSection label="Cliente">
+                    <LeadCustomerFields register={register} control={control} errors={errors} />
+                  </DrawerSection>
 
-              {lead.status !== 'CONVERTED' && (
-                <LeadStatusActions leadId={lead.id} status={lead.status} onDone={() => onOpenChange(false)} />
-              )}
-            </DrawerBody>
-            <DrawerFooter>
-              <Button type="submit" size="lg" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 aria-hidden="true" className="animate-spin" /> : <Check aria-hidden="true" />}
-                {isSubmitting
-                  ? 'Convertendo...'
-                  : existingByPhone
-                    ? `Vincular a ${existingByPhone.name}`
-                    : 'Converter em cliente'}
-              </Button>
-              <Button type="button" variant="outline" size="lg" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-            </DrawerFooter>
-          </form>
+                  <LeadConvertSubscriptionSection
+                    register={register}
+                    control={control}
+                    errors={errors}
+                    setValue={setValue}
+                    plans={plans}
+                    suppliers={suppliers}
+                    existingByPhone={existingByPhone}
+                  />
+
+                  {shownLead.status !== 'CONVERTED' && (
+                    <LeadStatusActions leadId={shownLead.id} status={shownLead.status} onDone={() => onOpenChange(false)} />
+                  )}
+                </DrawerBody>
+                <DrawerFooter>
+                  <Button type="submit" size="lg" disabled={isSubmitting}>
+                    {isSubmitting ? <Loader2 aria-hidden="true" className="animate-spin" /> : <Check aria-hidden="true" />}
+                    {isSubmitting
+                      ? 'Convertendo...'
+                      : existingByPhone
+                        ? `Vincular a ${existingByPhone.name}`
+                        : 'Converter em cliente'}
+                  </Button>
+                  <Button type="button" variant="outline" size="lg" onClick={() => onOpenChange(false)}>
+                    Cancelar
+                  </Button>
+                </DrawerFooter>
+              </form>
+            )}
+          </>
         )}
       </DrawerContent>
     </Drawer>

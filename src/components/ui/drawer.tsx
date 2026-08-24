@@ -27,12 +27,26 @@ function Drawer({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="drawer" {...props} />;
 }
 
+/**
+ * As três larguras do handoff (README §"Padrão de drawer"): `lg` para
+ * cliente/lead/assinatura/passo da régua/nova régua, `default` para
+ * plano/fornecedor, `sm` para mensagem. Sem escape hatch numérico — todo
+ * consumidor declara um destes três, nunca um `width` cru.
+ */
+const DRAWER_SIZE_PX = {
+  lg: 560,
+  default: 520,
+  sm: 480,
+} as const;
+
+type DrawerSize = keyof typeof DRAWER_SIZE_PX;
+
 function DrawerContent({
   className,
   children,
-  width = 560,
+  size,
   ...props
-}: DialogPrimitive.Popup.Props & { width?: number }) {
+}: DialogPrimitive.Popup.Props & { size: DrawerSize }) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Backdrop
@@ -41,7 +55,7 @@ function DrawerContent({
       />
       <DialogPrimitive.Popup
         data-slot="drawer-content"
-        style={{ width: `min(${width}px, 100%)` }}
+        style={{ width: `min(${DRAWER_SIZE_PX[size]}px, 100%)` }}
         className={cn(
           'fixed inset-y-0 right-0 z-50 flex h-full flex-col overflow-y-auto border-l border-border bg-background text-foreground shadow-[0_16px_40px_rgba(0,0,0,.6)] outline-none duration-150',
           'data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right',

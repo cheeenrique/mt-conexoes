@@ -54,7 +54,7 @@ export function NewRuleDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent width={560}>
+      <DrawerContent size="lg">
         <DrawerHeader
           title="Nova régua"
           subtitle="Nasce em rascunho: o motor nem avalia até você mandar para revisão."

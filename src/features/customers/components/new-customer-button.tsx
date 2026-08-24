@@ -36,7 +36,7 @@ export function NewCustomerButton({
         Novo cliente
       </Button>
       <Drawer open={open} onOpenChange={setOpen}>
-        <DrawerContent width={560} aria-label="Novo cliente">
+        <DrawerContent size="lg" aria-label="Novo cliente">
           <DrawerHeader title="Novo cliente" />
           <FichaForm
             defaultValues={EMPTY_CUSTOMER_FICHA_FORM}
