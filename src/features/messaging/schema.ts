@@ -31,7 +31,10 @@ export const beginChannelPairingSchema = z.discriminatedUnion('provider', [
 export type BeginChannelPairingInput = z.infer<typeof beginChannelPairingSchema>;
 
 export const sendManualMessagesSchema = z.object({
-  customerIds: z.array(z.uuid()).min(1, 'Selecione ao menos um cliente.'),
+  // ⚠️ Toda regra de borda leva mensagem própria: sem ela o Zod devolve o texto
+  // padrão em inglês (`Invalid UUID`), e `actions.ts` repassa o primeiro issue
+  // direto para o toast do operador.
+  customerIds: z.array(z.uuid('Cliente inválido.')).min(1, 'Selecione ao menos um cliente.'),
   body: z.string().min(1, 'Escreva o texto da mensagem.'),
 });
 

@@ -114,7 +114,9 @@ export const convertLeadSchema = z
 export type ConvertLeadFormInput = z.input<typeof convertLeadSchema>;
 export type ConvertLeadInput = z.output<typeof convertLeadSchema>;
 
-export const leadStatusSchema = z.enum(['NEW', 'CONTACTED', 'CONVERTED', 'DISCARDED']);
+export const leadStatusSchema = z.enum(['NEW', 'CONTACTED', 'CONVERTED', 'DISCARDED'], {
+  error: 'Selecione uma situação válida.',
+});
 
 export const setLeadStatusSchema = z
   .object({
@@ -122,6 +124,6 @@ export const setLeadStatusSchema = z
     // `CONVERTED` sai de fora de propósito: converter exige criar ou apontar
     // um cliente, e o `CHECK` do banco recusa um lead convertido sem
     // `customerId`. Marcar a situação na mão pularia essa etapa.
-    status: z.enum(['NEW', 'CONTACTED', 'DISCARDED']),
+    status: z.enum(['NEW', 'CONTACTED', 'DISCARDED'], { error: 'Selecione uma situação válida.' }),
   })
   .strict();

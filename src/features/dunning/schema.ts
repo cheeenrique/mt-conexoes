@@ -17,8 +17,8 @@ export const dunningStepSchema = z.object({
     .int('Dias precisa ser um número inteiro.')
     .min(0, 'Use um número de dias positivo e escolha antes ou depois do vencimento.')
     .max(365, 'No máximo 365 dias de distância do vencimento.'),
-  direction: z.enum(STEP_DIRECTIONS),
-  action: z.enum(['SEND_MESSAGE', 'SUSPEND', 'NOTIFY_OWNER']),
+  direction: z.enum(STEP_DIRECTIONS, { error: 'Selecione se o passo é antes ou depois do vencimento.' }),
+  action: z.enum(['SEND_MESSAGE', 'SUSPEND', 'NOTIFY_OWNER'], { error: 'Selecione uma ação válida.' }),
   templateBody: z.string().optional(),
   // Nome do template já aprovado na Meta pra este passo. Sem valor, e com o canal
   // padrão exigindo template, o motor pula o passo em vez de tentar texto livre.
@@ -43,7 +43,7 @@ export type StepSource = (typeof STEP_SOURCES)[number];
 export const createDunningRuleSchema = z
   .object({
     name: ruleName,
-    stepsSource: z.enum(STEP_SOURCES).default('empty'),
+    stepsSource: z.enum(STEP_SOURCES, { error: 'Selecione como a régua começa.' }).default('empty'),
     copyFromRuleId: z.string().optional(),
   })
   .refine((value) => value.stepsSource !== 'copy' || !!value.copyFromRuleId, {
@@ -59,5 +59,5 @@ export type CreateDunningRuleInput = z.infer<typeof createDunningRuleSchema>;
  * `activateDunningRule`, na frente da lista real do que sairia.
  */
 export const dunningRuleStatusSchema = z.object({
-  status: z.enum(['REVIEW', 'PAUSED', 'ACTIVE']),
+  status: z.enum(['REVIEW', 'PAUSED', 'ACTIVE'], { error: 'Selecione uma situação válida.' }),
 });
