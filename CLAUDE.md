@@ -19,7 +19,6 @@ Três coisas que a estrutura não deixa óbvias: **assinatura não tem rota pró
 - **"Ativar sem descartar a revisão" não dispara retroativo.** `UNIQUE(chargeId, stepId)` impede reprocessar o par, então nenhuma daquelas mensagens sai. O rótulo do botão já é honesto (o handoff chamava de "Enviar todas"); o comportamento certo é decisão de produto em aberto.
 - **Turnstile implementado e desligado por padrão** (`features/leads/turnstile.ts`): sem `TURNSTILE_SECRET_KEY`, passa direto. O rate limit por IP em `lead_attempts` continua valendo.
 - **CORS de `/api/leads` aberto (`*`)** enquanto `LEADS_ALLOWED_ORIGINS` estiver vazia — temporário, até o site ter domínio. Sem `allow-credentials`; quem protege o endpoint é o Zod estrito, o teto de 8 KB no corpo, o rate limit e o Turnstile.
-- **`src/middleware.ts` está depreciado no Next 16** em favor de `proxy.ts` (o build avisa). Ele carrega o guarda de autenticação de todas as rotas — migração pendente.
 
 Histórico de cada etapa entregue (design → plano → implementação) fica em [`docs/superpowers/specs/`](docs/superpowers/specs/) e [`docs/superpowers/plans/`](docs/superpowers/plans/), um par de arquivos datado por etapa/feature. ⚠️ O par mais recente é de 13/08; a leva de 22/08 (Mensagens, Leads, Réguas mestre-detalhe, pareamento por QR, remoção do Salvy, split dos bancos) não tem spec nem plano — para essa parte, `git log --oneline` é a fonte, não `docs/superpowers/`.
 

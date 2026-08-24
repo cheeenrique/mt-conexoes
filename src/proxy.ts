@@ -16,7 +16,7 @@ function matchesPath(pathname: string, path: string): boolean {
   return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (PUBLIC_PATHS.some((p) => matchesPath(pathname, p))) return NextResponse.next();
   if (PUBLIC_PREFIXES.some((p) => matchesPath(pathname, p))) return NextResponse.next();
