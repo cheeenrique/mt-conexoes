@@ -31,7 +31,7 @@ Detalhe completo no histórico de antipadrões deste repo.
 docker compose up -d db
 pnpm db:migrate          # aplica as migrations
 pnpm db:seed             # usuário, settings, régua padrão (idempotente)
-pnpm db:seed:demo        # opcional: fornecedor + planos de exemplo pra olhar telas com dado
+pnpm db:seed:demo        # opcional: fornecedor, planos e um exemplar de cada estado (ver abaixo)
 
 # Teste — o que pnpm test:integration usa
 docker compose up -d db-test
@@ -55,6 +55,40 @@ Precisou de dado pra olhar uma tela e usou sem querer o banco errado? Apague pel
 telefone com uma marca única — as FKs de `messages`, `dunning_executions` e
 `credential_reveals` obrigam apagar na ordem — e rode `pnpm test:integration` de novo
 antes de considerar terminado.
+
+## O que `pnpm db:seed:demo` semeia
+
+Além do fornecedor "Painel P2P" e dos 4 planos, o script cria 8 clientes fixos
+(`demo-customer-01`..`08`, nome sempre prefixado `Demo ·`) — um exemplar de cada
+situação que `resolveCustomerSituation` sabe devolver, cada status de cobrança que o
+enum `ChargeStatus` tem, e um exemplar de cada faixa de margem que `classifyMarginTone`
+distingue:
+
+| Cliente | Situação | Cobrança viva | Margem | Observação |
+|---|---|---|---|---|
+| `demo-customer-01` | `ACTIVE` | nenhuma (fechadas) | saudável (71%) | tem `Charge` `CANCELLED` e `PAID` históricas, cada uma com `costCents` congelado num valor diferente — prova que o custo não é recalculado |
+| `demo-customer-02` | `DUE_TODAY` | `OPEN`, vence hoje | apertada (25%) | mensagem `SENT` da régua (D0) |
+| `demo-customer-03` | `OVERDUE` | `OVERDUE`, D+3 | crítica (~10%) | preço R$ 33,33 (dízima); mensagem `FAILED` (`body_too_long`) |
+| `demo-customer-04` | `OPEN` | `OPEN`, D-2 | saudável | mensagem `CANCELLED` por `stale` (>24h na fila) |
+| `demo-customer-05` | `SUSPENDED` | `OVERDUE`, D+5, por baixo | saudável | prova que assinatura suspensa manda na situação mesmo com cobrança vencida |
+| `demo-customer-06` | `OPEN` | `PARTIALLY_PAID`, vence no futuro | saudável | `Payment` de R$ 0,01 — o valor mínimo que já quebrou sistema |
+| `demo-customer-07` | `NO_SUBSCRIPTION` | — | — | cadastrado, nunca teve assinatura |
+| `demo-customer-08` | `OVERDUE` | `OVERDUE`, D+1 | saudável | sem telefone (`phone: null`); `DunningExecution` `SKIPPED` (`no_phone`) que **nunca** virou `Message` — cobre a metade da tela de Mensagens que não vem de `messages` |
+
+Também semeia 4 `Lead` fixos (`demo-lead-new/contacted/converted/discarded`), um por
+valor de `LeadStatus` — o convertido aponta pra `demo-customer-01`.
+
+Datas nascem sempre relativas a `now` no fuso de `Settings.timezone` (nunca fixas):
+"vence hoje" continua vencendo hoje em qualquer dia que o script rodar. Rodar duas
+vezes dá o mesmo resultado — todo registro de demonstração tem `id` fixo (`demo-...`)
+e o script faz upsert por `id`, no mesmo espírito de `settings` (`"singleton"`) e
+`dunningRule` (`"default-rule"`) em `seed.ts`. `Customer` não tem `name` nem `phone`
+estáveis o bastante pra virar chave aqui — o telefone, por exemplo, muda de propósito
+entre os cenários (`demo-customer-08` testa cliente sem telefone).
+
+Precisa da régua padrão (`pnpm db:seed`) já semeada: o script lê os passos de
+`default-rule` pra anexar `DunningExecution` realista às mensagens e recusa rodar com
+uma mensagem de erro explícita se não encontrar.
 
 ## Valores de enum sem código correspondente
 
