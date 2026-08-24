@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Pencil, Layers, Plus } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
+import { IconActionButton } from '@/components/ui/icon-action-button';
 import { Button } from '@/components/ui/button';
 import { formatCents } from '@/lib/format';
 import { CYCLE_LABELS } from '@/lib/labels';
@@ -58,15 +59,11 @@ export function PlanTable({
       header: '',
       align: 'right',
       cell: (row) => (
-        <button
-          type="button"
-          aria-label="Editar plano"
-          title="Editar plano"
+        <IconActionButton
+          icon={Pencil}
+          label="Editar plano"
           onClick={() => { setEditing(row); setDrawerOpen(true); }}
-          className="flex h-8 w-8 items-center justify-center rounded-sm border border-border"
-        >
-          <Pencil size={15} />
-        </button>
+        />
       ),
     },
   ];

@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { IconActionButton } from '@/components/ui/icon-action-button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
-import { formatLocalDayMonth, formatPhoneBR, whatsAppUrl } from '@/lib/format';
+import { formatLocalDate, formatPhoneBR, whatsAppUrl } from '@/lib/format';
 import { CUSTOMER_SITUATION_LABELS, CUSTOMER_SITUATION_TONES } from '@/lib/labels';
 import { useCustomerParam } from '../use-customer-param';
 import { NewCustomerButton } from './new-customer-button';
@@ -74,7 +74,7 @@ export function CustomerTable({
     {
       header: 'Vencimento',
       align: 'right',
-      cell: (row) => (row.nextDueAt ? formatLocalDayMonth(row.nextDueAt, timezone) : '—'),
+      cell: (row) => (row.nextDueAt ? formatLocalDate(row.nextDueAt, timezone) : '—'),
     },
     {
       header: 'Situação',

@@ -6,6 +6,7 @@ import { Pencil, Plus, Truck } from 'lucide-react';
 import Decimal from 'decimal.js';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
+import { IconActionButton } from '@/components/ui/icon-action-button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { formatCents } from '@/lib/format';
@@ -67,18 +68,14 @@ export function SupplierTable({
       header: '',
       align: 'right',
       cell: (row) => (
-        <button
-          type="button"
-          aria-label="Editar fornecedor"
-          title="Editar fornecedor"
+        <IconActionButton
+          icon={Pencil}
+          label="Editar fornecedor"
           onClick={() => {
             setEditing(row);
             setDrawerOpen(true);
           }}
-          className="flex h-8 w-8 items-center justify-center rounded-sm border border-border"
-        >
-          <Pencil size={15} />
-        </button>
+        />
       ),
     },
   ];

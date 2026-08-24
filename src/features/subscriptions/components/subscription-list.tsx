@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Pencil, Plus } from 'lucide-react';
+import { IconActionButton } from '@/components/ui/icon-action-button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { formatCents } from '@/lib/format';
@@ -57,15 +58,11 @@ export function SubscriptionList({
               o usuário em texto claro nesta lista era a segunda cópia — e a
               cópia insegura — da mesma interface. */}
           <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              aria-label="Editar assinatura"
-              title="Editar assinatura"
+            <IconActionButton
+              icon={Pencil}
+              label="Editar assinatura"
               onClick={() => { setEditing(sub); setDrawerOpen(true); }}
-              className="flex h-8 w-8 items-center justify-center rounded-sm border border-border"
-            >
-              <Pencil size={15} />
-            </button>
+            />
           </div>
         </div>
       ))}
