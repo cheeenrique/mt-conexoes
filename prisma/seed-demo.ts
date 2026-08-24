@@ -26,6 +26,7 @@
  *
  * Uso: pnpm db:seed:demo
  */
+import { createHash } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { config } from 'dotenv';
 import { addDays } from 'date-fns';
@@ -38,6 +39,21 @@ config({ path: '.env.local' });
 if (process.env.TEST_DATABASE_URL && process.env.DATABASE_URL === process.env.TEST_DATABASE_URL) {
   console.error('[seed-demo] DATABASE_URL aponta pro banco de teste — recusando rodar.');
   process.exit(1);
+}
+
+/**
+ * Id fixo de um registro de demonstração, em formato UUID.
+ *
+ * ⚠️ Precisa ser UUID de verdade, não `demo-customer-01`: as Server Actions validam
+ * id com `z.uuid()`, e um id fora do formato faz a tela recusar a ação com uma
+ * mensagem de validação — foi assim que o envio manual ficou intestável na base de
+ * demonstração. O slug continua sendo a chave de leitura aqui no arquivo; o hash
+ * só o transforma num UUID estável, para `upsert` por `id` seguir idempotente.
+ */
+function demoId(slug: string): string {
+  const hex = createHash('sha1').update(`mt-conexoes-demo:${slug}`).digest('hex');
+  const variant = ((parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, '0');
+  return [hex.slice(0, 8), hex.slice(8, 12), `7${hex.slice(13, 16)}`, `${variant}${hex.slice(18, 20)}`, hex.slice(20, 32)].join('-');
 }
 
 const SUPPLIER_NAME = 'Painel P2P';
@@ -103,14 +119,14 @@ interface DemoCustomerSpec {
 }
 
 const DEMO_CUSTOMERS: DemoCustomerSpec[] = [
-  { id: 'demo-customer-01', name: 'Demo · Cliente em Dia', phone: '+5562999900001' },
-  { id: 'demo-customer-02', name: 'Demo · Vence Hoje', phone: '+5562999900002' },
-  { id: 'demo-customer-03', name: 'Demo · Em Atraso (margem crítica)', phone: '+5562999900003' },
-  { id: 'demo-customer-04', name: 'Demo · Cobrança em Aberto', phone: '+5562999900004' },
-  { id: 'demo-customer-05', name: 'Demo · Assinatura Suspensa', phone: '+5562999900005' },
-  { id: 'demo-customer-06', name: 'Demo · Pagamento Parcial', phone: '+5562999900006' },
-  { id: 'demo-customer-07', name: 'Demo · Sem Assinatura', phone: '+5562999900007' },
-  { id: 'demo-customer-08', name: 'Demo · Sem Telefone (execução pulada)', phone: null },
+  { id: demoId('demo-customer-01'), name: 'Demo · Cliente em Dia', phone: '+5562999900001' },
+  { id: demoId('demo-customer-02'), name: 'Demo · Vence Hoje', phone: '+5562999900002' },
+  { id: demoId('demo-customer-03'), name: 'Demo · Em Atraso (margem crítica)', phone: '+5562999900003' },
+  { id: demoId('demo-customer-04'), name: 'Demo · Cobrança em Aberto', phone: '+5562999900004' },
+  { id: demoId('demo-customer-05'), name: 'Demo · Assinatura Suspensa', phone: '+5562999900005' },
+  { id: demoId('demo-customer-06'), name: 'Demo · Pagamento Parcial', phone: '+5562999900006' },
+  { id: demoId('demo-customer-07'), name: 'Demo · Sem Assinatura', phone: '+5562999900007' },
+  { id: demoId('demo-customer-08'), name: 'Demo · Sem Telefone (execução pulada)', phone: null },
 ];
 
 async function seedCustomers(db: PrismaClient) {
@@ -221,10 +237,10 @@ async function seedCustomer01AtivoEmDia(
   // só é conhecido depois do pagamento mais recente, então este upsert inicial usa um
   // valor provisório e o upsert final, no fim da função, corrige para o valor certo.
   await db.subscription.upsert({
-    where: { id: 'demo-subscription-01' },
+    where: { id: demoId('demo-subscription-01') },
     update: {},
     create: {
-      id: 'demo-subscription-01',
+      id: demoId('demo-subscription-01'),
       customerId,
       planId: plan.id,
       supplierId,
@@ -244,7 +260,7 @@ async function seedCustomer01AtivoEmDia(
   const oldDueAt = dueAtOffset(now, -35, timezone);
 
   const cancelledChargeData = {
-    subscriptionId: 'demo-subscription-01',
+    subscriptionId: demoId('demo-subscription-01'),
     customerId,
     supplierId,
     principalCents: 3500n,
@@ -260,9 +276,9 @@ async function seedCustomer01AtivoEmDia(
     cancelReason: 'Cobrança duplicada, corrigida manualmente.',
   };
   await db.charge.upsert({
-    where: { id: 'demo-charge-01a' },
+    where: { id: demoId('demo-charge-01a') },
     update: cancelledChargeData,
-    create: { id: 'demo-charge-01a', ...cancelledChargeData },
+    create: { id: demoId('demo-charge-01a'), ...cancelledChargeData },
   });
 
   const paidPeriodStart = dateOnlyOffset(now, -35, timezone);
@@ -270,7 +286,7 @@ async function seedCustomer01AtivoEmDia(
   const paidAt = dueAtOffset(now, -6, timezone);
 
   const paidChargeData = {
-    subscriptionId: 'demo-subscription-01',
+    subscriptionId: demoId('demo-subscription-01'),
     customerId,
     supplierId,
     principalCents: 3500n,
@@ -286,21 +302,21 @@ async function seedCustomer01AtivoEmDia(
     paidAt,
   };
   await db.charge.upsert({
-    where: { id: 'demo-charge-01b' },
+    where: { id: demoId('demo-charge-01b') },
     update: paidChargeData,
-    create: { id: 'demo-charge-01b', ...paidChargeData },
+    create: { id: demoId('demo-charge-01b'), ...paidChargeData },
   });
 
   await db.payment.upsert({
-    where: { id: 'demo-payment-01b' },
-    update: { chargeId: 'demo-charge-01b', amountCents: 3500n, paidAt },
+    where: { id: demoId('demo-payment-01b') },
+    update: { chargeId: demoId('demo-charge-01b'), amountCents: 3500n, paidAt },
     create: {
-      id: 'demo-payment-01b',
-      chargeId: 'demo-charge-01b',
+      id: demoId('demo-payment-01b'),
+      chargeId: demoId('demo-charge-01b'),
       amountCents: 3500n,
       method: 'PIX',
       source: 'MANUAL',
-      idempotencyKey: 'demo-payment-01b',
+      idempotencyKey: demoId('demo-payment-01b'),
       paidAt,
       note: 'Pagamento de demonstração.',
     },
@@ -320,9 +336,9 @@ async function seedCustomer01AtivoEmDia(
     suspendedAt: null,
   };
   await db.subscription.upsert({
-    where: { id: 'demo-subscription-01' },
+    where: { id: demoId('demo-subscription-01') },
     update: subscriptionData,
-    create: { id: 'demo-subscription-01', ...subscriptionData },
+    create: { id: demoId('demo-subscription-01'), ...subscriptionData },
   });
 }
 
@@ -392,7 +408,7 @@ async function getDefaultRuleSteps(db: PrismaClient) {
 async function seedLeads(db: PrismaClient, convertedCustomerId: string, now: Date, timezone: string) {
   const leads = [
     {
-      id: 'demo-lead-new',
+      id: demoId('demo-lead-new'),
       name: 'Demo · Lead Novo',
       phone: '+5562999901001',
       city: 'Goiânia',
@@ -404,7 +420,7 @@ async function seedLeads(db: PrismaClient, convertedCustomerId: string, now: Dat
       createdAtOffsetDays: -1,
     },
     {
-      id: 'demo-lead-contacted',
+      id: demoId('demo-lead-contacted'),
       name: 'Demo · Lead Contatado',
       phone: '+5562999901002',
       city: 'Anápolis',
@@ -416,7 +432,7 @@ async function seedLeads(db: PrismaClient, convertedCustomerId: string, now: Dat
       createdAtOffsetDays: -4,
     },
     {
-      id: 'demo-lead-converted',
+      id: demoId('demo-lead-converted'),
       name: 'Demo · Lead Convertido',
       phone: '+5562999901003',
       city: 'Goiânia',
@@ -428,7 +444,7 @@ async function seedLeads(db: PrismaClient, convertedCustomerId: string, now: Dat
       createdAtOffsetDays: -20,
     },
     {
-      id: 'demo-lead-discarded',
+      id: demoId('demo-lead-discarded'),
       name: 'Demo · Lead Descartado',
       phone: '+5562999901004',
       city: null,
@@ -472,12 +488,12 @@ async function main() {
     const steps = await getDefaultRuleSteps(db);
 
     // 01 — ACTIVE, sem cobrança viva, custo congelado divergindo entre ciclos.
-    await seedCustomer01AtivoEmDia(db, customers['demo-customer-01'].id, plans.Mensal, supplier.id, now, timezone);
+    await seedCustomer01AtivoEmDia(db, customers[demoId('demo-customer-01')].id, plans.Mensal, supplier.id, now, timezone);
 
     // 02 — DUE_TODAY, margem apertada (25%), mensagem ENVIADA.
     const sub02 = await seedSubscriptionWithLiveCharge(db, {
-      id: 'demo-subscription-02',
-      customerId: customers['demo-customer-02'].id,
+      id: demoId('demo-subscription-02'),
+      customerId: customers[demoId('demo-customer-02')].id,
       planId: null, // preço fora da tabela padrão, de propósito, pra fechar a margem em 25%
       supplierId: supplier.id,
       priceCents: 4000n,
@@ -485,32 +501,32 @@ async function main() {
       cycle: 'MONTHLY',
       subscriptionStatus: 'ACTIVE',
       startedAtOffsetDays: -60,
-      charge: { id: 'demo-charge-02', dueAtOffsetDays: 0, periodStartOffsetDays: -30, issuedAtOffsetDays: -30, costCents: 3000n },
+      charge: { id: demoId('demo-charge-02'), dueAtOffsetDays: 0, periodStartOffsetDays: -30, issuedAtOffsetDays: -30, costCents: 3000n },
       now,
       timezone,
     });
     const step02 = steps.get(0);
     if (step02) {
       await seedDunningMessage(db, {
-        id: 'demo-message-sent',
-        executionId: 'demo-execution-sent',
-        customerId: customers['demo-customer-02'].id,
+        id: demoId('demo-message-sent'),
+        executionId: demoId('demo-execution-sent'),
+        customerId: customers[demoId('demo-customer-02')].id,
         chargeId: sub02.charge.id,
         stepId: step02.id,
         status: 'SENT',
-        toPhone: customers['demo-customer-02'].phone!,
+        toPhone: customers[demoId('demo-customer-02')].phone!,
         body: 'Olá! Sua renovação de R$ 40,00 vence hoje. Pix: chave-demo@mtconexoes.com.br\n\nMT Conexões',
         scheduledFor: now,
         scheduledDate: dateOnlyOffset(now, 0, timezone),
         sentAt: now,
-        externalId: 'demo-external-sent',
+        externalId: demoId('demo-external-sent'),
       });
     }
 
     // 03 — OVERDUE (D+3), margem crítica (≈10%), preço com dízima R$ 33,33, mensagem FALHOU.
     const sub03 = await seedSubscriptionWithLiveCharge(db, {
-      id: 'demo-subscription-03',
-      customerId: customers['demo-customer-03'].id,
+      id: demoId('demo-subscription-03'),
+      customerId: customers[demoId('demo-customer-03')].id,
       planId: null,
       supplierId: supplier.id,
       priceCents: 3333n, // R$ 33,33 — dízima que já quebrou sistema, ver CLAUDE.md
@@ -518,20 +534,20 @@ async function main() {
       cycle: 'MONTHLY',
       subscriptionStatus: 'ACTIVE',
       startedAtOffsetDays: -63,
-      charge: { id: 'demo-charge-03', dueAtOffsetDays: -3, periodStartOffsetDays: -33, issuedAtOffsetDays: -33, costCents: 3000n },
+      charge: { id: demoId('demo-charge-03'), dueAtOffsetDays: -3, periodStartOffsetDays: -33, issuedAtOffsetDays: -33, costCents: 3000n },
       now,
       timezone,
     });
     const step03 = steps.get(3);
     if (step03) {
       await seedDunningMessage(db, {
-        id: 'demo-message-failed',
-        executionId: 'demo-execution-failed',
-        customerId: customers['demo-customer-03'].id,
+        id: demoId('demo-message-failed'),
+        executionId: demoId('demo-execution-failed'),
+        customerId: customers[demoId('demo-customer-03')].id,
         chargeId: sub03.charge.id,
         stepId: step03.id,
         status: 'FAILED',
-        toPhone: customers['demo-customer-03'].phone!,
+        toPhone: customers[demoId('demo-customer-03')].phone!,
         body: 'Olá! Sua renovação de R$ 33,33 está 3 dia(s) atrasada. Pix: chave-demo@mtconexoes.com.br\n\nMT Conexões',
         scheduledFor: now,
         scheduledDate: dateOnlyOffset(now, 0, timezone),
@@ -541,8 +557,8 @@ async function main() {
 
     // 04 — OPEN (D-2, vence em 2 dias), mensagem CANCELADA por ficar >24h na fila (stale).
     const sub04 = await seedSubscriptionWithLiveCharge(db, {
-      id: 'demo-subscription-04',
-      customerId: customers['demo-customer-04'].id,
+      id: demoId('demo-subscription-04'),
+      customerId: customers[demoId('demo-customer-04')].id,
       planId: plans.Semestral.id,
       supplierId: supplier.id,
       priceCents: plans.Semestral.priceCents,
@@ -550,22 +566,25 @@ async function main() {
       cycle: 'SEMIANNUAL',
       subscriptionStatus: 'ACTIVE',
       startedAtOffsetDays: -178,
-      charge: { id: 'demo-charge-04', dueAtOffsetDays: 2, periodStartOffsetDays: -178, issuedAtOffsetDays: -178, costCents: plans.Semestral.costCents },
+      charge: { id: demoId('demo-charge-04'), dueAtOffsetDays: 2, periodStartOffsetDays: -178, issuedAtOffsetDays: -178, costCents: plans.Semestral.costCents },
       now,
       timezone,
     });
     const step04 = steps.get(-2);
     if (step04) {
       // Mensagem ficou >24h na fila (T8) — o kill switch a teria cancelado como `stale`.
-      const dueDateLabel = dateOnlyOffset(now, 2, timezone).toISOString().slice(0, 10);
+      // dd/MM/aaaa, como o renderizador de template escreve — dado de demonstração
+      // com formato diferente do de produção faz quem confere a tela achar bug onde
+      // não tem, e esconder o que tem.
+      const dueDateLabel = dateOnlyOffset(now, 2, timezone).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
       await seedDunningMessage(db, {
-        id: 'demo-message-cancelled',
-        executionId: 'demo-execution-cancelled',
-        customerId: customers['demo-customer-04'].id,
+        id: demoId('demo-message-cancelled'),
+        executionId: demoId('demo-execution-cancelled'),
+        customerId: customers[demoId('demo-customer-04')].id,
         chargeId: sub04.charge.id,
         stepId: step04.id,
         status: 'CANCELLED',
-        toPhone: customers['demo-customer-04'].phone!,
+        toPhone: customers[demoId('demo-customer-04')].phone!,
         body: `Olá! Sua renovação de R$ 160,00 vence dia ${dueDateLabel}. Pix: chave-demo@mtconexoes.com.br\n\nMT Conexões`,
         scheduledFor: dueAtOffset(now, -2, timezone),
         scheduledDate: dateOnlyOffset(now, -2, timezone),
@@ -577,8 +596,8 @@ async function main() {
     // 05 — SUSPENDED com cobrança OVERDUE há 10 dias (D+5) — prova que SUSPENDED
     // manda na situação do cliente mesmo com cobrança vencida por baixo.
     await seedSubscriptionWithLiveCharge(db, {
-      id: 'demo-subscription-05',
-      customerId: customers['demo-customer-05'].id,
+      id: demoId('demo-subscription-05'),
+      customerId: customers[demoId('demo-customer-05')].id,
       planId: plans.Anual.id,
       supplierId: supplier.id,
       priceCents: plans.Anual.priceCents,
@@ -587,15 +606,15 @@ async function main() {
       subscriptionStatus: 'SUSPENDED',
       startedAtOffsetDays: -380,
       suspendedAtOffsetDays: -8,
-      charge: { id: 'demo-charge-05', dueAtOffsetDays: -10, periodStartOffsetDays: -370, issuedAtOffsetDays: -370, costCents: plans.Anual.costCents },
+      charge: { id: demoId('demo-charge-05'), dueAtOffsetDays: -10, periodStartOffsetDays: -370, issuedAtOffsetDays: -370, costCents: plans.Anual.costCents },
       now,
       timezone,
     });
 
     // 06 — PARTIALLY_PAID (dueAt no futuro), pagamento de R$ 0,01 — o valor mínimo que já quebrou sistema.
     await seedSubscriptionWithLiveCharge(db, {
-      id: 'demo-subscription-06',
-      customerId: customers['demo-customer-06'].id,
+      id: demoId('demo-subscription-06'),
+      customerId: customers[demoId('demo-customer-06')].id,
       planId: plans.Mensal.id,
       supplierId: supplier.id,
       priceCents: plans.Mensal.priceCents,
@@ -604,7 +623,7 @@ async function main() {
       subscriptionStatus: 'ACTIVE',
       startedAtOffsetDays: -25,
       charge: {
-        id: 'demo-charge-06',
+        id: demoId('demo-charge-06'),
         dueAtOffsetDays: 5,
         periodStartOffsetDays: -25,
         issuedAtOffsetDays: -25,
@@ -615,15 +634,15 @@ async function main() {
       timezone,
     });
     await db.payment.upsert({
-      where: { id: 'demo-payment-06' },
+      where: { id: demoId('demo-payment-06') },
       update: {},
       create: {
-        id: 'demo-payment-06',
-        chargeId: 'demo-charge-06',
+        id: demoId('demo-payment-06'),
+        chargeId: demoId('demo-charge-06'),
         amountCents: 1n,
         method: 'PIX',
         source: 'MANUAL',
-        idempotencyKey: 'demo-payment-06',
+        idempotencyKey: demoId('demo-payment-06'),
         paidAt: dueAtOffset(now, -1, timezone),
         note: 'Pagamento de demonstração de R$ 0,01 — valor mínimo que já quebrou sistema.',
       },
@@ -636,8 +655,8 @@ async function main() {
     // 08 — sem telefone, cobrança OVERDUE há 1 dia (D+1): a régua avalia o passo D+1
     // e pula ANTES de montar mensagem — não existe, e nunca vai existir, Message para isto.
     const sub08 = await seedSubscriptionWithLiveCharge(db, {
-      id: 'demo-subscription-08',
-      customerId: customers['demo-customer-08'].id,
+      id: demoId('demo-subscription-08'),
+      customerId: customers[demoId('demo-customer-08')].id,
       planId: plans.Mensal.id,
       supplierId: supplier.id,
       priceCents: plans.Mensal.priceCents,
@@ -645,7 +664,7 @@ async function main() {
       cycle: 'MONTHLY',
       subscriptionStatus: 'ACTIVE',
       startedAtOffsetDays: -35,
-      charge: { id: 'demo-charge-08', dueAtOffsetDays: -1, periodStartOffsetDays: -31, issuedAtOffsetDays: -31, costCents: plans.Mensal.costCents },
+      charge: { id: demoId('demo-charge-08'), dueAtOffsetDays: -1, periodStartOffsetDays: -31, issuedAtOffsetDays: -31, costCents: plans.Mensal.costCents },
       now,
       timezone,
     });
@@ -654,13 +673,13 @@ async function main() {
       await db.dunningExecution.upsert({
         where: { chargeId_stepId: { chargeId: sub08.charge.id, stepId: step08.id } },
         update: { outcome: 'SKIPPED', reason: 'no_phone', messageId: null },
-        create: { id: 'demo-execution-skipped', chargeId: sub08.charge.id, stepId: step08.id, outcome: 'SKIPPED', reason: 'no_phone' },
+        create: { id: demoId('demo-execution-skipped'), chargeId: sub08.charge.id, stepId: step08.id, outcome: 'SKIPPED', reason: 'no_phone' },
       });
     }
 
     console.log('[seed-demo] 8 assinaturas/cobranças de demonstração prontas (situações, margens e mensagens)');
 
-    await seedLeads(db, customers['demo-customer-01'].id, now, timezone);
+    await seedLeads(db, customers[demoId('demo-customer-01')].id, now, timezone);
   } finally {
     await db.$disconnect();
   }
