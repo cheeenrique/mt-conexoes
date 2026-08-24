@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { evaluateDunningRule } from './evaluate';
 
@@ -110,11 +111,20 @@ describe('evaluateDunningRule', () => {
     expect(messages).toHaveLength(0);
   });
 
-  it('régua ACTIVE, canal exige template aprovado mas o passo já tem metaTemplateName: segue normalmente, sem SKIPPED', async () => {
+  it('régua ACTIVE, canal exige template aprovado mas o passo já tem metaTemplateName: segue normalmente, Message congela template e parâmetros posicionais', async () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
     const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
     const step = await db.dunningStep.findFirstOrThrow({ where: { ruleId: rule.id, offsetDays: 0 } });
-    await db.dunningStep.update({ where: { id: step.id }, data: { metaTemplateName: 'renovacao_hoje' } });
+    // Ordem derivada da 1ª aparição de cada variável no templateBody do seed (D0):
+    // "Olá {{cliente.primeiro_nome}}! ... {{cobranca.valor}} vence hoje ({{cobranca.vencimento}}).
+    //  Pix: {{pix.chave}} ... {{negocio.nome}}" — o que `orderedTemplateParamKeys` produziria de verdade.
+    await db.dunningStep.update({
+      where: { id: step.id },
+      data: {
+        metaTemplateName: 'renovacao_hoje',
+        metaTemplateParams: ['cliente.primeiro_nome', 'cobranca.valor', 'cobranca.vencimento', 'pix.chave', 'negocio.nome'],
+      },
+    });
     const { customer, charge } = await seedFixture();
 
     try {
@@ -126,8 +136,53 @@ describe('evaluateDunningRule', () => {
       expect(executions[0].reason).toBeNull();
       const messages = await db.message.findMany({ where: { customerId: customer.id } });
       expect(messages).toHaveLength(1);
+      expect(messages[0].templateName).toBe('renovacao_hoje');
+      expect(messages[0].templateParams).toEqual({
+        '1': 'Dunning', // primeiro nome do fixture "Dunning Teste"
+        '2': 'R$ 60,00',
+        '3': '10/08/2026',
+        '4': '',
+        '5': 'MT Conexões',
+      });
     } finally {
-      await db.dunningStep.update({ where: { id: step.id }, data: { metaTemplateName: null } });
+      await db.dunningStep.update({ where: { id: step.id }, data: { metaTemplateName: null, metaTemplateParams: Prisma.DbNull } });
+    }
+  });
+
+  it('régua ACTIVE, canal exige template aprovado, cliente com 2 cobranças (consolidação): zero Message, SKIPPED reason=consolidation_template_missing pras duas', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const rule = await db.dunningRule.findFirstOrThrow({ where: { isDefault: true } });
+    const step = await db.dunningStep.findFirstOrThrow({ where: { ruleId: rule.id, offsetDays: 0 } });
+    await db.dunningStep.update({
+      where: { id: step.id },
+      data: { metaTemplateName: 'renovacao_hoje', metaTemplateParams: ['cliente.primeiro_nome'] },
+    });
+    const { customer, charge } = await seedFixture();
+    const supplier = await db.supplier.findFirstOrThrow({ where: { name: 'Fornecedor Teste' } });
+    const plan = await db.plan.findFirstOrThrow({ where: { name: 'Plano Teste' } });
+    const subscription2 = await db.subscription.create({
+      data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 4000n, costCents: 500n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: NOW, nextDueAt: NOW },
+    });
+    const charge2 = await db.charge.create({
+      data: { subscriptionId: subscription2.id, customerId: customer.id, supplierId: supplier.id, principalCents: 4000n, periodStart: NOW, periodEnd: NOW, dueAt: new Date('2026-08-10T23:59:59-03:00'), status: 'OPEN' },
+    });
+
+    try {
+      await evaluateDunningRule(NOW, true);
+
+      const messages = await db.message.findMany({ where: { customerId: customer.id } });
+      expect(messages).toHaveLength(0);
+
+      const executionsCharge1 = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+      const executionsCharge2 = await db.dunningExecution.findMany({ where: { chargeId: charge2.id } });
+      expect(executionsCharge1).toHaveLength(1);
+      expect(executionsCharge2).toHaveLength(1);
+      expect(executionsCharge1[0].outcome).toBe('SKIPPED');
+      expect(executionsCharge1[0].reason).toBe('consolidation_template_missing');
+      expect(executionsCharge2[0].outcome).toBe('SKIPPED');
+      expect(executionsCharge2[0].reason).toBe('consolidation_template_missing');
+    } finally {
+      await db.dunningStep.update({ where: { id: step.id }, data: { metaTemplateName: null, metaTemplateParams: Prisma.DbNull } });
     }
   });
 

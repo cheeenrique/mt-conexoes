@@ -143,7 +143,14 @@ async function processMessage(
   });
   if (claim.count === 0) return { outcome: 'none', calledProvider: false };
 
-  const result = await adapter.send({ toPhone: msg.toPhone, body: msg.body }, credentials);
+  // `templateRef` só existe quando a Message foi congelada com template na avaliação
+  // (`dunning/evaluate.ts`) — canal de texto livre (Evolution) nunca grava
+  // `templateName`, e o adapter ignora `templateRef` quando não sabe o que fazer com
+  // ele. Nenhum `if (provider === ...)` aqui: quem decide usar ou ignorar é o adapter.
+  const templateRef = msg.templateName
+    ? { name: msg.templateName, params: (msg.templateParams as Record<string, string> | null) ?? undefined }
+    : undefined;
+  const result = await adapter.send({ toPhone: msg.toPhone, body: msg.body, templateRef }, credentials);
   const attempts = msg.attempts + 1;
 
   if (result.ok) {

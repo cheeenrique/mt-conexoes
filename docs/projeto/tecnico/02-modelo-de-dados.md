@@ -283,6 +283,8 @@ model DunningStep {
   offsetDays   Int                             // negativo = antes do vencimento
   action       DunningAction    @default(SEND_MESSAGE)
   templateBody String?                         // com variáveis {{...}}
+  metaTemplateName   String?                   // nome do template aprovado na Meta — null até o operador modelar
+  metaTemplateParams Json?                     // array de TemplateVariable, ordem de 1ª aparição em templateBody — derivado, não editável à parte
   isActive     Boolean          @default(true)
 
   rule         DunningRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
@@ -347,6 +349,8 @@ model Message {
 
   toPhone       String
   body          String
+  templateName   String?                         // template Meta usado neste envio, congelado na avaliação — null em canal de texto livre
+  templateParams Json?                           // valores posicionais pro template acima, congelados junto com body
   scheduledFor  DateTime                         // quando pode sair, já dentro da quiet hour
   scheduledDate DateTime          @db.Date       // dia local — chave da dedupe T7
   sentAt        DateTime?

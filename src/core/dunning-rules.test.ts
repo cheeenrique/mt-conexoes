@@ -39,7 +39,7 @@ const CONTEXT = {
 describe('consolidate', () => {
   it('1 cliente com 1 cobrança gera 1 mensagem sem sufixo', () => {
     const pending: PendingStep[] = [
-      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}, {{cobranca.valor}}', netCents: '6000', context: CONTEXT },
+      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}, {{cobranca.valor}}', netCents: '6000', context: CONTEXT, metaTemplateName: null, metaTemplateParams: null },
     ];
     const result = consolidate(pending);
     expect(result).toHaveLength(1);
@@ -48,13 +48,15 @@ describe('consolidate', () => {
     expect(result[0].body).toBe('Olá João, R$ 60,00');
     expect(result[0].extraCount).toBe(0);
     expect(result[0].chargeIds).toEqual(['ch1']);
+    expect(result[0].templateName).toBeNull();
+    expect(result[0].templateParams).toBeNull();
   });
 
   it('1 cliente com 3 cobranças gera 1 mensagem só, com sufixo de total', () => {
     const pending: PendingStep[] = [
-      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}, {{cobranca.valor}}', netCents: '6000', context: CONTEXT },
-      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch2', stepId: 's2', offsetDays: 3, templateBody: 'ÚLTIMO AVISO {{cliente.primeiro_nome}}, {{cobranca.valor}} atrasada', netCents: '5000', context: { ...CONTEXT, 'cobranca.valor': 'R$ 50,00' } },
-      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch3', stepId: 's3', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}, {{cobranca.valor}}', netCents: '4000', context: { ...CONTEXT, 'cobranca.valor': 'R$ 40,00' } },
+      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}, {{cobranca.valor}}', netCents: '6000', context: CONTEXT, metaTemplateName: null, metaTemplateParams: null },
+      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch2', stepId: 's2', offsetDays: 3, templateBody: 'ÚLTIMO AVISO {{cliente.primeiro_nome}}, {{cobranca.valor}} atrasada', netCents: '5000', context: { ...CONTEXT, 'cobranca.valor': 'R$ 50,00' }, metaTemplateName: null, metaTemplateParams: null },
+      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch3', stepId: 's3', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}, {{cobranca.valor}}', netCents: '4000', context: { ...CONTEXT, 'cobranca.valor': 'R$ 40,00' }, metaTemplateName: null, metaTemplateParams: null },
     ];
     const result = consolidate(pending);
     expect(result).toHaveLength(1);
@@ -68,10 +70,43 @@ describe('consolidate', () => {
 
   it('2 clientes diferentes geram 2 mensagens', () => {
     const pending: PendingStep[] = [
-      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}', netCents: '6000', context: CONTEXT },
-      { customerId: 'c2', toPhone: '+5511999990001', chargeId: 'ch2', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}', netCents: '6000', context: CONTEXT },
+      { customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}', netCents: '6000', context: CONTEXT, metaTemplateName: null, metaTemplateParams: null },
+      { customerId: 'c2', toPhone: '+5511999990001', chargeId: 'ch2', stepId: 's1', offsetDays: 1, templateBody: 'Olá {{cliente.primeiro_nome}}', netCents: '6000', context: CONTEXT, metaTemplateName: null, metaTemplateParams: null },
     ];
     const result = consolidate(pending);
     expect(result).toHaveLength(2);
+  });
+
+  it('passo único carrega o template Meta do passo base pro resultado', () => {
+    const pending: PendingStep[] = [
+      {
+        customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 0,
+        templateBody: 'Olá {{cliente.primeiro_nome}}, {{cobranca.valor}}', netCents: '6000', context: CONTEXT,
+        metaTemplateName: 'renovacao_hoje', metaTemplateParams: { '1': 'João', '2': 'R$ 60,00' },
+      },
+    ];
+    const result = consolidate(pending);
+    expect(result[0].templateName).toBe('renovacao_hoje');
+    expect(result[0].templateParams).toEqual({ '1': 'João', '2': 'R$ 60,00' });
+  });
+
+  it('consolidação (extraCount > 0) ainda carrega o template do passo base — quem decide se pode sair é o chamador, não `consolidate`', () => {
+    const pending: PendingStep[] = [
+      {
+        customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch1', stepId: 's1', offsetDays: 3,
+        templateBody: 'ÚLTIMO AVISO {{cliente.primeiro_nome}}', netCents: '5000', context: CONTEXT,
+        metaTemplateName: 'ultimo_aviso', metaTemplateParams: { '1': 'João' },
+      },
+      {
+        customerId: 'c1', toPhone: '+5511999990000', chargeId: 'ch2', stepId: 's2', offsetDays: 1,
+        templateBody: 'Olá {{cliente.primeiro_nome}}', netCents: '4000', context: CONTEXT,
+        metaTemplateName: 'renovacao_lembrete', metaTemplateParams: { '1': 'João' },
+      },
+    ];
+    const result = consolidate(pending);
+    expect(result).toHaveLength(1);
+    expect(result[0].extraCount).toBe(1);
+    // base = maior offsetDays (3, "ultimo_aviso") — o template do passo extra some, igual o corpo dele já somia antes.
+    expect(result[0].templateName).toBe('ultimo_aviso');
   });
 });

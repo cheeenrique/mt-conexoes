@@ -18,6 +18,10 @@ export type PendingStep = {
   templateBody: string;
   netCents: string;
   context: TemplateContext;
+  /** Nome do template aprovado na Meta pra este passo — `null` em canal de texto livre. */
+  metaTemplateName: string | null;
+  /** Valores posicionais já resolvidos (ver `resolveTemplateParams`) — `null` junto com `metaTemplateName`. */
+  metaTemplateParams: Record<string, string> | null;
 };
 
 export type ConsolidatedMessage = {
@@ -28,6 +32,14 @@ export type ConsolidatedMessage = {
   extraCents: string; // soma bruta em centavos dos passos "extras", BigInt.toString()
   stepIds: string[];
   chargeIds: string[];
+  /**
+   * Template do passo **base** (o mesmo que fornece `body`), passado adiante sem
+   * decisão nenhuma — `consolidate` não sabe se o canal exige template. Quem
+   * decide se um `extraCount > 0` pode sair com este template (não pode, hoje: não
+   * existe template de consolidação aprovado) é `evaluate.ts`, que conhece o canal.
+   */
+  templateName: string | null;
+  templateParams: Record<string, string> | null;
 };
 
 /** Agrupa passos pendentes por cliente — no máximo 1 mensagem por customerId. */
@@ -54,6 +66,8 @@ export function consolidate(pending: PendingStep[]): ConsolidatedMessage[] {
       extraCents: extraCents.toString(),
       stepIds: group.map((s) => s.stepId),
       chargeIds: group.map((s) => s.chargeId),
+      templateName: base.metaTemplateName,
+      templateParams: base.metaTemplateParams,
     });
   }
   return results;

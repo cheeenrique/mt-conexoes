@@ -1,6 +1,7 @@
+import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { DomainError, UnknownTemplateVariableError } from '@/lib/errors';
-import { assertKnownVariables } from '@/core/dunning-template';
+import { assertKnownVariables, orderedTemplateParamKeys } from '@/core/dunning-template';
 import { DunningRuleNotFoundError } from './rule.service';
 import { offsetDaysFrom } from './step-offset';
 import type { DunningStepInput } from './schema';
@@ -30,6 +31,18 @@ function validateTemplate(templateBody: string | undefined): void {
   }
 }
 
+/**
+ * Ordem posicional das variáveis do template Meta, derivada de `templateBody` —
+ * `null` sem `metaTemplateName` (nada pra posicionar), `[]` com template sem
+ * variável nenhuma. Não é um campo que o operador preenche à parte: a Meta só
+ * aprova o texto que o operador escreveu, então é dele que a ordem sai — ver
+ * `core/dunning-template.ts`.
+ */
+function metaTemplateParamsFor(input: DunningStepInput): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  if (!input.metaTemplateName) return Prisma.DbNull;
+  return orderedTemplateParamKeys(input.templateBody ?? '');
+}
+
 /** Campos comuns entre criar e atualizar — só `ruleId` (obrigatório só na criação) fica de fora. */
 function stepFields(input: DunningStepInput) {
   return {
@@ -37,6 +50,7 @@ function stepFields(input: DunningStepInput) {
     action: input.action,
     templateBody: input.templateBody ?? null,
     metaTemplateName: input.metaTemplateName ?? null,
+    metaTemplateParams: metaTemplateParamsFor(input),
     isActive: input.isActive,
   };
 }

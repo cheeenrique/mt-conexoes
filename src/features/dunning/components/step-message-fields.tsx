@@ -51,10 +51,13 @@ export function StepMessageFields({
           />
         </label>
         <p className="text-xs leading-relaxed text-foreground-muted">
-          Documenta qual template já foi aprovado na Meta para este passo. Passo sem
-          isto, num canal que exige template aprovado, é pulado automaticamente em vez
-          de tentar um texto livre que a Meta recusaria. O Evolution não exige isto e
-          continua mandando o texto acima normalmente.
+          Nome do template já aprovado na Meta para este passo. Passo sem isto, num
+          canal que exige template aprovado, é pulado automaticamente em vez de tentar
+          um texto livre que a Meta recusaria. O Evolution não exige isto e continua
+          mandando o texto acima normalmente.
+        </p>
+        <p className="text-xs leading-relaxed text-foreground-muted">
+          {'⚠️ Os valores enviados à Meta seguem a ordem de aparição das variáveis no texto acima ({{1}}, {{2}}...) — é assim que a Meta valida os parâmetros do template aprovado. Escreva o texto acima na mesma ordem que você submeteu para aprovação na Meta, com o mesmo número de variáveis.'}
         </p>
       </DrawerSection>
     </>

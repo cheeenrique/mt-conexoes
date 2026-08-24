@@ -254,6 +254,10 @@ model DunningStep {
 
 O motor escolhe pela capability. Se o canal ativo exige template aprovado e o passo não tem `metaTemplateName`, a execução vira `SKIPPED` com motivo `template_not_approved` e o aviso aparece na tela da régua — **não** sai uma mensagem que não vai chegar.
 
+`metaTemplateParams` não é um campo que o operador preenche à parte: é derivado automaticamente das variáveis usadas em `templateBody`, na ordem da **primeira aparição** de cada uma — {{1}}, {{2}}... na mesma ordem que a Meta valida por posição. O texto que o operador escreve (e presumivelmente submeteu pra aprovação na Meta, com {{1}}/{{2}} no lugar das variáveis) já é a única fonte de verdade da ordem; pedir pra declarar de novo, num campo à parte, é o tipo de duplicação que diverge sozinha.
+
+⚠️ **Consolidação (T7) e template aprovado não se combinam ainda.** Um cliente com mais de uma cobrança vencida no mesmo passo vira **uma** mensagem consolidada (T7); mas cada template aprovado tem um shape fixo de parâmetros, e não existe hoje um template de "N cobranças, valor total" aprovado na Meta. Quando o canal exige template e a consolidação juntaria mais de um passo pro mesmo cliente, o motor **não** manda o template do primeiro passo pela metade: cada `(cobrança, passo)` do grupo vira `SKIPPED` com motivo `consolidation_template_missing`, e nenhuma `Message` é criada. O caso de uma cobrança só (sem consolidação) já sai de verdade, com `Message.templateName`/`templateParams` congelados na avaliação — nunca recalculados no despacho, mesmo princípio do `body`. Resolver a consolidação exige modelar e aprovar um template de consolidação na Meta primeiro; é trabalho futuro, não um bug desta versão.
+
 Templates escritos para aprovar como `UTILITY`, que é cerca de nove vezes mais barato que `MARKETING`. Isso é decisão de texto, não de código: tom transacional, sem "aproveite", "oferta", "promoção" ou emoji em excesso.
 
 ### ⚠️ Evolution exige servidor do cliente
@@ -306,6 +310,8 @@ Travas e idempotência são áreas de TDD.
 - [ ] Régua em `REVIEW` calcula execuções `PENDING_REVIEW` e não cria nenhuma `Message`
 - [ ] "Ignorar retroativos" marca as cobranças anteriores como `OVERDUE` sem agendar passo
 - [ ] Canal com `requiresApprovedTemplate` e passo sem `metaTemplateName` → `SKIPPED`, nenhuma tentativa de envio
+- [ ] Canal com `requiresApprovedTemplate`, passo com `metaTemplateName` e cobrança única → `Message` sai com `templateName`/`templateParams` congelados, adapter chama a Meta com `type: 'template'`
+- [ ] Canal com `requiresApprovedTemplate` e cliente com mais de uma cobrança vencida no mesmo passo (consolidação) → nenhuma `Message`, cada `(cobrança, passo)` do grupo vira `SKIPPED` com motivo `consolidation_template_missing`
 - [ ] Falha retryable incrementa `attempts`; na terceira, vira `FAILED` com motivo visível na timeline
 - [ ] Template com variável inexistente falha ao salvar, não ao enviar
 - [ ] Nenhum adapter é referenciado por nome fora de `features/messaging/channels` — verificado por busca no código

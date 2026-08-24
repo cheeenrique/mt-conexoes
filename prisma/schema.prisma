@@ -340,6 +340,13 @@ model DunningStep {
   /// vira execução `SKIPPED` (motivo `template_not_approved`) em vez de tentar
   /// texto livre que a Meta recusa fora da janela de 24h. Ver 06-regua-e-canais.md.
   metaTemplateName String?
+  /// Mapeamento posicional das variáveis do template aprovado na Meta: array JSON de
+  /// nomes de `TemplateVariable`, na ordem de {{1}}, {{2}}... Derivado automaticamente
+  /// das variáveis usadas em `templateBody` ao salvar o passo (`stepFields` em
+  /// `features/dunning/service.ts`) — não é um campo editável à parte, pra não deixar
+  /// o texto aprovado na Meta e a ordem dos parâmetros divergirem. `null` sem
+  /// `metaTemplateName`, `[]` quando o template não tem variável nenhuma.
+  metaTemplateParams Json?
   isActive         Boolean       @default(true)
 
   rule         DunningRule   @relation(fields: [ruleId], references: [id], onDelete: Cascade)
@@ -375,6 +382,14 @@ model Message {
 
   toPhone       String
   body          String
+  /// Nome do template aprovado na Meta usado neste envio, congelado na avaliação —
+  /// `null` em canal de texto livre, ou quando a régua consolidou mais de uma
+  /// cobrança pro mesmo cliente sem template de consolidação aprovado (ver
+  /// docs/projeto/tecnico/06-regua-e-canais.md).
+  templateName  String?
+  /// Valores posicionais pro template acima (`{"1": "João", "2": "R$ 60,00"}`),
+  /// congelados junto com `body` — nunca recalculados no despacho.
+  templateParams Json?
   scheduledFor  DateTime
   scheduledDate DateTime       @db.Date
   sentAt        DateTime?

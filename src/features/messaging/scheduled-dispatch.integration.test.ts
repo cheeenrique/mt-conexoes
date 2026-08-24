@@ -450,4 +450,85 @@ describe('dispatchPendingMessages', () => {
       expect(reloadedChannel.lastCheckOk).toBe(true);
     });
   });
+
+  // Prova a fiação de ponta a ponta do canal Meta Cloud: `templateName`/`templateParams`
+  // congelados na Message (por `dunning/evaluate.ts`) chegam até `adapter.send` como
+  // `templateRef` — não mocka a Meta, só a resposta HTTP do endpoint que o próprio
+  // adapter chama (mesmo padrão do resto do arquivo, e de `meta-cloud/adapter.test.ts`).
+  describe('canal META_CLOUD (template)', () => {
+    const META_CREDENTIALS = { accessToken: 'tok', phoneNumberId: '123456', wabaId: 'waba1', appSecret: 'segredo-teste' };
+
+    async function seedMetaCloudChannel() {
+      return db.channelConfig.create({
+        data: {
+          provider: 'META_CLOUD',
+          label: 'Meta Cloud API',
+          isActive: true,
+          isDefault: true,
+          credentials: encrypt(JSON.stringify(META_CREDENTIALS), 'channel.credentials'),
+          lastCheckOk: true,
+          lastCheckAt: IN_HOURS_NOW,
+        },
+      });
+    }
+
+    async function seedTemplateMessage(customerId: string, overrides: { templateParams?: Record<string, string> } = {}) {
+      return db.message.create({
+        data: {
+          customerId,
+          kind: 'DUNNING',
+          status: 'PENDING',
+          toPhone: '+5511998880000',
+          body: 'Olá João! Sua renovação vence hoje.',
+          templateName: 'renovacao_hoje',
+          templateParams: overrides.templateParams ?? { '1': 'João', '2': 'R$ 60,00' },
+          scheduledFor: IN_HOURS_NOW,
+          scheduledDate: new Date('2026-08-08'),
+          createdAt: IN_HOURS_NOW,
+        },
+      });
+    }
+
+    afterEach(async () => {
+      await db.channelConfig.deleteMany({ where: { provider: 'META_CLOUD' } });
+    });
+
+    it('Message com templateName/templateParams: envia como template Meta com os parâmetros posicionais certos', async () => {
+      await seedMetaCloudChannel();
+      const customer = await seedCustomer();
+      const msg = await seedTemplateMessage(customer.id);
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ messages: [{ id: 'wamid-template' }] }) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await dispatchPendingMessages(IN_HOURS_NOW);
+
+      expect(result.sent).toBe(1);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toContain('123456/messages');
+      const body = JSON.parse(init.body);
+      expect(body.type).toBe('template');
+      expect(body.template.name).toBe('renovacao_hoje');
+      // Object com chaves '1'/'2' sai em ordem numérica via Object.values, não de inserção —
+      // é o que sustenta a validação posicional da Meta (ver meta-cloud/adapter.ts).
+      expect(body.template.components).toEqual([{ type: 'body', parameters: [{ type: 'text', text: 'João' }, { type: 'text', text: 'R$ 60,00' }] }]);
+
+      const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+      expect(reloaded?.status).toBe('SENT');
+      expect(reloaded?.externalId).toBe('wamid-template');
+    });
+
+    it('Message sem templateName no canal Meta (não deveria acontecer — evaluate.ts já bloqueia antes): FAILED com o motivo do adapter, não lança', async () => {
+      await seedMetaCloudChannel();
+      const customer = await seedCustomer();
+      const msg = await seedPendingMessage(customer.id); // sem templateName
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('não deveria chamar fetch — send recusa antes')));
+
+      const result = await dispatchPendingMessages(IN_HOURS_NOW);
+
+      expect(result.failed).toBe(1);
+      const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+      expect(reloaded?.status).toBe('FAILED');
+      expect(reloaded?.failReason).toBe('Passo sem template aprovado para o canal Meta Cloud.');
+    });
+  });
 });

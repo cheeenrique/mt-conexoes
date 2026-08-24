@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { consolidate, type PendingStep } from '@/core/dunning-rules';
+import type { TemplateVariable } from '@/core/dunning-template';
 import { getSettings } from '@/lib/settings';
 import { buildConsolidatedBody, buildPendingStep } from './message-build';
 
@@ -26,6 +27,8 @@ export interface DunningStepDTO {
   templateBody: string | null;
   /** Nome do template aprovado na Meta — `null` até o operador modelar. Ver `evaluate.ts`. */
   metaTemplateName: string | null;
+  /** Ordem posicional das variáveis do template, derivada de `templateBody` ao salvar — ver `core/dunning-template.ts`. */
+  metaTemplateParams: TemplateVariable[] | null;
   isActive: boolean;
 }
 
@@ -42,7 +45,15 @@ export interface DunningRuleDTO {
   lastRunPendingReview: number | null;
 }
 
-type StepRow = { id: string; offsetDays: number; action: string; templateBody: string | null; metaTemplateName: string | null; isActive: boolean };
+type StepRow = {
+  id: string;
+  offsetDays: number;
+  action: string;
+  templateBody: string | null;
+  metaTemplateName: string | null;
+  metaTemplateParams: unknown;
+  isActive: boolean;
+};
 
 /** Usado pelas duas leituras de régua com passos — `getDefaultRuleWithSteps` (motor) e
  *  `getRuleWithSteps` (tela) — pra não divergir o shape do DTO entre as duas. */
@@ -53,6 +64,9 @@ function toStepDTO(step: StepRow): DunningStepDTO {
     action: step.action,
     templateBody: step.templateBody,
     metaTemplateName: step.metaTemplateName,
+    // Sempre escrito por `stepFields` (features/dunning/service.ts) como array de
+    // TemplateVariable ou null — nunca digitado à mão, por isso o cast direto.
+    metaTemplateParams: (step.metaTemplateParams as TemplateVariable[] | null) ?? null,
     isActive: step.isActive,
   };
 }
@@ -161,7 +175,7 @@ export async function listReviewMessages(ruleId: string, now = new Date()): Prom
   const executions = await db.dunningExecution.findMany({
     where: { outcome: 'PENDING_REVIEW', step: { ruleId } },
     include: {
-      step: { select: { id: true, offsetDays: true, templateBody: true, action: true } },
+      step: { select: { id: true, offsetDays: true, templateBody: true, action: true, metaTemplateName: true, metaTemplateParams: true } },
       charge: {
         include: {
           customer: { select: { id: true, name: true, phone: true, optedOut: true } },
@@ -184,7 +198,14 @@ export async function listReviewMessages(ruleId: string, now = new Date()): Prom
 
     offsetByStepId.set(execution.step.id, execution.step.offsetDays);
     nameByCustomerId.set(execution.charge.customerId, execution.charge.customer.name);
-    pending.push(buildPendingStep(execution.charge, execution.step, settings, now));
+    pending.push(
+      buildPendingStep(
+        execution.charge,
+        { ...execution.step, metaTemplateParams: execution.step.metaTemplateParams as TemplateVariable[] | null },
+        settings,
+        now,
+      ),
+    );
   }
 
   return consolidate(pending).map((msg) => ({

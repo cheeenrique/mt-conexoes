@@ -1,25 +1,10 @@
 import { db } from '@/lib/db';
-import { consolidate, daysFromDue, type PendingStep, type ConsolidatedMessage } from '@/core/dunning-rules';
-import { buildConsolidatedBody, buildPendingStep, type ChargeForStep, type StepForEvaluation } from './message-build';
+import { consolidate, daysFromDue, type PendingStep } from '@/core/dunning-rules';
+import { buildPendingStep, type ChargeForStep, type StepForEvaluation } from './message-build';
 import { getDefaultRuleWithSteps } from './queries';
 import { getSettings, type SettingsDTO } from '@/lib/settings';
-import { localDateOnly } from '@/core/dates';
+import { recordConsolidationBlocked, recordExecution, recordRuleRun, persistConsolidatedMessage } from './evaluate-persist';
 import { logger } from '@/lib/logger';
-
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
-}
-
-/** Registra um DunningExecution isolado (fora de transação). Falha não derruba a passada — loga e segue. */
-async function recordExecution(chargeId: string, stepId: string, outcome: 'PENDING_REVIEW' | 'SKIPPED' | 'QUEUED', reason?: string): Promise<boolean> {
-  try {
-    await db.dunningExecution.create({ data: { chargeId, stepId, outcome, reason } });
-    return true;
-  } catch (err) {
-    logger.error({ job: 'dunning-evaluate', chargeId, stepId, error: String(err) });
-    return false;
-  }
-}
 
 type PairOutcome =
   | { kind: 'skipped' | 'pendingReview' | 'suspended' }
@@ -29,7 +14,7 @@ type PairOutcome =
 /** Avalia um par (cobrança, passo): guarda de régua, template aprovado, opt-out, telefone, SUSPEND/NOTIFY_OWNER, ou monta o passo pendente pra consolidação. */
 async function evaluateChargeStepPair(
   charge: ChargeForStep & { subscriptionId: string },
-  step: StepForEvaluation & { action: string; metaTemplateName: string | null },
+  step: StepForEvaluation & { action: string },
   ruleStatus: string,
   requiresApprovedTemplate: boolean,
   settings: SettingsDTO,
@@ -74,73 +59,6 @@ async function evaluateChargeStepPair(
   }
 
   return { kind: 'pending', step: buildPendingStep(charge, step, settings, now) };
-}
-
-/**
- * Grava o carimbo da passada na régua — só chega aqui se `evaluateDunningRule`
- * rodou até o fim (o `await` está no último passo da função). Uma exceção no
- * meio da avaliação propaga antes de tocar esta linha, então o carimbo nunca
- * afirma sucesso para uma passada que falhou. Roda mesmo com zero pares
- * (cobrança, passo) hoje — é o que distingue "motor rodou e não achou nada"
- * de "motor parou", para quem olha a tela.
- */
-async function recordRuleRun(ruleId: string, now: Date, counts: { messagesSent: number; pendingReview: number }): Promise<void> {
-  try {
-    await db.dunningRule.update({
-      where: { id: ruleId },
-      data: { lastRunAt: now, lastRunMessagesSent: counts.messagesSent, lastRunPendingReview: counts.pendingReview },
-    });
-  } catch (err) {
-    logger.error({ job: 'dunning-evaluate', ruleId, error: String(err) });
-  }
-}
-
-/** Persiste a Message consolidada + os DunningExecution correspondentes numa transação. Retorna quantos passos foram enfileirados. */
-async function persistConsolidatedMessage(msg: ConsolidatedMessage, now: Date, timezone: string): Promise<number> {
-  try {
-    let queued = 0;
-    await db.$transaction(async (tx) => {
-      const scheduledDate = localDateOnly(now, timezone);
-      const body = buildConsolidatedBody(msg);
-      const created = await tx.message.create({
-        data: {
-          customerId: msg.customerId,
-          kind: 'DUNNING',
-          status: 'PENDING',
-          toPhone: msg.toPhone,
-          body,
-          scheduledFor: now,
-          scheduledDate,
-        },
-      });
-      for (let i = 0; i < msg.stepIds.length; i++) {
-        await tx.dunningExecution.create({
-          data: { chargeId: msg.chargeIds[i], stepId: msg.stepIds[i], outcome: 'QUEUED', messageId: created.id },
-        });
-      }
-      queued = msg.stepIds.length;
-    });
-    return queued;
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      // T7: já existe Message DUNNING pro customer hoje — registra o passo como SKIPPED, sem perder o rastro de auditoria.
-      try {
-        await db.dunningExecution.createMany({
-          data: msg.stepIds.map((stepId, i) => ({
-            chargeId: msg.chargeIds[i],
-            stepId,
-            outcome: 'SKIPPED' as const,
-            reason: 'daily_dedupe',
-          })),
-        });
-      } catch (dedupeErr) {
-        logger.error({ job: 'dunning-evaluate', customerId: msg.customerId, error: String(dedupeErr) });
-      }
-      return 0;
-    }
-    logger.error({ job: 'dunning-evaluate', customerId: msg.customerId, error: String(err) });
-    return 0;
-  }
 }
 
 const EMPTY_EVALUATION_RESULT = { queued: 0, skipped: 0, pendingReview: 0, suspended: 0 } as const;
@@ -208,6 +126,15 @@ export async function evaluateDunningRule(now: Date, requiresApprovedTemplate: b
   let messagesSent = 0;
 
   for (const msg of consolidated) {
+    // Consolidação (>1 cobrança) num canal que exige template: sem template de
+    // consolidação aprovado, não existe o que enviar — ver `recordConsolidationBlocked`.
+    // Não pode acontecer sem `requiresApprovedTemplate`: `evaluateChargeStepPair` só
+    // deixa um passo chegar em `pending` sem template quando o canal não exige um.
+    if (requiresApprovedTemplate && msg.extraCount > 0) {
+      await recordConsolidationBlocked(msg);
+      skipped += msg.stepIds.length;
+      continue;
+    }
     const stepsQueued = await persistConsolidatedMessage(msg, now, settings.timezone);
     queued += stepsQueued;
     if (stepsQueued > 0) messagesSent++;

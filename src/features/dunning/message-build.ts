@@ -2,7 +2,7 @@ import { daysFromDue, type ConsolidatedMessage, type PendingStep } from '@/core/
 import { localDateOnly } from '@/core/dates';
 import { formatCents } from '@/lib/format';
 import type { SettingsDTO } from '@/lib/settings';
-import type { TemplateContext } from '@/core/dunning-template';
+import { resolveTemplateParams, type TemplateContext, type TemplateVariable } from '@/core/dunning-template';
 
 /**
  * Como uma mensagem de cobrança é montada: o contexto de template de um par
@@ -28,6 +28,10 @@ export type StepForEvaluation = {
   id: string;
   offsetDays: number;
   templateBody: string | null;
+  /** `null` até o operador modelar o template Meta pra este passo. */
+  metaTemplateName: string | null;
+  /** Ordem posicional das variáveis (ver `orderedTemplateParamKeys`) — `null`/`[]` sem template. */
+  metaTemplateParams: TemplateVariable[] | null;
 };
 
 /**
@@ -60,6 +64,10 @@ export function buildPendingStep(charge: ChargeForStep, step: StepForEvaluation,
     templateBody: step.templateBody ?? '',
     netCents: remainingCents.toString(),
     context,
+    metaTemplateName: step.metaTemplateName,
+    // Resolvido com o mesmo `context` que renderiza o corpo — congelado aqui,
+    // na avaliação, igual `netCents`. Nunca recalculado no despacho.
+    metaTemplateParams: step.metaTemplateName ? resolveTemplateParams(step.metaTemplateParams ?? [], context) : null,
   };
 }
 

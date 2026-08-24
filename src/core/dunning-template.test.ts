@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { extractTemplateVariables, assertKnownVariables, renderTemplate } from './dunning-template';
+import {
+  extractTemplateVariables,
+  assertKnownVariables,
+  renderTemplate,
+  orderedTemplateParamKeys,
+  resolveTemplateParams,
+} from './dunning-template';
 
 describe('extractTemplateVariables', () => {
   it('extrai zero variáveis de texto sem {{}}', () => {
@@ -47,6 +53,40 @@ describe('assertKnownVariables', () => {
 
   it('texto sem variável nenhuma passa', () => {
     expect(() => assertKnownVariables('Texto fixo sem chave.')).not.toThrow();
+  });
+});
+
+describe('orderedTemplateParamKeys', () => {
+  it('ordena pela primeira aparição, sem repetir', () => {
+    const text = 'Olá {{cliente.nome}}! {{cobranca.valor}} vence {{cobranca.vencimento}}. Confirma, {{cliente.nome}}?';
+    expect(orderedTemplateParamKeys(text)).toEqual(['cliente.nome', 'cobranca.valor', 'cobranca.vencimento']);
+  });
+
+  it('texto sem variável conhecida devolve array vazio', () => {
+    expect(orderedTemplateParamKeys('Texto fixo, sem variável.')).toEqual([]);
+  });
+
+  it('ignora variável desconhecida — quem valida se pode salvar é assertKnownVariables', () => {
+    expect(orderedTemplateParamKeys('{{cliente.apelido}} {{cliente.nome}}')).toEqual(['cliente.nome']);
+  });
+});
+
+describe('resolveTemplateParams', () => {
+  const context = {
+    'cliente.primeiro_nome': 'João', 'cliente.nome': 'João Silva',
+    'cobranca.valor': 'R$ 60,00', 'cobranca.vencimento': '10/08',
+    'cobranca.dias_atraso': '3', 'pix.chave': 'chave-x', 'negocio.nome': 'MT',
+  } as const;
+
+  it('mapeia cada chave pra posição 1-based, na ordem recebida', () => {
+    expect(resolveTemplateParams(['cliente.primeiro_nome', 'cobranca.valor'], context)).toEqual({
+      '1': 'João',
+      '2': 'R$ 60,00',
+    });
+  });
+
+  it('array vazio devolve objeto vazio — template aprovado sem variável', () => {
+    expect(resolveTemplateParams([], context)).toEqual({});
   });
 });
 

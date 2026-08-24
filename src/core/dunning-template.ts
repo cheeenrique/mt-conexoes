@@ -33,6 +33,45 @@ export function renderTemplate(text: string, context: TemplateContext): string {
 }
 
 /**
+ * Ordem posicional das variáveis do template aprovado na Meta — {{1}}, {{2}}...
+ * seguem a ordem de **primeira aparição** de cada variável conhecida em
+ * `templateBody`, sem repetir. Existe porque a Meta valida parâmetro por
+ * posição, e o texto que o operador escreve (e presumivelmente submeteu pra
+ * aprovação na Meta, com {{1}}/{{2}} no lugar de {{cliente.primeiro_nome}}) já
+ * é a única fonte de verdade da ordem — pedir pro operador declarar a ordem
+ * de novo, num campo à parte, é o tipo de duplicação que diverge sozinha.
+ *
+ * Chamado ao salvar o passo (`features/dunning/service.ts`), nunca na hora de
+ * enviar — é isso que vira `DunningStep.metaTemplateParams`.
+ */
+export function orderedTemplateParamKeys(text: string): TemplateVariable[] {
+  const seen = new Set<TemplateVariable>();
+  const ordered: TemplateVariable[] = [];
+  for (const variable of extractTemplateVariables(text)) {
+    if (KNOWN_VARIABLES.has(variable) && !seen.has(variable as TemplateVariable)) {
+      seen.add(variable as TemplateVariable);
+      ordered.push(variable as TemplateVariable);
+    }
+  }
+  return ordered;
+}
+
+/**
+ * Resolve os valores posicionais (`{"1": "João", "2": "R$ 60,00"}`) que vão em
+ * `SendInput.templateRef.params` — chaves numéricas em string, que é o que o
+ * adapter da Meta espera (`Object.values` num objeto com chaves inteiras sai
+ * na ordem numérica, não na ordem de inserção). Chamado na avaliação, com o
+ * mesmo `context` que também renderiza o corpo — os dois nunca podem divergir.
+ */
+export function resolveTemplateParams(paramKeys: readonly TemplateVariable[], context: TemplateContext): Record<string, string> {
+  const params: Record<string, string> = {};
+  paramKeys.forEach((key, index) => {
+    params[String(index + 1)] = context[key];
+  });
+  return params;
+}
+
+/**
  * Valor de exemplo de cada variável, exibido no chip do editor de template
  * (handoff `telas/07-reguas.md` §"Texto da mensagem"). Fica aqui, junto de
  * `TEMPLATE_VARIABLES`, para que uma variável nova nunca apareça na tela sem
