@@ -32,9 +32,17 @@ export function StepAxis({
 }) {
   const [editing, setEditing] = useState<DunningStepDTO | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Conta as aberturas para compor a `key` da gaveta. Sem isto, duas aberturas
+  // seguidas de "Novo passo" têm a mesma chave (`'new'`), o React reusa a
+  // instância e o react-hook-form devolve o formulário do passo anterior —
+  // inclusive o rascunho que o operador acabou de descartar com Esc. Mesma
+  // correção do diálogo de pagamento (103e83d): o conteúdo continua montado
+  // durante a animação de fechamento, então trocar de chave é o que reinicia.
+  const [openCount, setOpenCount] = useState(0);
 
   function open(step: DunningStepDTO | null) {
     setEditing(step);
+    setOpenCount((count) => count + 1);
     setDrawerOpen(true);
   }
 
@@ -95,7 +103,7 @@ export function StepAxis({
       </p>
 
       <StepDrawer
-        key={editing?.id ?? 'new'}
+        key={`${editing?.id ?? 'new'}-${openCount}`}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         ruleId={ruleId}

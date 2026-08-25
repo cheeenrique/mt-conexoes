@@ -49,6 +49,9 @@ export function TemplateEditor({
     <>
       <textarea
         id="templateBody"
+        // O rótulo "Texto da mensagem" é o cabeçalho da DrawerSection, um span
+        // sem `htmlFor` — quem usa leitor de tela chegava neste campo sem nome.
+        aria-label="Texto da mensagem"
         rows={9}
         {...field}
         ref={(element) => {
