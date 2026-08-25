@@ -4,9 +4,11 @@ import {
   formatLocalDayMonth,
   formatLocalMonthYear,
   formatLocalTime,
+  formatPercent,
   formatPhoneBR,
   whatsAppUrl,
 } from './format';
+import Decimal from 'decimal.js';
 
 describe('formatCents', () => {
   it('formata centavos como moeda BRL', () => {
@@ -73,5 +75,34 @@ describe('formatação local de data e hora', () => {
 
   it('dia e mês curtos para a coluna de vencimento', () => {
     expect(formatLocalDayMonth('2026-08-22T23:59:59-03:00', TZ)).toBe('22/08');
+  });
+});
+
+describe('formatPercent', () => {
+  it('usa vírgula como separador decimal, não ponto', () => {
+    // Bug encontrado no navegador em 25/08/2026: a margem aparecia como
+    // `74.9%` numa UI toda em pt-BR, porque 12 lugares chamavam `toFixed`
+    // direto em vez de um formatador.
+    expect(formatPercent(74.9, 1)).toBe('74,9%');
+  });
+
+  it('sem casa decimal por padrão', () => {
+    expect(formatPercent(58.4)).toBe('58%');
+    expect(formatPercent(58.6)).toBe('59%');
+  });
+
+  it('aceita Decimal, string e number — as três formas que os sites usam', () => {
+    expect(formatPercent(new Decimal('59.75'), 1)).toBe('59,8%');
+    expect(formatPercent('59.75', 1)).toBe('59,8%');
+    expect(formatPercent(59.75, 1)).toBe('59,8%');
+  });
+
+  it('null vira travessão, que é o que as telas já mostram', () => {
+    expect(formatPercent(null)).toBe('—');
+  });
+
+  it('zero e negativo não viram travessão', () => {
+    expect(formatPercent(0)).toBe('0%');
+    expect(formatPercent(-12.5, 1)).toBe('-12,5%');
   });
 });

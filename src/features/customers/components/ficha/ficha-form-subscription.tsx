@@ -14,6 +14,7 @@ import { marginBadgeTone } from '@/lib/margin-tone';
 import { FichaField } from './ficha-field';
 import type { CustomerFichaFormInput } from '../../ficha-schema';
 import type { FichaPlanOption } from '../../ficha-types';
+import { formatPercent } from '@/lib/format';
 
 function liveMargin(priceCents: string | undefined, costCents: string | undefined) {
   try {
@@ -108,7 +109,7 @@ export function FichaFormSubscription({
 
       <div className="flex items-center gap-2">
         <span className="text-sm text-foreground-muted">Margem:</span>
-        <StatusBadge tone={marginBadgeTone(margin)}>{margin === null ? '—' : `${margin.toFixed(1)}%`}</StatusBadge>
+        <StatusBadge tone={marginBadgeTone(margin)}>{formatPercent(margin, 1)}</StatusBadge>
       </div>
 
       <FichaField id="ficha-cycle" label="Ciclo" error={errors.cycle?.message}>

@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { TypeToConfirmDialog } from '@/components/ui/type-to-confirm-dialog';
-import { formatCents } from '@/lib/format';
+import { formatCents, formatPercent } from '@/lib/format';
 import { marginBadgeTone } from '@/lib/margin-tone';
 import { applyBulkAdjustAction } from '../actions';
 import { toastError, toastSuccess } from '@/lib/toast';
@@ -16,7 +16,7 @@ import type { BulkAdjustPreviewRow } from '../queries';
 const BATCH_CONFIRM_THRESHOLD = 100;
 
 function marginLabel(pct: string | null): string {
-  return pct === null ? '—' : `${new Decimal(pct).toFixed(1)}%`;
+  return pct === null ? '—' : formatPercent(new Decimal(pct), 1);
 }
 
 export function BulkAdjustDialog({

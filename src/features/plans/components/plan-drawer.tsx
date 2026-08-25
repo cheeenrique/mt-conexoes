@@ -21,6 +21,7 @@ import { createPlanAction, updatePlanAction } from '../actions';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { messages } from '@/lib/messages';
 import type { PlanDTO } from '../queries';
+import { formatPercent } from '@/lib/format';
 
 type FormValues = z.input<typeof planSchema>;
 
@@ -126,7 +127,7 @@ export function PlanDrawer({
               <div className="flex items-center gap-2">
                 <span className="text-sm text-foreground-muted">Margem sugerida:</span>
                 <StatusBadge tone={marginBadgeTone(liveMargin)}>
-                  {liveMargin === null ? '—' : `${liveMargin.toFixed(1)}%`}
+                  {formatPercent(liveMargin, 1)}
                 </StatusBadge>
               </div>
             </DrawerSection>

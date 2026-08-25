@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { formatCents } from '@/lib/format';
+import { formatCents, formatPercent } from '@/lib/format';
 import { marginPercent } from '@/core/money';
 import { marginToneClass } from '@/lib/margin-tone';
 import type { MonthlySummaryDTO } from '../queries';
@@ -43,7 +43,7 @@ export function MonthlySummaryCard({ summary, monthLabel }: { summary: MonthlySu
           <span className="text-foreground">{formatCents(profitCents)}</span>
         </SummaryFigure>
         <SummaryFigure label="Margem">
-          <span className={marginToneClass(margin)}>{margin === null ? '—' : `${margin.toFixed(0)}%`}</span>
+          <span className={marginToneClass(margin)}>{formatPercent(margin)}</span>
         </SummaryFigure>
       </div>
 

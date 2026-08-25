@@ -1,5 +1,5 @@
 import { marginPercent } from '@/core/money';
-import { formatCents, formatLocalMonthYear } from '@/lib/format';
+import { formatCents, formatLocalMonthYear, formatPercent } from '@/lib/format';
 import { marginToneClass } from '@/lib/margin-tone';
 
 /**
@@ -39,7 +39,7 @@ export function FichaProfit({
         </p>
         <p className="text-[13px] text-foreground-muted">
           {renewalCount} {renewalLabel}
-          {margin !== null && ` · margem ${margin.toFixed(0)}%`}
+          {margin !== null && ` · margem ${formatPercent(margin)}`}
           {sinceAt && ` · cliente desde ${formatLocalMonthYear(sinceAt, timezone)}`}
         </p>
       </div>

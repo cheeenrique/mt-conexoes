@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { marginPercent } from '@/core/money';
-import { formatCents, formatLocalDate } from '@/lib/format';
+import { formatCents, formatLocalDate, formatPercent } from '@/lib/format';
 import { marginToneClass } from '@/lib/margin-tone';
 import { CYCLE_LABELS, SUBSCRIPTION_STATUS_LABELS } from '@/lib/labels';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -61,7 +61,7 @@ export function FichaSubscription({
         </Field>
         <Field label="Custo por ciclo">{formatCents(subscription.costCents)}</Field>
         <Field label="Margem">
-          <span className={marginToneClass(margin)}>{margin === null ? '—' : `${margin.toFixed(0)}%`}</span>
+          <span className={marginToneClass(margin)}>{formatPercent(margin)}</span>
         </Field>
       </dl>
     </section>

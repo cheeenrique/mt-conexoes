@@ -4,7 +4,7 @@ import { toCsv } from '@/lib/csv';
 import { monthBoundsUtc } from '@/core/dates';
 import { getSettings } from '@/lib/settings';
 import { getSupplierBreakdown, getPlanBreakdown, getAllCustomerBreakdown, type BreakdownRowDTO } from '@/features/reports/queries';
-import { formatCents } from '@/lib/format';
+import { formatCents, formatPercent } from '@/lib/format';
 import { marginPercent } from '@/core/money';
 
 function rowsToCsv(rows: BreakdownRowDTO[]): string {
@@ -14,7 +14,7 @@ function rowsToCsv(rows: BreakdownRowDTO[]): string {
     const costCents = BigInt(row.costCents);
     const profitCents = billedCents - costCents;
     const margin = marginPercent(billedCents, costCents);
-    const marginText = margin === null ? '—' : `${margin.toFixed(0)}%`;
+    const marginText = formatPercent(margin);
     return [row.name, formatCents(row.billedCents), formatCents(row.costCents), formatCents(profitCents), marginText];
   });
   return toCsv(headers, dataRows);

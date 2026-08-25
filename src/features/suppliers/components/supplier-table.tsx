@@ -9,7 +9,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { IconActionButton } from '@/components/ui/icon-action-button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
-import { formatCents } from '@/lib/format';
+import { formatCents, formatPercent } from '@/lib/format';
 import { marginBadgeTone } from '@/lib/margin-tone';
 import { SupplierDrawer } from './supplier-drawer';
 import type { SupplierDTO } from '../queries';
@@ -60,7 +60,7 @@ export function SupplierTable({
           '—'
         ) : (
           <StatusBadge tone={marginBadgeTone(row.averageMarginPercent)}>
-            {new Decimal(row.averageMarginPercent).toFixed(1)}%
+            {formatPercent(new Decimal(row.averageMarginPercent), 1)}
           </StatusBadge>
         ),
     },

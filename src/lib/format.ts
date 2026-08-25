@@ -69,3 +69,26 @@ export function formatLocalDayMonth(iso: string, timezone: string): string {
     new Date(iso),
   );
 }
+
+/** Percentual como o operador brasileiro lê: `74,9%`, com vírgula.
+ *
+ *  ⚠️ Nasceu porque 12 lugares chamavam `toFixed` direto — sete com zero casas,
+ *  cinco com uma — e os de uma casa exibiam `74.9%` com ponto, numa UI toda em
+ *  pt-BR. Ficha do cliente chegava a mostrar `margem 75%` no cabeçalho e
+ *  `74.9%` no formulário logo abaixo.
+ *
+ *  Aceita `number`, `string` e `Decimal` porque é o que os sites já tinham em
+ *  mãos. `null` vira travessão, que é o que as telas já mostravam. */
+export function formatPercent(
+  value: number | string | { toFixed: (digits: number) => string } | null,
+  fractionDigits = 0,
+): string {
+  if (value === null) return '—';
+
+  const fixed =
+    typeof value === 'number' || typeof value === 'string'
+      ? Number(value).toFixed(fractionDigits)
+      : value.toFixed(fractionDigits);
+
+  return `${fixed.replace('.', ',')}%`;
+}

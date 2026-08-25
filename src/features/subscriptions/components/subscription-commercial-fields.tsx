@@ -9,6 +9,7 @@ import { marginBadgeTone } from '@/lib/margin-tone';
 import { CYCLE_OPTIONS } from '@/lib/labels';
 import type { z } from 'zod';
 import type { subscriptionSchema } from '../schema';
+import { formatPercent } from '@/lib/format';
 
 type FormValues = z.input<typeof subscriptionSchema>;
 type PlanOption = { id: string; name: string; priceCents: string; costCents: string; cycle: string; supplierId: string | null };
@@ -71,7 +72,7 @@ export function SubscriptionCommercialFields({
       </div>
       <div className="flex items-center gap-2">
         <span className="text-sm text-foreground-muted">Margem:</span>
-        <StatusBadge tone={marginBadgeTone(liveMargin)}>{liveMargin === null ? '—' : `${liveMargin.toFixed(1)}%`}</StatusBadge>
+        <StatusBadge tone={marginBadgeTone(liveMargin)}>{formatPercent(liveMargin, 1)}</StatusBadge>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="cycle">Ciclo</Label>

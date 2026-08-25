@@ -1,5 +1,6 @@
 import { marginPercent } from '@/core/money';
 import type { MonthlyTrendRowDTO } from '../queries';
+import { formatPercent } from '@/lib/format';
 
 export function MonthlyTrendTable({ rows }: { rows: MonthlyTrendRowDTO[] }) {
   return (
@@ -18,7 +19,7 @@ export function MonthlyTrendTable({ rows }: { rows: MonthlyTrendRowDTO[] }) {
               const margin = marginPercent(BigInt(row.billedCents), BigInt(row.costCents));
               return (
                 <td key={`${row.year}-${row.month}`} className="p-3 text-center font-mono tabular-mono text-foreground">
-                  {margin === null ? '—' : `${margin.toFixed(0)}%`}
+                  {formatPercent(margin)}
                 </td>
               );
             })}

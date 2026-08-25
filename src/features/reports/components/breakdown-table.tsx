@@ -1,4 +1,4 @@
-import { formatCents } from '@/lib/format';
+import { formatCents, formatPercent } from '@/lib/format';
 import { marginPercent } from '@/core/money';
 import { EmptyState } from '@/components/ui/empty-state';
 import { FileBarChart } from 'lucide-react';
@@ -33,7 +33,7 @@ export function BreakdownTable({ rows, emptyLabel }: { rows: BreakdownRowDTO[]; 
                 <td className="p-3 text-right text-foreground">{formatCents(row.billedCents)}</td>
                 <td className="p-3 text-right text-foreground">{formatCents(row.costCents)}</td>
                 <td className="p-3 text-right text-foreground">{formatCents(profitCents)}</td>
-                <td className="p-3 text-right text-foreground">{margin === null ? '—' : `${margin.toFixed(0)}%`}</td>
+                <td className="p-3 text-right text-foreground">{formatPercent(margin)}</td>
               </tr>
             );
           })}

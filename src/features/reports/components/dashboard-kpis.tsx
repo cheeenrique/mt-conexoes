@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { Banknote, CalendarClock, Percent, TriangleAlert, Users, type LucideIcon } from 'lucide-react';
-import { formatCents } from '@/lib/format';
+import { formatCents, formatPercent } from '@/lib/format';
 import { marginToneClass } from '@/lib/margin-tone';
 import type { DashboardKpisDTO, MonthlySummaryDTO } from '../queries';
 
@@ -79,7 +79,7 @@ export function DashboardKpis({ kpis, summary }: { kpis: DashboardKpisDTO; summa
       <KpiCard
         icon={Percent}
         label="Margem média"
-        value={averageMargin === null ? '—' : `${averageMargin.toFixed(0)}%`}
+        value={formatPercent(averageMargin)}
         valueClassName={marginToneClass(averageMargin)}
         support={`${formatCents(profitCents)} de lucro no mês`}
       />
