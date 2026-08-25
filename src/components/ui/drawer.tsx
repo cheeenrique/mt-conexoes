@@ -49,15 +49,26 @@ function DrawerContent({
 }: DialogPrimitive.Popup.Props & { size: DrawerSize }) {
   return (
     <DialogPrimitive.Portal>
+      {/*
+       * Backdrop e Popup precisam da MESMA `duration-*` e de `fill-mode-forwards` nos
+       * dois. O Base UI mantém o portal montado até a animação mais longa das duas
+       * terminar; com `fill-mode` padrão (`none`), quem acabar primeiro perde o frame
+       * final e volta ao estado base (opacidade cheia, sem translate) pelo tempo que
+       * falta o portal desmontar. Medido em 25/08/2026: com o backdrop em 100ms e o
+       * popup em 150ms, o overlay escurecia, clareava e voltava a `opacity: 1` por
+       * ~40ms antes de sumir, no fechamento. `fill-mode-forwards` sozinho não bastava
+       * sem casar a duração — segura o frame final de quem terminou, mas ele ainda
+       * teria terminado errado (transparente) enquanto o outro seguia animando.
+       */}
       <DialogPrimitive.Backdrop
         data-slot="drawer-overlay"
-        className="fixed inset-0 z-50 bg-black/60 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+        className="fixed inset-0 z-50 bg-black/60 duration-150 fill-mode-forwards data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
       />
       <DialogPrimitive.Popup
         data-slot="drawer-content"
         style={{ width: `min(${DRAWER_SIZE_PX[size]}px, 100%)` }}
         className={cn(
-          'fixed inset-y-0 right-0 z-50 flex h-full flex-col overflow-y-auto border-l border-border bg-background text-foreground shadow-[0_16px_40px_rgba(0,0,0,.6)] outline-none duration-150',
+          'fixed inset-y-0 right-0 z-50 flex h-full flex-col overflow-y-auto border-l border-border bg-background text-foreground shadow-[0_16px_40px_rgba(0,0,0,.6)] outline-none duration-150 fill-mode-forwards',
           'data-open:animate-in data-open:slide-in-from-right data-closed:animate-out data-closed:slide-out-to-right',
           className,
         )}
