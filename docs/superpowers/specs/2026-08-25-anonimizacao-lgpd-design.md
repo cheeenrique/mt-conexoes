@@ -43,10 +43,16 @@ Migration nova, só aditiva — sem expand/contract.
 
 ```sql
 ALTER TABLE customers
-  ADD COLUMN anonymized_at         TIMESTAMP(3),
-  ADD COLUMN anonymized_by_user_id TEXT REFERENCES users(id);
-CREATE INDEX customers_anonymized_at_idx ON customers (anonymized_at);
+  ADD COLUMN "anonymizedAt"        TIMESTAMP(3),
+  ADD COLUMN "anonymizedByUserId"  TEXT REFERENCES users(id);
+CREATE INDEX customers_anonymized_at_idx ON customers ("anonymizedAt");
 ```
+
+⚠️ Coluna em **camelCase entre aspas**. Só a *tabela* é `snake_case` (via `@@map`); nenhum
+campo do schema usa `@map`, então as colunas nasceram `customerId`, `scheduledDate`,
+`createdAt`. `CLAUDE.md` e `.claude/rules/03-dados.md` escrevem os índices parciais como
+`messages (customer_id, scheduled_date)` e `channel_configs (is_default)` — não é o nome
+real das colunas. SQL manual de migration escrito assim falha.
 
 Auditoria em coluna, não em tabela própria: o painel tem um usuário só e o evento ocorre
 no máximo uma vez por cliente — `customer_anonymizations` guardaria uma linha por customer
