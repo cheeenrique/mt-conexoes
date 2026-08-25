@@ -9,8 +9,10 @@ import { CustomerFilters } from '@/features/customers/components/customer-filter
 import { CustomerTable } from '@/features/customers/components/customer-table';
 import { CustomerFichaDrawer } from '@/features/customers/components/ficha/customer-ficha-drawer';
 import { NewCustomerButton } from '@/features/customers/components/new-customer-button';
+import { ImportCustomersDialog } from '@/features/customers/components/import-customers-dialog';
 import { loadCustomerFichaAction, revealAccessPasswordAction } from './ficha-action';
 import { findCustomerByPhoneAction, saveCustomerFichaAction } from './customer-actions';
+import { importCustomersAction } from './import-action';
 
 const PER_PAGE_OPTIONS = [8, 12, 20] as const;
 
@@ -43,7 +45,10 @@ export default async function CustomersPage({
       title="Clientes"
       icon={<Users size={22} />}
       primaryAction={
-        <NewCustomerButton plans={plans} suppliers={suppliers} saveFicha={saveCustomerFichaAction} checkPhone={findCustomerByPhoneAction} />
+        <div className="flex items-center gap-2">
+          <ImportCustomersDialog suppliers={suppliers} importCustomers={importCustomersAction} />
+          <NewCustomerButton plans={plans} suppliers={suppliers} saveFicha={saveCustomerFichaAction} checkPhone={findCustomerByPhoneAction} />
+        </div>
       }
     >
       <CustomerFilters q={q} situation={situation ?? ''} />

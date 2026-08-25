@@ -1,27 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { normalizePhoneBR, parseCentsFromBR, parseDateBR, toBusinessDueDate } from './parse-row';
-
-describe('normalizePhoneBR', () => {
-  it('normaliza (11) 99999-8888 pra E.164', () => {
-    expect(normalizePhoneBR('(11) 99999-8888')).toBe('+5511999998888');
-  });
-
-  it('normaliza 11999998888 sem formatação', () => {
-    expect(normalizePhoneBR('11999998888')).toBe('+5511999998888');
-  });
-
-  it('aceita já em E.164', () => {
-    expect(normalizePhoneBR('+5511999998888')).toBe('+5511999998888');
-  });
-
-  it('rejeita número sem DDD (recusa em vez de chutar)', () => {
-    expect(normalizePhoneBR('9999-8888')).toBeNull();
-  });
-
-  it('rejeita vazio', () => {
-    expect(normalizePhoneBR('')).toBeNull();
-  });
-});
+import { parseCentsFromBR, parseDateBR, toBusinessDueDate } from './parse-row';
 
 describe('parseCentsFromBR', () => {
   it('parseia "R$ 1.234,56"', () => {
@@ -66,6 +44,46 @@ describe('parseDateBR', () => {
 
   it('rejeita data impossível', () => {
     expect(parseDateBR('32/13/2026')).toBeNull();
+  });
+});
+
+/**
+ * Serial do Excel. A versão anterior recusava número cru de propósito, apostando
+ * que o `xlsx` sempre entrega célula-data como `Date` — o que só vale quando a
+ * célula carrega formato de data. Planilha em que VALIDADE é número puro fazia
+ * TODA linha ser recusada com "Data de vencimento ausente ou inválida", culpando
+ * o dado por uma limitação do parser. Encontrado em 25/08/2026 importando pela
+ * tela.
+ */
+describe('parseDateBR — serial do Excel', () => {
+  it('converte o serial de vencimento da planilha real', () => {
+    // 46265 é o VALIDADE da primeira linha do arquivo do cliente; conferido
+    // contra o que o xlsx decodifica com `cellDates: true` (2026-08-31).
+    expect(parseDateBR(46265)).toEqual(new Date(Date.UTC(2026, 7, 31)));
+  });
+
+  it('converte o serial de criação da mesma linha', () => {
+    expect(parseDateBR(46158)).toEqual(new Date(Date.UTC(2026, 4, 16)));
+  });
+
+  it('descarta a parte de hora, como faz o ramo de texto', () => {
+    expect(parseDateBR(46265.5)).toEqual(new Date(Date.UTC(2026, 7, 31)));
+  });
+
+  it('recusa 29/02/1900, o dia que só existe dentro do Excel', () => {
+    // Serial 60 é o bug de ano bissexto herdado do Lotus 1-2-3. Aceitar
+    // silenciosamente viraria 01/03/1900.
+    expect(parseDateBR(60)).toBeNull();
+  });
+
+  it('recusa zero e negativo', () => {
+    expect(parseDateBR(0)).toBeNull();
+    expect(parseDateBR(-5)).toBeNull();
+  });
+
+  it('recusa número que não é serial válido', () => {
+    expect(parseDateBR(Number.NaN)).toBeNull();
+    expect(parseDateBR(Number.POSITIVE_INFINITY)).toBeNull();
   });
 });
 

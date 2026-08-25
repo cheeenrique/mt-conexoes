@@ -51,3 +51,26 @@ export async function patchCustomer(tx: Prisma.TransactionClient, id: string, in
     throw err;
   }
 }
+
+/**
+ * Resolve o `Customer` de uma linha da importação da planilha (Etapa 1c).
+ * Upsert por telefone quando a linha tem telefone válido — o mesmo cliente
+ * presente em duas planilhas de fornecedores diferentes vira um `Customer`
+ * só. Sem telefone, cria um `Customer` novo por linha: não há como saber se
+ * é "a mesma pessoa" de outra planilha sem telefone pra comparar, e chutar
+ * seria pior que duplicar.
+ */
+export async function resolveImportedCustomer(
+  tx: Prisma.TransactionClient,
+  params: { name: string; phone: string | null },
+): Promise<{ id: string }> {
+  if (params.phone) {
+    return tx.customer.upsert({
+      where: { phone: params.phone },
+      update: {},
+      create: { name: params.name, phone: params.phone },
+      select: { id: true },
+    });
+  }
+  return tx.customer.create({ data: { name: params.name, phone: null }, select: { id: true } });
+}

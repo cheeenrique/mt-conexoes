@@ -226,19 +226,27 @@ export async function revealCredential(subscriptionId: string, userId: string, i
  * pagamento — decisão registrada em docs/superpowers/specs/2026-08-07-etapa-1c-importacao-design.md.
  * A partir do primeiro pagamento registrado no sistema novo, a regra normal
  * (pagamento → próximo vencimento) passa a valer.
+ *
+ * Recebe `tx`: a orquestração (`app/(app)/customers/customer-import.ts`)
+ * processa a planilha em blocos de ~500 linhas, cada bloco num commit só —
+ * a checagem de idempotência, a resolução do `Customer` e esta criação
+ * precisam estar na mesma transação.
  */
-export async function createImportedSubscription(params: {
-  customerId: string;
-  supplierId: string;
-  priceCents: bigint;
-  costCents: bigint;
-  nextDueAt: Date;
-  startedAt: Date;
-  accessUsername: string | null;
-  accessPassword: string | null;
-  screens: number;
-}): Promise<{ id: string }> {
-  return db.subscription.create({
+export async function createImportedSubscription(
+  tx: Prisma.TransactionClient,
+  params: {
+    customerId: string;
+    supplierId: string;
+    priceCents: bigint;
+    costCents: bigint;
+    nextDueAt: Date;
+    startedAt: Date;
+    accessUsername: string | null;
+    accessPassword: string | null;
+    screens: number;
+  },
+): Promise<{ id: string }> {
+  return tx.subscription.create({
     data: {
       customerId: params.customerId,
       supplierId: params.supplierId,
@@ -260,11 +268,11 @@ export async function createImportedSubscription(params: {
  * telefone nulo não serve de chave de upsert (`WHERE phone IS NULL` bateria
  * em qualquer cliente sem telefone, não no cliente certo desta linha).
  */
-export async function findImportedSubscriptionBySupplier(params: {
-  supplierId: string;
-  accessUsername: string;
-}): Promise<{ id: string } | null> {
-  return db.subscription.findFirst({
+export async function findImportedSubscriptionBySupplier(
+  tx: Prisma.TransactionClient,
+  params: { supplierId: string; accessUsername: string },
+): Promise<{ id: string } | null> {
+  return tx.subscription.findFirst({
     where: { supplierId: params.supplierId, accessUsername: params.accessUsername },
     select: { id: true },
   });

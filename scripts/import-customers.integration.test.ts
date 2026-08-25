@@ -3,7 +3,7 @@ import { writeFileSync, unlinkSync, readdirSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { db } from '@/lib/db';
 import { decrypt } from '@/lib/crypto';
-import { buildFixtureWorkbook } from './import/__fixtures__/generate-fixture';
+import { buildFixtureWorkbook } from '@/features/customers/import/__fixtures__/generate-fixture';
 
 const REPORT_DIR = './tmp';
 

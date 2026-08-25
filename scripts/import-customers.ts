@@ -4,124 +4,36 @@
  *
  *   pnpm import:customers <arquivo.xlsx-ou-xlsm> "<Nome do Fornecedor>"
  *
- * Mapeamento de coluna confirmado contra o arquivo real
- * (Planilha para cadastro de Clientes UNIPLAY 2026.xlsm) — documentado em
- * docs/superpowers/specs/2026-08-07-etapa-1c-importacao-design.md. Ajuste o
- * objeto COLUMN abaixo se um fornecedor diferente usar nomes de coluna
- * diferentes.
+ * Casca de CLI só: lê o arquivo, resolve o fornecedor por nome (upsert —
+ * conveniência só deste caminho; a tela resolve por um `<Select>` de
+ * fornecedores já cadastrados) e delega toda a regra de importação para
+ * `app/(app)/customers/customer-import.ts`, a mesma função que a Server
+ * Action da tela de Clientes chama. Mapeamento de coluna documentado em
+ * docs/superpowers/specs/2026-08-07-etapa-1c-importacao-design.md.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { readFile, utils } from 'xlsx';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { db } from '@/lib/db';
 import { formatCents } from '@/lib/format';
-import { createImportedSubscription, findImportedSubscriptionBySupplier } from '@/features/subscriptions/service';
-import { normalizePhoneBR, parseCentsFromBR, parseDateBR, toBusinessDueDate } from './import/parse-row';
+import { readWorkbookRows } from '@/features/customers/import/workbook';
+import { importCustomersFromRows } from '@/app/(app)/customers/customer-import';
+import type { ImportRowResult, ImportSummary } from '@/features/customers/import/types';
 
-// Nomes de coluna confirmados contra o arquivo real. `trim()` aplicado na
-// hora de ler o cabeçalho — a planilha real tem espaço em branco em alguns
-// nomes (" VALOR ", "  WHATSAPP").
-const COLUMN = {
-  name: ['CODIGO', 'CÓDIGO', 'NOME'],
-  phone: ['WHATSAPP', 'TELEFONE', 'CONTATO'],
-  username: ['USUARIO', 'USUÁRIO'],
-  password: ['SENHA'],
-  startedAt: ['CRIAÇÃO', 'CRIACAO', 'DATA DE CRIAÇÃO'],
-  dueDate: ['VALIDADE', 'VENCIMENTO', 'DATA DE VENCIMENTO'],
-  screens: ['TELAS'],
-  cost: ['CUSTO'],
-  price: ['VALOR'],
-} as const;
-
-function normalizeHeaders(row: Record<string, unknown>): Record<string, unknown> {
-  const normalized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(row)) {
-    normalized[key.trim().toUpperCase()] = value;
-  }
-  return normalized;
-}
-
-function pick(row: Record<string, unknown>, candidates: readonly string[]): unknown {
-  for (const key of candidates) {
-    if (row[key] !== undefined && row[key] !== '') return row[key];
-  }
-  return undefined;
-}
-
-interface ImportResult {
-  status: 'imported' | 'skipped' | 'rejected';
-  identifier: string;
-  reason?: string;
-  priceCents?: bigint;
-  hasPhoneWarning?: boolean;
-}
-
-async function importRow(rawRow: Record<string, unknown>, supplierId: string, timezone: string): Promise<ImportResult> {
-  const row = normalizeHeaders(rawRow);
-
-  const rawName = pick(row, COLUMN.name);
-  const name = typeof rawName === 'string' ? rawName.trim() : String(rawName ?? '').trim();
-  const identifier = name || '(sem nome)';
-
-  if (!name) return { status: 'rejected', identifier, reason: 'Nome ausente.' };
-
-  const rawDue = pick(row, COLUMN.dueDate);
-  const parsedDueDate = rawDue !== undefined ? parseDateBR(rawDue as string | number | Date) : null;
-  if (!parsedDueDate) return { status: 'rejected', identifier, reason: 'Data de vencimento ausente ou inválida.' };
-  const dueDate = toBusinessDueDate(parsedDueDate, timezone);
-
-  const rawPrice = pick(row, COLUMN.price);
-  const priceCents = rawPrice !== undefined ? parseCentsFromBR(rawPrice as string | number) : null;
-  if (priceCents === null) return { status: 'rejected', identifier, reason: 'Valor do serviço ausente, inválido ou negativo.' };
-
-  const rawCost = pick(row, COLUMN.cost);
-  const costCents = rawCost !== undefined ? (parseCentsFromBR(rawCost as string | number) ?? 0n) : 0n;
-
-  const rawStarted = pick(row, COLUMN.startedAt);
-  const parsedStartedAt = rawStarted !== undefined ? parseDateBR(rawStarted as string | number | Date) : null;
-  const startedAt = parsedStartedAt ? toBusinessDueDate(parsedStartedAt, timezone) : new Date();
-
-  const rawUsername = pick(row, COLUMN.username);
-  const username = rawUsername !== undefined ? String(rawUsername).trim() || null : null;
-
-  const rawPassword = pick(row, COLUMN.password);
-  const password = rawPassword !== undefined ? String(rawPassword).trim() || null : null;
-
-  const screensRaw = pick(row, COLUMN.screens);
-  const screensNumber = typeof screensRaw === 'number' ? screensRaw : Number(screensRaw);
-  const screens = screensRaw !== undefined && !Number.isNaN(screensNumber) ? Math.max(1, Math.floor(screensNumber)) : 1;
-
-  const rawPhone = pick(row, COLUMN.phone);
-  const phone = rawPhone !== undefined ? normalizePhoneBR(String(rawPhone)) : null;
-  const phoneNoteSuffix = rawPhone !== undefined && !phone ? ' (telefone informado mas inválido, importado sem telefone)' : '';
-
-  // Idempotência checada ANTES de criar/tocar em Customer — ver Task 3.
-  if (username) {
-    const existing = await findImportedSubscriptionBySupplier({ supplierId, accessUsername: username });
-    if (existing) return { status: 'skipped', identifier };
-  }
-
-  const customer = phone
-    ? await db.customer.upsert({ where: { phone }, update: {}, create: { name, phone } })
-    : await db.customer.create({ data: { name, phone: null } });
-
-  await createImportedSubscription({
-    customerId: customer.id,
-    supplierId,
-    priceCents,
-    costCents,
-    nextDueAt: dueDate,
-    startedAt,
-    accessUsername: username,
-    accessPassword: password,
-    screens,
-  });
-
-  return {
-    status: 'imported',
-    identifier: identifier + phoneNoteSuffix,
-    priceCents,
-    hasPhoneWarning: phoneNoteSuffix !== '',
-  };
+function buildReportLines(supplierName: string, summary: ImportSummary): string[] {
+  const withPhoneWarning = summary.imported.filter((r) => r.hasPhoneWarning);
+  return [
+    `Importação — ${supplierName} — ${new Date().toISOString()}`,
+    `Total de linhas: ${summary.totalRows}`,
+    `Importadas: ${summary.imported.length}`,
+    `Puladas (já existiam): ${summary.skipped.length}`,
+    `Recusadas: ${summary.rejected.length}`,
+    `Soma importada: R$ ${formatCents(summary.importedTotalCents)}`,
+    '',
+    'Recusadas:',
+    ...summary.rejected.map((r: ImportRowResult) => `  - ${r.identifier}: ${r.reason}`),
+    '',
+    'Importadas com ressalva (telefone informado mas inválido):',
+    ...(withPhoneWarning.length ? withPhoneWarning.map((r) => `  - ${r.identifier}`) : ['  (nenhuma)']),
+  ];
 }
 
 async function main() {
@@ -131,44 +43,19 @@ async function main() {
     process.exit(1);
   }
 
-  const workbook = readFile(filePath, { cellDates: true });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: undefined });
+  const buffer = readFileSync(filePath);
+  const rows = readWorkbookRows(buffer);
 
   const settings = await db.settings.findUniqueOrThrow({ where: { id: 'singleton' } });
-
   const supplier = await db.supplier.upsert({
     where: { name: supplierName },
     update: {},
     create: { name: supplierName },
   });
 
-  const results: ImportResult[] = [];
-  for (const row of rows) {
-    results.push(await importRow(row, supplier.id, settings.timezone));
-  }
+  const summary = await importCustomersFromRows({ rows, supplierId: supplier.id, timezone: settings.timezone });
 
-  const imported = results.filter((r) => r.status === 'imported');
-  const skipped = results.filter((r) => r.status === 'skipped');
-  const rejected = results.filter((r) => r.status === 'rejected');
-  const withPhoneWarning = imported.filter((r) => r.hasPhoneWarning);
-  const importedTotalCents = imported.reduce((sum, r) => sum + (r.priceCents ?? 0n), 0n);
-
-  const reportLines = [
-    `Importação — ${supplierName} — ${new Date().toISOString()}`,
-    `Total de linhas: ${rows.length}`,
-    `Importadas: ${imported.length}`,
-    `Puladas (já existiam): ${skipped.length}`,
-    `Recusadas: ${rejected.length}`,
-    `Soma importada: R$ ${formatCents(importedTotalCents)}`,
-    '',
-    'Recusadas:',
-    ...rejected.map((r) => `  - ${r.identifier}: ${r.reason}`),
-    '',
-    'Importadas com ressalva (telefone informado mas inválido):',
-    ...(withPhoneWarning.length ? withPhoneWarning.map((r) => `  - ${r.identifier}`) : ['  (nenhuma)']),
-  ];
-
+  const reportLines = buildReportLines(supplierName, summary);
   const reportDir = './tmp';
   mkdirSync(reportDir, { recursive: true });
   const reportPath = `${reportDir}/import-report-${Date.now()}.txt`;

@@ -1,4 +1,5 @@
 import { endOfLocalDay } from '@/core/dates';
+import { SSF } from 'xlsx';
 
 /**
  * Converte um `Date` decodificado pelo `xlsx` (`cellDates: true`) pro instante
@@ -13,23 +14,6 @@ import { endOfLocalDay } from '@/core/dates';
  */
 export function toBusinessDueDate(cellDate: Date, timezone: string): Date {
   return endOfLocalDay(cellDate.getUTCFullYear(), cellDate.getUTCMonth(), cellDate.getUTCDate(), timezone);
-}
-
-/** Normaliza telefone brasileiro pra E.164 (+55DDDNÚMERO). null se impossível — nunca chuta DDD. */
-export function normalizePhoneBR(raw: string): string | null {
-  const digits = raw.replace(/\D/g, '');
-  if (!digits) return null;
-
-  // Já com código do país
-  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
-    return `+${digits}`;
-  }
-  // DDD + número (10 ou 11 dígitos: fixo 8 dígitos ou celular 9 dígitos)
-  if (digits.length === 10 || digits.length === 11) {
-    return `+55${digits}`;
-  }
-  // Sem DDD (7 ou 8 dígitos) — impossível recuperar o DDD, recusa.
-  return null;
 }
 
 /** Converte valor em reais (string BR/US ou número) pra centavos. null se inválido ou negativo. */
@@ -65,10 +49,39 @@ export function parseCentsFromBR(raw: string | number): bigint | null {
   return BigInt(intPart) * 100n + BigInt(cents || '0');
 }
 
+/**
+ * Serial de data do Excel (`46265`) para `Date` em UTC, sem hora.
+ *
+ * O `xlsx` só entrega `Date` quando a célula carrega formato de data. Numa
+ * planilha em que a coluna de vencimento é número puro — acontece quando alguém
+ * cola valor sem formatar — toda linha era recusada por "data ausente ou
+ * inválida", culpando o dado por uma limitação do parser. Encontrado em
+ * 25/08/2026 importando pela tela.
+ *
+ * Usa o `SSF` do próprio `xlsx` em vez de aritmética à mão: o serial 1 não é
+ * 01/01/1900 puro, e o calendário do Excel tem um 29/02/1900 que nunca existiu,
+ * herdado do Lotus 1-2-3. Reimplementar isso é como se erra por um dia.
+ *
+ * A checagem de ida e volta no fim é a mesma do ramo de texto, e é o que recusa
+ * justamente esse 29/02/1900 em vez de deixá-lo virar 01/03 em silêncio.
+ */
+function parseExcelSerial(serial: number): Date | null {
+  if (!Number.isFinite(serial) || serial <= 0) return null;
+
+  const parts = SSF.parse_date_code(serial);
+  if (!parts) return null;
+
+  const date = new Date(Date.UTC(parts.y, parts.m - 1, parts.d));
+  if (date.getUTCFullYear() !== parts.y || date.getUTCMonth() !== parts.m - 1 || date.getUTCDate() !== parts.d) {
+    return null;
+  }
+  return date;
+}
+
 /** Aceita "DD/MM/AAAA" ou um Date já convertido pelo parser do xlsx. null se inválido. */
 export function parseDateBR(raw: string | number | Date): Date | null {
   if (raw instanceof Date) return raw;
-  if (typeof raw === 'number') return null; // serial numérico não tratado aqui — xlsx já resolve células-data como Date
+  if (typeof raw === 'number') return parseExcelSerial(raw);
 
   const trimmed = raw.trim();
   if (!trimmed) return null;

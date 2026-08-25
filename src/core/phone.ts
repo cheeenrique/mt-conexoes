@@ -36,3 +36,17 @@ export function phoneSearchDigits(term: string): string | null {
   const digits = term.replace(/\D/g, '');
   return digits.length > 0 ? digits : null;
 }
+
+/**
+ * Normaliza um telefone brasileiro digitado em qualquer formato pro E.164
+ * (`+55DDDNÚMERO`) armazenado em `Customer.phone`. `null` se impossível —
+ * nunca chuta DDD quando o número não tem tamanho de telefone nacional.
+ *
+ * Reusa `nationalDigitsBR`: mesma regra de validação de tamanho/código de
+ * país que o resto do app, só reempacotada em E.164 em vez de dígitos nus.
+ * Usada pela importação da planilha (`features/customers/import`).
+ */
+export function normalizePhoneBR(raw: string): string | null {
+  const national = nationalDigitsBR(raw);
+  return national ? `+55${national}` : null;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toE164, nationalDigitsBR, phoneSearchDigits } from './phone';
+import { toE164, nationalDigitsBR, phoneSearchDigits, normalizePhoneBR } from './phone';
 
 describe('toE164', () => {
   it('adiciona "+" em telefone que chega só com dígitos (formato do webhook)', () => {
@@ -56,5 +56,27 @@ describe('phoneSearchDigits', () => {
   it('devolve null quando não sobra dígito nenhum', () => {
     expect(phoneSearchDigits('')).toBeNull();
     expect(phoneSearchDigits('()- ')).toBeNull();
+  });
+});
+
+describe('normalizePhoneBR', () => {
+  it('normaliza número formatado com DDD pra E.164', () => {
+    expect(normalizePhoneBR('(11) 99999-8888')).toBe('+5511999998888');
+  });
+
+  it('aceita dígitos crus, sem formatação', () => {
+    expect(normalizePhoneBR('11999998888')).toBe('+5511999998888');
+  });
+
+  it('é idempotente em número já em E.164', () => {
+    expect(normalizePhoneBR('+5511999998888')).toBe('+5511999998888');
+  });
+
+  it('recusa número sem DDD — nunca chuta', () => {
+    expect(normalizePhoneBR('9999-8888')).toBeNull();
+  });
+
+  it('recusa string vazia', () => {
+    expect(normalizePhoneBR('')).toBeNull();
   });
 });
