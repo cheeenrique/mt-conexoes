@@ -4,11 +4,11 @@ Guia para o Claude Code neste repositório.
 
 ## Estado atual
 
-Aplicação real, rodando. Next.js 16 (App Router) + React 19 + Prisma + Postgres. `pnpm test`, `pnpm test:integration`, `pnpm lint`, `pnpm typecheck` e `pnpm build` rodam contra código real; `pnpm dev` sobe o painel. Conferido em 22/08/2026: 468 testes unitários e 259 de integração passando (86 arquivos, 17 migrations).
+Aplicação real, rodando. Next.js 16 (App Router) + React 19 + Prisma + Postgres. `pnpm test`, `pnpm test:integration`, `pnpm lint`, `pnpm typecheck` e `pnpm build` rodam contra código real; `pnpm dev` sobe o painel. Conferido em 25/08/2026: 509 testes unitários e 262 de integração passando (89 arquivos, 18 migrations).
 
 **Existe** — as features `auth`, `charges`, `customers`, `dunning`, `leads`, `messaging`, `plans`, `reports`, `settings`, `subscriptions`, `suppliers` em `src/features/`, e as telas Início, Clientes (ficha em gaveta, com modo edição), Cobranças, Mensagens, Réguas (mestre-detalhe), Leads, Relatórios, Fornecedores, Planos, Ajustes (abas Negócio e Canais) e Conta. Crons: `charges-mark-overdue`, `dunning-evaluate`, `messages-dispatch`, `ping`. Rotas públicas: `POST /api/leads`, os webhooks `evolution` e `meta-cloud`, `/api/health`.
 
-Três coisas que a estrutura não deixa óbvias: **assinatura não tem rota própria** — vive na ficha do cliente (`/customers/[id]`); **não existe `/channels`** — canal é a aba `Canais` de `/settings?aba=canais`; e **a régua está em `/dunning`**, não mais em `/regua`. A **importação da planilha é CLI** (`pnpm import:customers <arquivo.xlsx> "<Fornecedor>"`), não tela.
+Quatro coisas que a estrutura não deixa óbvias: **assinatura não tem rota própria** — vive na ficha do cliente (`/customers/[id]`); **não existe `/channels`** — canal é a aba `Canais` de `/settings?aba=canais`; **a régua está em `/dunning`**, não mais em `/regua`; e **`/conta` é item de menu que abre em gaveta**, não link — a rota segue existindo para link direto, mas o caminho normal é o botão `Conta` da barra lateral (`features/auth/components/account-drawer.tsx`). A **importação da planilha é CLI** (`pnpm import:customers <arquivo.xlsx> "<Fornecedor>"`), não tela.
 
 **Dois Postgres locais**, nunca o mesmo: `db` na 5442 (dev) e `db-test` na 5443 (`pnpm test:integration`), com scripts próprios — ver [`prisma/README.md`](prisma/README.md). `infra/evolution/` sobe a stack Docker do canal não oficial, com a imagem fixada; é separada do `docker-compose.yml` da raiz.
 

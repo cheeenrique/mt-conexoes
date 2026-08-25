@@ -4,8 +4,13 @@
 // ou `settings` (Ajustes). Mesmo precedente de `RefreshCw` nos error.tsx.
 import { KeyRound } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
-import { ChangePasswordForm } from './change-password-form';
+import { ChangePasswordForm } from '@/features/auth/components/change-password-form';
 
+/**
+ * A conta também abre em gaveta pela barra lateral (`AccountDrawer`). Esta rota
+ * continua existindo porque é o link direto — e porque a gaveta some se o
+ * JavaScript falhar, enquanto a rota não.
+ */
 export default function ContaPage() {
   return (
     <AppShell title="Conta" icon={<KeyRound size={22} />}>

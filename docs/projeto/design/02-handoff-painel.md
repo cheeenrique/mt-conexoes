@@ -203,12 +203,19 @@ Abaixo dela, a lista filtrada. Os totais do mês ficam **depois**, não antes: e
 │ Fornecedores                                             │
 │ Planos    │                                              │
 │ Ajustes   │                                              │
+│ Conta     │  ← abre em gaveta, não navega                │
 │           │                                              │
 │ [⏸ Pausar]│  ← kill switch, sempre visível               │
 └───────────┴──────────────────────────────────────────────┘
 ```
 
 Sidebar 240px no desktop, gaveta no mobile. Item ativo marcado por **barra de 2px `--flame` na borda esquerda** e texto `--paper` — não por fundo laranja.
+
+**Conta** é o único item que não é link: abre a gaveta de troca de senha por cima da tela
+atual. Trocar a senha não é navegação — o operador não perde a lista que estava olhando, e
+volta para ela fechando. A rota `/conta` continua existindo como link direto e como caminho
+sem JavaScript. Ela ficou meses sem link nenhum apontando para ela, alcançável só digitando
+a URL.
 
 ### Início
 

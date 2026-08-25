@@ -1,13 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import {
   LayoutDashboard, Users, Receipt, MessageSquare, GitCommitHorizontal,
-  Inbox, ChartNoAxesColumn, Truck, Layers, Settings, Pause, Play,
+  Inbox, ChartNoAxesColumn, Truck, Layers, Settings, Pause, Play, KeyRound,
 } from 'lucide-react';
 import { Logo } from '@/components/ui/logo';
+import { AccountDrawer } from '@/features/auth/components/account-drawer';
 
 // Ordem e rótulos vêm do handoff (README §Sidebar). "Canais" não é item de
 // menu no handoff — é a aba "Canais de WhatsApp" dentro de Ajustes
@@ -34,11 +36,13 @@ function SidebarContent({
   pathname,
   paused,
   onTogglePause,
+  onOpenAccount,
   onNavigate,
 }: {
   pathname: string;
   paused: boolean;
   onTogglePause: () => void;
+  onOpenAccount: () => void;
   onNavigate?: () => void;
 }) {
   return (
@@ -66,6 +70,21 @@ function SidebarContent({
             </Link>
           );
         })}
+
+        {/* Conta é botão, não link: abre em gaveta para o operador não perder a
+            lista que estava olhando só para trocar a senha. A rota /conta segue
+            existindo como link direto — ver AccountDrawer. */}
+        <button
+          type="button"
+          onClick={() => {
+            onNavigate?.();
+            onOpenAccount();
+          }}
+          className="flex h-10 w-full items-center gap-2.5 border-l-2 border-transparent px-4 text-sm font-semibold text-foreground-muted"
+        >
+          <KeyRound size={17} />
+          Conta
+        </button>
       </nav>
       <button
         type="button"
@@ -96,11 +115,22 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
 
+  // Estado de UI local: a gaveta da conta não sobrevive à navegação nem ao
+  // reload, e não é dado de servidor.
+  const [accountOpen, setAccountOpen] = useState(false);
+
   return (
     <>
+      <AccountDrawer open={accountOpen} onOpenChange={setAccountOpen} />
+
       {/* Sidebar fixa — só existe em telas ≥900px (README §Responsivo). */}
       <aside className="sticky top-0 hidden h-screen w-60 flex-col border-r border-border md:flex">
-        <SidebarContent pathname={pathname} paused={paused} onTogglePause={onTogglePause} />
+        <SidebarContent
+          pathname={pathname}
+          paused={paused}
+          onTogglePause={onTogglePause}
+          onOpenAccount={() => setAccountOpen(true)}
+        />
       </aside>
 
       {/* Gaveta mobile — <900px. Base UI Dialog cuida de foco preso, Esc e
@@ -116,6 +146,7 @@ export function Sidebar({
               pathname={pathname}
               paused={paused}
               onTogglePause={onTogglePause}
+              onOpenAccount={() => setAccountOpen(true)}
               onNavigate={() => onMobileOpenChange(false)}
             />
           </DialogPrimitive.Popup>
