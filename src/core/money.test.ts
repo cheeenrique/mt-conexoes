@@ -8,8 +8,11 @@ import {
   classifyMarginTone,
   resolveAdjustedPriceCents,
   digitsToCents,
+  appendDigit,
+  dropLastDigit,
   CURRENCY_MAX_DIGITS,
 } from './money';
+import { formatCents } from '@/lib/format';
 
 describe('divRoundHalfUp', () => {
   it('arredonda 5/2 para cima (half up)', () => {
@@ -160,5 +163,63 @@ describe('digitsToCents', () => {
 
   it('nunca devolve negativo — o campo não tem sinal', () => {
     expect(digitsToCents('-500')).toBe('500');
+  });
+});
+
+describe('acumulador do campo de dinheiro', () => {
+  describe('appendDigit', () => {
+    it('empurra o dígito pela direita, como numa maquininha', () => {
+      expect(appendDigit('0', '1')).toBe('1');
+      expect(appendDigit('1', '2')).toBe('12');
+      expect(appendDigit('12', '3')).toBe('123');
+      expect(appendDigit('123', '4')).toBe('1234');
+    });
+
+    it('digitar 1,2,5,0 num campo zerado dá R$ 12,50', () => {
+      const cents = ['1', '2', '5', '0'].reduce(appendDigit, '0');
+      expect(cents).toBe('1250');
+      expect(formatCents(cents)).toBe('R$ 12,50');
+    });
+
+    it('não deixa zero à esquerda virar dígito significativo', () => {
+      expect(appendDigit('0', '0')).toBe('0');
+      expect(appendDigit('0', '7')).toBe('7');
+    });
+
+    it('para no teto de dígitos em vez de crescer sem fim', () => {
+      const cheio = '9'.repeat(CURRENCY_MAX_DIGITS);
+      expect(appendDigit(cheio, '9')).toBe(cheio);
+    });
+
+    it('ignora o que não é dígito', () => {
+      expect(appendDigit('12', ',')).toBe('12');
+      expect(appendDigit('12', 'a')).toBe('12');
+    });
+  });
+
+  describe('dropLastDigit', () => {
+    it('apaga o dígito da direita', () => {
+      expect(dropLastDigit('1250')).toBe('125');
+      expect(dropLastDigit('125')).toBe('12');
+      expect(dropLastDigit('1')).toBe('0');
+    });
+
+    it('apagar de um campo zerado continua zerado', () => {
+      expect(dropLastDigit('0')).toBe('0');
+    });
+  });
+
+  describe('o valor não depende de onde está o cursor', () => {
+    // Bug encontrado no navegador em 25/08/2026: com o cursor no início de
+    // `R$ 0,00`, digitar `7` gravava R$ 70,00 — o onChange lia os dígitos da
+    // string inteira, e o `0,00` que já estava na tela virava escala.
+    it('digitar 7 num campo zerado dá R$ 0,07, não R$ 70,00', () => {
+      expect(formatCents(appendDigit('0', '7'))).toBe('R$ 0,07');
+    });
+
+    it('digitar 1,2,5,0 nunca produz R$ 10.002,50', () => {
+      const cents = ['1', '2', '5', '0'].reduce(appendDigit, '0');
+      expect(formatCents(cents)).not.toBe('R$ 10.002,50');
+    });
   });
 });

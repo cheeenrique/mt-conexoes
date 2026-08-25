@@ -76,3 +76,28 @@ export function digitsToCents(typed: string): string {
   const digits = typed.replace(/\D/g, '').replace(/^0+/, '').slice(0, CURRENCY_MAX_DIGITS);
   return digits === '' ? '0' : digits;
 }
+
+/** Empurra um dígito pela direita no acumulador do campo de dinheiro.
+ *
+ *  ⚠️ Existe porque ler os dígitos da string exibida **depende de onde está o
+ *  cursor**. Com o cursor no início de `R$ 0,00`, digitar `7` produzia
+ *  `R$ 70,00`: o `0,00` que já estava na tela entrava como escala. O campo é
+ *  uma maquininha, não um campo de texto — o estado é o número, e a tecla é
+ *  um evento sobre ele, nunca uma edição de string.
+ *
+ *  Tecla que não é dígito não mexe no valor. */
+export function appendDigit(cents: string, key: string): string {
+  if (!/^\d$/.test(key)) return cents;
+
+  const current = cents === '0' ? '' : cents;
+  if (current.length >= CURRENCY_MAX_DIGITS) return cents;
+
+  const next = `${current}${key}`.replace(/^0+/, '');
+  return next === '' ? '0' : next;
+}
+
+/** Contraparte de `appendDigit` para o backspace. Campo zerado continua zerado. */
+export function dropLastDigit(cents: string): string {
+  const next = cents.slice(0, -1);
+  return next === '' ? '0' : next;
+}
