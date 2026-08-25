@@ -429,3 +429,91 @@ R$ 39,90 e cobrança vencendo 25/09; fornecedor `Star Play Servidor` (R$ 12,50);
 escape de CSV e **devolvido ao nome original**; o limite de margem foi a 80% e **voltou a
 30%**; a senha do painel foi trocada e **devolvida a `devlocal123`** (conferido com o
 `verify` do argon2, não só pela tela).
+
+---
+
+# Resultado da 3ª passada — 25/08/2026
+
+Régua, crons e travas. Fecha a seção 6, que tinha só quatro casos conferidos.
+
+## Falhou — corrigido e reconferido
+
+### A gaveta de passo guardava o formulário entre aberturas
+
+`step-axis.tsx` montava a gaveta com `key={editing?.id ?? 'new'}`. Duas aberturas seguidas de
+"Novo passo" recebem a mesma chave: o React reusa a instância e o react-hook-form devolve o
+passo anterior **inteiro** — dias, direção e texto.
+
+Dois sintomas, o segundo pior que o primeiro:
+
+| Ação | Mostrava |
+|---|---|
+| Salvar um passo D-3, clicar "Adicionar passo" | `D-3 · antes do vencimento`, dias `3`, texto do passo salvo |
+| Abrir um passo, editar, cancelar com Esc, reabrir | o rascunho descartado, como se fosse o salvo |
+
+O segundo faz o operador acreditar que o texto que ele decidiu não salvar é o que está
+gravado. ⚠️ Terceira ocorrência da família "conteúdo segue montado durante a animação de
+fechamento" — a primeira foi o diálogo de pagamento (`103e83d`).
+
+**Corrigido** (`d99f699`). A chave passa a incluir a contagem de aberturas. Três testes de
+componente novos, conferidos nos dois sentidos: com a chave antiga, dois deles falham.
+
+O `textarea` do texto também ganhou `aria-label`: o rótulo visível é o cabeçalho da
+`DrawerSection`, um `span` sem `htmlFor`, então quem usa leitor de tela chegava no campo sem
+nome. Foi o que impediu o teste de encontrá-lo pelo rótulo.
+
+## Passou
+
+| # | Caso | Como foi conferido |
+|---|---|---|
+| R2 | Criar régua | Nasce `DRAFT`, não vira padrão, e a padrão de hoje não muda. Rótulo do botão é "Criar em rascunho" |
+| R3 | Criar passo | D-3 criado **depois** do D+1 aparece **antes** no eixo — ordena por offset, não por criação |
+| R4 | Prévia do template | Com cliente real: `Oi Ana, sua renovação de R$ 39,90 venceu em 25/09/2026. Pix 12312312300 — MT Conexões.` |
+| R5 | Variável desconhecida | `{{foo.bar}}` → "Variável de template desconhecida: foo.bar", campo marcado, **nada gravado** |
+| R6 | Excluir passo | Confirmação nomeia o passo: "O passo D+1 deixa de existir nesta régua. Não dá para desfazer." |
+| R7 | `DRAFT → REVIEW` | Status vira `REVIEW`, **zero** mensagens criadas, banner explica |
+| R8 | Revisão antes de ativar | Diálogo traz a contagem real e as três opções |
+| R9 | Ativar a régua certa | Com duas réguas, ativou **a da tela**, não a padrão. `isDefault` intocado |
+| R10 | Trocar régua padrão | Confirmação nomeia as duas e o impacto ("9 assinaturas passam a ser avaliadas"). Troca atômica |
+| R11 | Pausar régua | Vira `PAUSED`, e a tela distingue pausa da régua do kill switch global |
+| R12 | Aviso de canal | Presente nas duas réguas |
+| — | Índice `dunning_rules_single_default` | `UPDATE` forçando duas padrão no psql: **o banco recusa** |
+| — | Índice `messages_dunning_daily_dedupe` | Existe como índice único parcial, com `WHERE kind='DUNNING' AND status<>'CANCELLED'` |
+| — | Cron sem token | 401 em `dunning-evaluate` |
+| — | Idempotência do `dunning-evaluate` | 1ª passada `queued: 1`; 2ª e 3ª `queued: 0` |
+| — | Régua padrão pausada | Cron devolve `queued: 0` — o motor respeita |
+| — | `messages-dispatch` sem canal | Sai em `no_default_channel`, tudo zero, mensagem fica `PENDING` |
+
+## Achado sem correção — decisão de produto
+
+### Régua padrão pausada para a cobrança inteira, sem aviso
+
+Com a padrão em `PAUSED`, `dunning-evaluate` devolve `queued: 0`. Correto — mas a tela não
+diz em lugar nenhum que o sistema deixou de cobrar. Pior: uma régua **`ACTIVE` que não é a
+padrão** fica ao lado, e o operador lê "Ativa" e conclui que está tudo rodando. O kill
+switch da barra lateral tem banner próprio; este estado não tem nenhum.
+
+## Não exercitável neste ambiente
+
+**T5 no despacho** (opt-out conferido também no envio). Marquei `optedOut` num cliente com
+mensagem `PENDING` e o despacho devolveu `cancelledOptedOut: 0` — porque sem canal padrão
+ele sai antes, em `no_default_channel`. A checagem existe e roda **antes** da de canal
+(`scheduled-dispatch.ts`: "Roda depois de stale/quiet-hour/opt-out/pago: esses continuam
+valendo mesmo com o canal caído") e tem teste de integração dedicado
+(`scheduled-dispatch.integration.test.ts:186`). Falta a observação com canal real.
+
+## Ainda sem cobertura
+
+M13 (ação em massa > 100), N3–N6 (canais, incluindo pareamento por QR real), R13
+(ativar sem descartar revisão, com retroativos de verdade), C1/C2/C4/C7/C8/C9, S4–S7,
+B7–B10, T2 na virada de ano, e a anonimização — que não existe.
+
+## Sujeira e restauração
+
+Deixado: `Ana Beatriz Nogueira Ramalho`, fornecedor `Star Play Servidor`, plano
+`Premium 4 Telas`, e **uma mensagem `PENDING`** de `Demo · Vence Hoje` gerada pelo cron
+(vira `CANCELLED` por `stale` depois de 24h, pela trava T8).
+
+Restaurado: régua `Cobrança suave (teste)` e seus passos **apagados**; `Régua padrão` de
+volta a padrão; `optedOut` de `Demo · Vence Hoje` desfeito; limite de margem em 30%; senha
+do painel em `devlocal123`.
