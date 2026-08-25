@@ -150,6 +150,33 @@
   :root {
     color-scheme: dark;
   }
+
+  /*
+   * Ponteiro em tudo que é clicável.
+   *
+   * `<button>` nasce com `cursor: default` no navegador — só `<a href>` ganha
+   * ponteiro sozinho. O painel é quase todo botão (43 numa única tela de
+   * Clientes, conferido em 25/08/2026), e nenhum deles sinalizava que era
+   * clicável. Fica aqui, na base, e não no componente `Button`, porque também
+   * pega ícone-botão, `role="button"`, `summary` e `label` associado — que não
+   * passam por aquele componente.
+   *
+   * Desabilitado recebe `not-allowed` de propósito: ainda é um controle, e o
+   * cursor é o que separa "não é clicável" de "está bloqueado agora".
+   */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  summary,
+  label[for],
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role='button'][aria-disabled='true'],
+  select:disabled {
+    cursor: not-allowed;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
