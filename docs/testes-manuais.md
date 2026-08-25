@@ -302,3 +302,130 @@ As linhas de demonstração com o id antigo (`demo-...`) foram apagadas do banco
 recriadas com o id novo ao rodar `pnpm db:seed:demo` depois da correção nº 4. Quem tiver
 outro banco de dev com a leva antiga precisa fazer o mesmo: o `upsert` é por `id`, então
 sem apagar as antigas ficam as duas levas lado a lado.
+
+---
+
+# Resultado da 2ª passada — 25/08/2026
+
+Executada com Playwright contra `localhost:3000`, banco de dev (5442), com **dado
+cadastrado à mão pela tela** em vez de semeado: a base de demonstração cobre estado de
+tela, não realidade — nome rotulado com o cenário, um exemplar de cada coisa, sem volume.
+
+Foco nas seções que a 1ª passada não tocou. Releitura da lista de aprovados de 24/08
+mostra que **as seções 3 (Clientes, C1–C10) e 4 (Assinaturas, S1–S7) não tiveram um único
+caso executado** — 17 casos, dois deles de credencial, que é segurança. O texto anterior
+não deixava isso explícito.
+
+## Falhou — todos corrigidos e reconferidos no navegador
+
+### 1. Campo de dinheiro erra 1000× com o cursor fora do fim
+
+Digitar `1250` no custo de um fornecedor novo, sem clicar no campo antes, dava
+`R$ 10.002,50`. Com o campo em `R$ 0,00`, tecla `Home` e depois `7`, dava `R$ 70,00` em vez
+de `R$ 0,07`.
+
+`CurrencyInput` lia os dígitos de `event.target.value` — a string inteira —, então o `0,00`
+já exibido entrava na conta como escala:
+
+| Tecla | String vira | Dígitos lidos | Valor |
+|---|---|---|---|
+| `1` | `1R$ 0,00` | `1000` | R$ 10,00 |
+| `2` | `R$ 10,002` | `10002` | R$ 100,02 |
+| `5` | `R$ 100,025` | `100025` | R$ 1.000,25 |
+| `0` | `R$ 1.000,250` | `1000250` | R$ 10.002,50 |
+
+⚠️ Segunda quebra deste campo pela mesma raiz — tratá-lo como texto. A primeira foi a
+máscara controlada que perdia dígito (corrigida em `103e83d`), e a correção de lá cobriu só
+o cursor no fim.
+
+**Corrigido** (`ef8939f`). A tecla virou evento sobre o número: `appendDigit` e
+`dropLastDigit` em `core/money.ts`, com teste, e `onKeyDown` barrando as teclas de edição
+que num acumulador não significam nada. Colar segue pelo `onChange`, único caso em que a
+string é a intenção do operador. Reconferido nos três caminhos: `R$ 12,50`, `R$ 0,07` e
+backspace zerando.
+
+### 2. `/api/health` responde `ok` sem tocar no banco
+
+Era `return NextResponse.json({ status: 'ok' })`, sem query nenhuma. Com o Postgres de dev
+parado havia 22 horas, o endpoint seguia devolvendo 200. No Cloud Run isso mantém no
+balanceador uma instância que não atende requisição nenhuma.
+
+Caso X6 ("200 com o banco de pé") nunca tinha sido conferido — o banco sempre estava de pé
+quando alguém olhou.
+
+**Corrigido** (`2eadf92`). Reconferido parando o container: `503 {"status":"degraded"}`,
+sem vazar o erro do Postgres; religado, volta a `200 {"status":"ok"}` sozinho.
+
+### 3. Percentual com ponto decimal em interface pt-BR
+
+`Margem: 74.9%` no formulário de assinatura. Doze lugares formatavam à mão, sete com
+`toFixed(0)` e cinco com `toFixed(1)`; os de uma casa mostravam ponto. Na ficha do cliente
+dava para ver `margem 75%` no cabeçalho e `74.9%` no formulário logo abaixo, na mesma tela.
+
+**Corrigido** (`373c118`). `formatPercent` em `lib/format.ts`, ao lado de `formatCents`
+porque é apresentação. Mantida a precisão de cada site — mudar as casas dos relatórios
+alteraria número na tela do cliente, o que não é o objetivo do fix. Reconferido:
+`74,9%` na ficha, `59,8%` em fornecedores, `64,2%` no plano novo.
+
+## Passou
+
+| Área | Casos |
+|---|---|
+| Auth | **A4** (troca de senha: hash muda, `sessionVersion` 1→2, senha antiga deixa de valer, sessão própria sobrevive), **A5** (senha atual errada: erro ancorado no campo, hash e `sessionVersion` intactos) |
+| Clientes | **C3** (busca por nome, filtro em `searchParams`), **C5** (telefone duplicado recusado, nada gravado), **C10** (Esc fecha a gaveta mantendo o filtro) |
+| Assinaturas | **S1** (`nextDueAt` = `startedAt + ciclo`, gravado 23:59:59 local), **S2** (usuário **e** senha em `••••••••`, copiar desabilitado), **S3** (revelar audita em `credential_reveals` com data, IP, usuário e cliente; valor confere; remascara ao reabrir **sem** gravar revelação falsa) |
+| Cobranças | **B1** (cadastro gera a primeira cobrança: 3990 centavos, custo congelado, vence 25/09) |
+| Relatórios | **T4** (export CSV escapa fórmula: cliente renomeado para `=cmd\|'/C calc'!A0` saiu como `'=cmd...`; endpoint sem sessão devolve 307), **T5** (mês sem dado: tudo `R$ 0,00`, margem `—`, empty state, sem erro) |
+| Ajustes | **F5** ponta a ponta — limite de margem de 30% para 80% levou o alerta do Início de 2 para 9 assinaturas |
+| Planos e Fornecedores | criação dos dois pela tela, com valores conferidos no banco |
+
+## Achados sem correção — decisão de produto
+
+### Não existe logout
+
+A barra lateral tem dez links e "Pausar envios". `/conta` tem só o formulário de senha.
+`clearSessionCookie` existe em `lib/auth.ts` e **não tem um único chamador**. O caso A6
+("Logout → volta pro login") não tem como passar. Numa máquina compartilhada o cookie fica.
+
+### `/conta` é inalcançável por clique
+
+A rota existe e funciona; link nenhum aponta para ela. Só digitando a URL.
+
+### Troca de senha sem confirmação da nova
+
+O formulário tem "Senha atual" e "Nova senha", sem repetir a nova. A tela de login diz que
+"redefinição é feita no servidor, com o dono do sistema" — ou seja, um erro de digitação
+aqui tranca o dono fora do próprio painel, sem caminho de recuperação pela interface.
+
+### Fornecedor no formulário de plano não puxa o custo padrão
+
+Escolher fornecedor no cadastro de plano deixa o custo em `R$ 0,00` e exibe
+`Margem sugerida: 100,0%`. O formulário de assinatura, ao escolher o plano, puxa o custo
+sozinho. Duas telas que escolhem fornecedor com comportamento diferente.
+
+### Telefone duplicado mostra duas mensagens
+
+Erro de domínio no topo do formulário ("Já existe um cliente com esse telefone.") e aviso
+inline sob o campo ("Já existe um cliente com esse WhatsApp: <nome>."), ao mesmo tempo,
+com palavras diferentes para a mesma coisa. O inline é melhor: nomeia quem é.
+
+### Banco fora do ar e senha errada dão a mesma mensagem no login
+
+"Não foi possível entrar. Tente de novo." Não revelar se o e-mail existe está certo; mandar
+tentar de novo quando o banco está fora faz o operador repetir para sempre.
+
+## Ainda sem cobertura
+
+M13 (ação em massa > 100), N3–N6 (canais, incluindo pareamento por QR real), a régua
+(R2, R3, R6–R11), Mensagens além do que a 1ª passada viu, C1/C2/C4/C7/C8/C9, S4–S7,
+B7–B10, T2 na virada de ano, e a anonimização — que
+[não existe](../superpowers/specs/2026-08-25-anonimizacao-lgpd-design.md).
+
+## Sujeira deixada na base de dev
+
+Somada à da 1ª passada: cliente `Ana Beatriz Nogueira Ramalho` com assinatura mensal de
+R$ 39,90 e cobrança vencendo 25/09; fornecedor `Star Play Servidor` (R$ 12,50); plano
+`Premium 4 Telas` (R$ 69,90 / R$ 25,00). `Demo · Vence Hoje` foi renomeado para testar o
+escape de CSV e **devolvido ao nome original**; o limite de margem foi a 80% e **voltou a
+30%**; a senha do painel foi trocada e **devolvida a `devlocal123`** (conferido com o
+`verify` do argon2, não só pela tela).
