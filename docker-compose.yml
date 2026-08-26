@@ -42,15 +42,26 @@ services:
       timeout: 3s
       retries: 10
 
+  # Simula o Cloud Scheduler batendo nas rotas de cron. Não sobe junto com o
+  # banco: `docker compose up -d db` deixa este parado de propósito, porque ele
+  # depende do `pnpm dev` estar no ar. Ligue com `docker compose --profile cron
+  # up -d cron-sim` quando quiser ver a régua rodando sozinha.
+  #
+  # ⚠️ A lista precisa cobrir as QUATRO rotas. Ela ficou meses com só `ping` e
+  # `charges-mark-overdue`, deixando de fora justamente `dunning-evaluate` e
+  # `messages-dispatch` — o motor da régua e o despacho, que são o que o produto
+  # faz. Subir o simulador sem elas dá a impressão de que o agendamento está
+  # coberto quando o essencial nunca é chamado.
   cron-sim:
     image: node:20-alpine
     container_name: mt-conexoes-cron-sim
+    profiles: ["cron"]
     depends_on:
       - db
     environment:
       APP_URL: http://host.docker.internal:3000
       CRON_SECRET: ${CRON_SECRET:-dev-cron-secret}
-      CRON_ENDPOINTS: /api/cron/ping,/api/cron/charges-mark-overdue
+      CRON_ENDPOINTS: /api/cron/ping,/api/cron/charges-mark-overdue,/api/cron/dunning-evaluate,/api/cron/messages-dispatch
       INTERVAL_SECONDS: "60"
     volumes:
       - ./docker/cron-sim/entrypoint.sh:/entrypoint.sh:ro

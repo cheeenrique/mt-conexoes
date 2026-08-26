@@ -185,6 +185,29 @@ Todos idempotentes por constraint — detalhe em [`06-regua-e-canais.md`](./06-r
 
 ⚠️ O fuso do Cloud Scheduler é configurado em `America/Sao_Paulo`. O horário de referência do sistema é sempre o local, nunca UTC.
 
+### Rodando os crons localmente
+
+O serviço `cron-sim` do `docker-compose.yml` faz o papel do Cloud Scheduler: bate nas quatro
+rotas a cada 60 segundos, com o mesmo bearer token que `assertCloudSchedulerToken` aceita fora
+de produção.
+
+```bash
+pnpm dev                                          # o simulador chama localhost:3000
+docker compose --profile cron up -d cron-sim
+docker logs -f mt-conexoes-cron-sim
+docker compose --profile cron stop cron-sim
+```
+
+Fica atrás de um **profile** de propósito: sem isso ele subiria junto com `docker compose up -d db`
+e ficaria batendo numa porta sem ninguém escutando. É opt-in porque depende do `pnpm dev` estar no ar.
+
+⚠️ `CRON_ENDPOINTS` precisa listar as **quatro** rotas. Ficou meses com apenas `ping` e
+`charges-mark-overdue`, deixando de fora `dunning-evaluate` e `messages-dispatch` — o motor da
+régua e o despacho, que são o que o produto faz. Simulador rodando sem elas dá a impressão de que
+o agendamento está coberto enquanto o essencial nunca é chamado. Conferido em 26/08/2026: dois
+ciclos completos, dezesseis chamadas, todas 200, e a segunda passada não duplicou mensagem —
+a idempotência vale pelo caminho do agendador, não só pelo `curl` na mão.
+
 ## Ambientes
 
 | | Desenvolvimento | Produção |
