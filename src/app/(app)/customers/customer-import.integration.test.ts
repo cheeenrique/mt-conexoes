@@ -4,7 +4,12 @@ import { decrypt } from '@/lib/crypto';
 import { buildFixtureWorkbook } from '@/features/customers/import/__fixtures__/generate-fixture';
 import { readWorkbookRows } from '@/features/customers/import/workbook';
 import { ImportSupplierNotFoundError } from '@/features/customers/import/errors';
-import { importCustomersFromRows, importCustomersFromUpload } from './customer-import';
+import {
+  importCustomersFromRows,
+  importCustomersFromUpload,
+  previewCustomersImport,
+  previewCustomersImportFromUpload,
+} from './customer-import';
 
 const SUPPLIER_A = 'Fornecedor Import Teste A';
 const SUPPLIER_B = 'Fornecedor Import Teste B';
@@ -161,6 +166,87 @@ describe('importCustomersFromUpload', () => {
     const summary = await importCustomersFromUpload({ supplierId: supplier.id, file });
 
     expect(summary.imported).toHaveLength(1);
+    expect(await db.customer.count({ where: { name: 'Maria Import Teste' } })).toBe(1);
+  });
+});
+
+describe('previewCustomersImport — Etapa 2, não escreve', () => {
+  it('não grava nada no banco: contagem de customers/subscriptions antes e depois é idêntica', async () => {
+    const supplier = await createSupplier(SUPPLIER_A);
+    const rows = [
+      { CODIGO: 'Maria Import Teste', USUARIO: 'maria.preview.teste', VALIDADE: '10/08/2026', VALOR: '50,00', CUSTO: '20,00' },
+      { CODIGO: 'Cliente Sem Telefone Teste', VALIDADE: '10/08/2026', VALOR: '30,00' },
+      { CODIGO: 'Sem Nome Import Teste', VALIDADE: '10/08/2026', VALOR: -10 },
+    ];
+
+    const customersBefore = await db.customer.count();
+    const subscriptionsBefore = await db.subscription.count();
+
+    const plan = await previewCustomersImport({ rows, supplierId: supplier.id, timezone: TZ, now: NOW });
+
+    expect(await db.customer.count()).toBe(customersBefore);
+    expect(await db.subscription.count()).toBe(subscriptionsBefore);
+    expect(plan.toImport).toHaveLength(2);
+    expect(plan.rejected).toHaveLength(1);
+  });
+
+  it('classifica como "já existe" a linha cujo accessUsername já está gravado para o fornecedor', async () => {
+    const supplier = await createSupplier(SUPPLIER_A);
+    await importCustomersFromRows({
+      rows: [{ CODIGO: 'Maria Import Teste', USUARIO: 'maria.ja.existe', VALIDADE: '10/08/2026', VALOR: '50,00' }],
+      supplierId: supplier.id,
+      timezone: TZ,
+      now: NOW,
+    });
+
+    const plan = await previewCustomersImport({
+      rows: [{ CODIGO: 'Maria Import Teste', USUARIO: 'maria.ja.existe', VALIDADE: '10/08/2026', VALOR: '50,00' }],
+      supplierId: supplier.id,
+      timezone: TZ,
+      now: NOW,
+    });
+
+    expect(plan.toImport).toHaveLength(0);
+    expect(plan.alreadyExists).toHaveLength(1);
+  });
+
+  it('erro de domínio quando o fornecedor não existe, sem tocar no banco', async () => {
+    await expect(
+      previewCustomersImport({
+        rows: [{ CODIGO: 'Maria Import Teste', VALIDADE: '10/08/2026', VALOR: '50,00' }],
+        supplierId: '019199aa-0000-7000-8000-000000000000',
+        timezone: TZ,
+        now: NOW,
+      }),
+    ).rejects.toBeInstanceOf(ImportSupplierNotFoundError);
+  });
+});
+
+describe('previewCustomersImportFromUpload → importCustomersFromUpload — prévia grava exatamente o que prometeu', () => {
+  it('confirmar depois da prévia importa as mesmas linhas que o plano listou como novas', async () => {
+    const supplier = await createSupplier(SUPPLIER_A);
+    const buffer = buildFixtureWorkbook([
+      { CODIGO: 'Maria Import Teste', USUARIO: 'maria.plano.teste', VALIDADE: new Date('2026-08-10'), VALOR: '50,00' },
+      { CODIGO: 'Sem Nome Import Teste', VALIDADE: new Date('2026-08-10'), VALOR: -10 },
+    ]);
+    const buildFile = () =>
+      new File([new Uint8Array(buffer)], 'planilha.xlsx', {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    const { fileName, plan } = await previewCustomersImportFromUpload({ supplierId: supplier.id, file: buildFile() });
+
+    expect(fileName).toBe('planilha.xlsx');
+    expect(plan.toImport).toHaveLength(1);
+    expect(plan.rejected).toHaveLength(1);
+    expect(await db.customer.count({ where: { name: 'Maria Import Teste' } })).toBe(0);
+
+    // Mesmo arquivo reenviado pelo navegador na confirmação — não é o mesmo File em memória,
+    // mas o mesmo conteúdo, exatamente como a tela faz.
+    const summary = await importCustomersFromUpload({ supplierId: supplier.id, file: buildFile() });
+
+    expect(summary.imported).toHaveLength(1);
+    expect(summary.rejected).toHaveLength(1);
     expect(await db.customer.count({ where: { name: 'Maria Import Teste' } })).toBe(1);
   });
 });

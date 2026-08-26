@@ -1,5 +1,7 @@
-import { Users } from 'lucide-react';
+import Link from 'next/link';
+import { Upload, Users } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
+import { Button } from '@/components/ui/button';
 import { listCustomers } from '@/features/customers/queries';
 import { listActivePlansForSelect } from '@/features/plans/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
@@ -9,10 +11,8 @@ import { CustomerFilters } from '@/features/customers/components/customer-filter
 import { CustomerTable } from '@/features/customers/components/customer-table';
 import { CustomerFichaDrawer } from '@/features/customers/components/ficha/customer-ficha-drawer';
 import { NewCustomerButton } from '@/features/customers/components/new-customer-button';
-import { ImportCustomersDialog } from '@/features/customers/components/import-customers-dialog';
 import { loadCustomerFichaAction, revealAccessPasswordAction } from './ficha-action';
 import { findCustomerByPhoneAction, saveCustomerFichaAction } from './customer-actions';
-import { importCustomersAction } from './import-action';
 
 const PER_PAGE_OPTIONS = [8, 12, 20] as const;
 
@@ -46,7 +46,10 @@ export default async function CustomersPage({
       icon={<Users size={22} />}
       primaryAction={
         <div className="flex items-center gap-2">
-          <ImportCustomersDialog suppliers={suppliers} importCustomers={importCustomersAction} />
+          <Button variant="outline" nativeButton={false} render={<Link href="/customers/import" />}>
+            <Upload aria-hidden="true" />
+            Importar planilha
+          </Button>
           <NewCustomerButton plans={plans} suppliers={suppliers} saveFicha={saveCustomerFichaAction} checkPhone={findCustomerByPhoneAction} />
         </div>
       }
