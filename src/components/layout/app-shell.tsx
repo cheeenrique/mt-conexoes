@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 import { PauseBanner } from './pause-banner';
@@ -27,6 +28,12 @@ export function AppShell({
   // local — nunca precisa sobreviver à navegação ou ao reload.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  // Chave da animação de entrada do conteúdo. Só o caminho, nunca os
+  // `searchParams`: filtrar a lista de cobranças ou abrir a gaveta do cliente
+  // por `?cliente=` mudam a busca, não a rota, e reanimar a tela inteira a cada
+  // filtro digitado seria pior que não animar.
+  const pathname = usePathname();
+
   return (
     // Provider único: dá o delay em grupo (README/tooltip §mecanismo de
     // grupo) a todo botão-ícone da tela — nunca um por tooltip individual.
@@ -51,7 +58,28 @@ export function AppShell({
             />
           </div>
           <main className="flex-1" style={{ padding: 'clamp(16px, 3vw, 28px)' }}>
-            {children}
+            {/*
+              * Conteúdo entra subindo. A `key` no caminho é o que faz o efeito
+              * repetir a cada navegação: o `<main>` sobrevive à troca de rota, e
+              * animação CSS só dispara na montagem — sem trocar de chave, o
+              * conteúdo subiria uma vez, no primeiro carregamento, e nunca mais.
+              *
+              * `fill-mode-both` segura o primeiro e o último frame. Sem ele o
+              * elemento pinta um frame na posição final antes de a animação
+              * começar, e a tela dá um solavanco em vez de subir — foi o que
+              * fez o overlay da gaveta piscar (ver `components/ui/drawer.tsx`).
+              *
+              * Movimento curto (8px) e rápido (250ms) de propósito: isto roda em
+              * TODA navegação, e o que passa despercebido uma vez incomoda na
+              * quinquagésima. Quem pediu `prefers-reduced-motion` não vê nada —
+              * o bloco em `globals.css` zera a duração.
+              */}
+            <div
+              key={pathname}
+              className="animate-in fade-in-0 slide-in-from-bottom-2 duration-250 fill-mode-both"
+            >
+              {children}
+            </div>
           </main>
         </div>
       </div>
