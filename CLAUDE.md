@@ -4,7 +4,7 @@ Guia para o Claude Code neste repositório.
 
 ## Estado atual
 
-Aplicação real, rodando. Next.js 16 (App Router) + React 19 + Prisma + Postgres. `pnpm test`, `pnpm test:integration`, `pnpm lint`, `pnpm typecheck` e `pnpm build` rodam contra código real; `pnpm dev` sobe o painel. Conferido em 26/08/2026: 542 testes unitários e 275 de integração passando (95 arquivos, 18 migrations).
+Aplicação real, rodando. Next.js 16 (App Router) + React 19 + Prisma + Postgres. `pnpm test`, `pnpm test:integration`, `pnpm lint`, `pnpm typecheck` e `pnpm build` rodam contra código real; `pnpm dev` sobe o painel. Conferido em 27/08/2026: 548 testes unitários e 275 de integração passando (96 arquivos, 18 migrations).
 
 **Existe** — as features `auth`, `charges`, `customers`, `dunning`, `leads`, `messaging`, `plans`, `reports`, `settings`, `subscriptions`, `suppliers` em `src/features/`, e as telas Início, Clientes (ficha em gaveta, com modo edição), Cobranças, Mensagens, Réguas (mestre-detalhe), Leads, Relatórios, Fornecedores, Planos, Ajustes (abas Negócio e Canais) e Conta. Crons: `charges-mark-overdue`, `dunning-evaluate`, `messages-dispatch`, `ping`. Rotas públicas: `POST /api/leads`, os webhooks `evolution` e `meta-cloud`, `/api/health`.
 

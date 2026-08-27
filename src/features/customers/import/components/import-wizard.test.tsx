@@ -65,7 +65,10 @@ describe('ImportWizard — "Voltar" não perde a escolha', () => {
     await user.click(screen.getByRole('button', { name: /voltar/i }));
 
     expect(screen.getByRole('combobox', { name: /fornecedor/i })).toHaveTextContent('Star Play Servidor');
-    expect(screen.getByText('Arquivo selecionado: planilha.xlsx')).toBeInTheDocument();
+    // O nome do arquivo aparece na própria área de upload (`SpreadsheetDropzone`),
+    // não mais como texto solto abaixo do campo.
+    expect(screen.getByText('planilha.xlsx')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remover planilha\.xlsx/i })).toBeInTheDocument();
   });
 
   it('o botão Conferir nasce desabilitado sem fornecedor e sem arquivo', () => {

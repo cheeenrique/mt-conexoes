@@ -5,11 +5,15 @@ import { ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { SpreadsheetDropzone } from './spreadsheet-dropzone';
 
 /**
- * Etapa 1: fornecedor + arquivo. Mostra o nome do arquivo assim que escolhido
- * — hoje o `<input type="file">` nu não dava essa confirmação, e o operador
- * não tinha como saber se tinha pego o arquivo certo antes de enviar.
+ * Etapa 1: fornecedor + arquivo.
+ *
+ * O campo de arquivo era um `<input type="file">` nu, com o botão cinza do
+ * navegador: não dava para arrastar, não confirmava o que tinha sido escolhido
+ * e destoava do resto do painel. Virou `SpreadsheetDropzone`, que aceita
+ * arrastar ou clicar e mostra nome e tamanho depois da escolha.
  */
 export function ChooseImportStep({
   suppliers,
@@ -37,8 +41,8 @@ export function ChooseImportStep({
       className="flex max-w-lg flex-col gap-4"
     >
       <p className="text-sm text-foreground-muted">
-        Um arquivo por fornecedor (.xlsx ou .xlsm). Linha sem telefone é aceita; nada é gravado nesta etapa — a
-        próxima tela mostra o que entraria antes de confirmar.
+        Linha sem telefone é aceita. Nada é gravado nesta etapa — a próxima tela mostra o que entraria antes de
+        confirmar.
       </p>
       <div className="space-y-1.5">
         <Label htmlFor="import-supplier">Fornecedor</Label>
@@ -58,14 +62,7 @@ export function ChooseImportStep({
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="import-file">Arquivo</Label>
-        <input
-          id="import-file"
-          type="file"
-          accept=".xlsx,.xlsm"
-          onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
-          className="flex h-11 w-full items-center rounded-sm border border-border bg-surface-elevated px-3 text-sm text-foreground file:mr-3 file:rounded-badge file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-sm file:font-medium file:text-foreground"
-        />
-        {file && <p className="text-sm text-foreground-muted">Arquivo selecionado: {file.name}</p>}
+        <SpreadsheetDropzone id="import-file" file={file} onFileChange={onFileChange} disabled={submitting} />
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" nativeButton={false} render={<Link href="/customers" />}>
