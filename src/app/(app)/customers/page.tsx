@@ -13,13 +13,7 @@ import { CustomerFichaDrawer } from '@/features/customers/components/ficha/custo
 import { NewCustomerButton } from '@/features/customers/components/new-customer-button';
 import { loadCustomerFichaAction, revealAccessPasswordAction } from './ficha-action';
 import { findCustomerByPhoneAction, saveCustomerFichaAction } from './customer-actions';
-
-const PER_PAGE_OPTIONS = [8, 12, 20] as const;
-
-function resolvePerPage(raw: string | undefined): 8 | 12 | 20 {
-  const value = Number(raw);
-  return PER_PAGE_OPTIONS.includes(value as (typeof PER_PAGE_OPTIONS)[number]) ? (value as 8 | 12 | 20) : 8;
-}
+import { resolvePerPage } from '@/components/ui/data-table-paging';
 
 export default async function CustomersPage({
   searchParams,

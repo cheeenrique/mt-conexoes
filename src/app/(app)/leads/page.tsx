@@ -11,13 +11,7 @@ import { listActivePlansForSelect } from '@/features/plans/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
 import { findCustomerByPhoneAction } from '../customers/customer-actions';
 import { convertLeadAction } from './convert-lead-action';
-
-const PER_PAGE_OPTIONS = [8, 12, 20] as const;
-
-function parsePerPage(value: string | undefined): 8 | 12 | 20 {
-  const parsed = Number(value);
-  return (PER_PAGE_OPTIONS as readonly number[]).includes(parsed) ? (parsed as 8 | 12 | 20) : 8;
-}
+import { resolvePerPage } from '@/components/ui/data-table-paging';
 
 export default async function LeadsPage({
   searchParams,
@@ -26,7 +20,7 @@ export default async function LeadsPage({
 }) {
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
-  const perPage = parsePerPage(params.perPage);
+  const perPage = resolvePerPage(params.perPage);
   const q = params.q ?? '';
   const status = leadStatusSchema.safeParse(params.status).data;
   const hasFilter = q !== '' || status !== undefined;

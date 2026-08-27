@@ -13,6 +13,7 @@ import { formatCents, formatPercent } from '@/lib/format';
 import { marginBadgeTone } from '@/lib/margin-tone';
 import { SupplierDrawer } from './supplier-drawer';
 import type { SupplierDTO } from '../queries';
+import type { PerPage } from '@/components/ui/data-table-paging';
 
 export function SupplierTable({
   rows,
@@ -24,7 +25,7 @@ export function SupplierTable({
   rows: SupplierDTO[];
   total: number;
   page: number;
-  perPage: 8 | 12 | 20;
+  perPage: PerPage;
   marginAlertPercent: string;
 }) {
   const router = useRouter();

@@ -14,7 +14,7 @@ describe('DataTable', () => {
         rows={[{ id: '1', name: 'João' }]}
         rowKey={(row: Row) => row.id}
         page={1}
-        perPage={8}
+        perPage={10}
         total={1}
         onPageChange={() => {}}
         onPerPageChange={() => {}}
@@ -34,7 +34,7 @@ describe('DataTable', () => {
         rows={[]}
         rowKey={(row: Row) => row.id}
         page={1}
-        perPage={8}
+        perPage={10}
         total={0}
         onPageChange={() => {}}
         onPerPageChange={() => {}}
@@ -53,7 +53,7 @@ describe('DataTable', () => {
         rows={[{ id: '1', name: 'João' }]}
         rowKey={(row: Row) => row.id}
         page={1}
-        perPage={8}
+        perPage={10}
         total={20}
         onPageChange={onPageChange}
         onPerPageChange={() => {}}

@@ -14,6 +14,7 @@ import { relativeWhen } from '../when';
 import type { LeadListRowDTO } from '../queries';
 import type { ConvertLead, FindCustomerByPhone } from '../convert-types';
 import type { ConvertPlanOption, ConvertSupplierOption } from './convert-options';
+import type { PerPage } from '@/components/ui/data-table-paging';
 
 export function LeadTable({
   rows,
@@ -31,7 +32,7 @@ export function LeadTable({
   rows: LeadListRowDTO[];
   total: number;
   page: number;
-  perPage: 8 | 12 | 20;
+  perPage: PerPage;
   /** Há busca ou chip aplicado — separa "nenhum lead ainda" de "o filtro não achou". */
   filtered: boolean;
   /** Instante resolvido no servidor: "há 2 horas" precisa render determinístico. */

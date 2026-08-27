@@ -1,5 +1,6 @@
 import type { LeadStatus, Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
+import type { PerPage } from '@/components/ui/data-table-paging';
 
 export interface LeadListRowDTO {
   id: string;
@@ -15,7 +16,7 @@ export interface LeadListRowDTO {
 
 export interface LeadListParams {
   page: number;
-  perPage: 8 | 12 | 20;
+  perPage: PerPage;
   q?: string;
   status?: LeadStatus;
 }

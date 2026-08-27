@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import type { BillingCycle } from '@prisma/client';
+import type { PerPage } from '@/components/ui/data-table-paging';
 
 export interface PlanDTO {
   id: string;
@@ -58,7 +59,7 @@ async function countActiveSubscriptionsByPlan(planIds: string[]): Promise<Map<st
 
 export async function listPlans(params: {
   page: number;
-  perPage: 8 | 12 | 20;
+  perPage: PerPage;
 }): Promise<{ rows: PlanDTO[]; total: number }> {
   const [rows, total] = await Promise.all([
     db.plan.findMany({

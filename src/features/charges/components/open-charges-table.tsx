@@ -13,8 +13,8 @@ import { ChargeStatusBadge } from './charge-status-badge';
 import { ChargeRowActions } from './charge-row-actions';
 import { RegisterPaymentDialog } from './register-payment-dialog';
 import type { ChargeDTO } from '../queries';
+import type { PerPage } from '@/components/ui/data-table-paging';
 
-export type PerPage = 8 | 12 | 20;
 
 export function OpenChargesTable({
   charges,

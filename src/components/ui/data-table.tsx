@@ -5,8 +5,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Select } from './select';
 import { Skeleton } from './skeleton';
 import { DataTableCard } from './data-table-card';
+import { PER_PAGE_OPTIONS, type PerPage } from './data-table-paging';
 
-const PER_PAGE_OPTIONS = [8, 12, 20] as const;
 
 export interface Column<T> {
   header: string;
@@ -30,10 +30,10 @@ export function DataTable<T>({
   rows: T[];
   rowKey: (row: T) => string;
   page: number;
-  perPage: 8 | 12 | 20;
+  perPage: PerPage;
   total: number;
   onPageChange: (page: number) => void;
-  onPerPageChange: (perPage: 8 | 12 | 20) => void;
+  onPerPageChange: (perPage: PerPage) => void;
   emptyState: ReactNode;
   loading?: boolean;
 }) {
@@ -108,8 +108,8 @@ export function DataTable<T>({
             value={String(perPage)}
             onValueChange={(next) => {
               const value = Number(next);
-              if (PER_PAGE_OPTIONS.includes(value as (typeof PER_PAGE_OPTIONS)[number])) {
-                onPerPageChange(value as 8 | 12 | 20);
+              if ((PER_PAGE_OPTIONS as readonly number[]).includes(value)) {
+                onPerPageChange(value as PerPage);
               }
             }}
             className="h-11 w-20 rounded-badge px-2 text-xs md:h-8"

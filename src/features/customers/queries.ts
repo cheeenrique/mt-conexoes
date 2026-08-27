@@ -7,6 +7,7 @@ import {
   type CustomerSituationFilter,
 } from '@/core/customer-situation';
 import type { Prisma, SubscriptionStatus } from '@prisma/client';
+import type { PerPage } from '@/components/ui/data-table-paging';
 
 export interface CustomerDTO {
   id: string;
@@ -113,7 +114,7 @@ const LIST_INCLUDE = {
 
 export async function listCustomers(params: {
   page: number;
-  perPage: 8 | 12 | 20;
+  perPage: PerPage;
   q?: string;
   situation?: CustomerSituationFilter;
   now: Date;

@@ -4,8 +4,7 @@ import { listPlans } from '@/features/plans/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
 import { PlanTable } from '@/features/plans/components/plan-table';
 import { NewPlanButton } from '@/features/plans/components/new-plan-button';
-
-const PER_PAGE_OPTIONS = [8, 12, 20] as const;
+import { resolvePerPage } from '@/components/ui/data-table-paging';
 
 export default async function PlansPage({
   searchParams,
@@ -14,9 +13,7 @@ export default async function PlansPage({
 }) {
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
-  const perPage = (PER_PAGE_OPTIONS.includes(Number(params.perPage) as (typeof PER_PAGE_OPTIONS)[number])
-    ? Number(params.perPage)
-    : 8) as 8 | 12 | 20;
+  const perPage = resolvePerPage(params.perPage);
 
   const [{ rows, total }, suppliers] = await Promise.all([
     listPlans({ page, perPage }),

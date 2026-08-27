@@ -7,7 +7,8 @@ import { formatLocalDate } from '@/lib/format';
 import { getSettings } from '@/lib/settings';
 import { getDueDateOverview } from '@/features/charges/queries';
 import { DueDateStrip } from '@/features/charges/components/due-date-strip';
-import { OpenChargesTable, type PerPage } from '@/features/charges/components/open-charges-table';
+import { OpenChargesTable } from '@/features/charges/components/open-charges-table';
+import { resolvePerPage } from '@/components/ui/data-table-paging';
 import { getDashboardKpis, getMonthlySummary } from '@/features/reports/queries';
 import { MonthlySummaryCard } from '@/features/reports/components/monthly-summary-card';
 import { DashboardKpis } from '@/features/reports/components/dashboard-kpis';
@@ -18,16 +19,9 @@ import { MarginAlertBanner } from '@/features/subscriptions/components/margin-al
 import { getChannelDownAlert } from '@/features/messaging/queries';
 import { ChannelDownBanner } from '@/features/messaging/components/channel-down-banner';
 
-const PER_PAGE_VALUES = [8, 12, 20] as const;
-
 /** `null` = sem coluna selecionada. O segundo clique na faixa cai aqui. */
 function parseBucket(raw: string | undefined): DueDateBucket | null {
   return (DUE_DATE_BUCKETS as readonly string[]).includes(raw ?? '') ? (raw as DueDateBucket) : null;
-}
-
-function parsePerPage(raw: string | undefined): PerPage {
-  const value = Number(raw);
-  return PER_PAGE_VALUES.includes(value as PerPage) ? (value as PerPage) : 8;
 }
 
 function parsePage(raw: string | undefined): number {
@@ -42,7 +36,7 @@ export default async function DashboardPage({
 }) {
   const params = await searchParams;
   const selectedBucket = parseBucket(params.bucket);
-  const perPage = parsePerPage(params.perPage);
+  const perPage = resolvePerPage(params.perPage);
   const requestedPage = parsePage(params.page);
 
   const now = new Date();

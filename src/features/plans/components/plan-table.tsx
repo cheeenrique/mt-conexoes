@@ -11,6 +11,7 @@ import { formatCents } from '@/lib/format';
 import { CYCLE_LABELS } from '@/lib/labels';
 import { PlanDrawer } from './plan-drawer';
 import type { PlanDTO } from '../queries';
+import type { PerPage } from '@/components/ui/data-table-paging';
 
 function cycleLabel(cycle: string): string {
   return CYCLE_LABELS[cycle] ?? cycle;
@@ -26,7 +27,7 @@ export function PlanTable({
   rows: PlanDTO[];
   total: number;
   page: number;
-  perPage: 8 | 12 | 20;
+  perPage: PerPage;
   suppliers: { id: string; name: string }[];
 }) {
   const router = useRouter();

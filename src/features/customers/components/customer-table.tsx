@@ -13,6 +13,7 @@ import { useCustomerParam } from '../use-customer-param';
 import { NewCustomerButton } from './new-customer-button';
 import type { CustomerListRowDTO } from '../queries';
 import type { FichaPlanOption, FindCustomerByPhone, SaveCustomerFicha } from '../ficha-types';
+import type { PerPage } from '@/components/ui/data-table-paging';
 
 export function CustomerTable({
   rows,
@@ -29,7 +30,7 @@ export function CustomerTable({
   rows: CustomerListRowDTO[];
   total: number;
   page: number;
-  perPage: 8 | 12 | 20;
+  perPage: PerPage;
   /** Há busca ou chip aplicado — muda o vazio de "sem dados" para "sem resultado". */
   filtered: boolean;
   timezone: string;

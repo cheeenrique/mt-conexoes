@@ -1,6 +1,7 @@
 import type Decimal from 'decimal.js';
 import { db } from '@/lib/db';
 import { resolveAdjustedPriceCents, marginPercent, classifySubscriptionMargin } from '@/core/money';
+import type { PerPage } from '@/components/ui/data-table-paging';
 
 export interface SupplierDTO {
   id: string;
@@ -54,7 +55,7 @@ async function aggregateActiveSubscriptionsBySupplier(supplierIds: string[]): Pr
 
 export async function listSuppliers(params: {
   page: number;
-  perPage: 8 | 12 | 20;
+  perPage: PerPage;
 }): Promise<{ rows: SupplierDTO[]; total: number }> {
   const [rows, total] = await Promise.all([
     db.supplier.findMany({
