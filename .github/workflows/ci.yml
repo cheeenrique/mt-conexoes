@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Push seguido de push na mesma branch cancela a execução anterior — o que vale
+# é o estado final, e o job de integração segura um Postgres por execução.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Valores de brinquedo. Os módulos exigem que a variável exista (requireEnv,
+# CREDENTIAL_KEY de 32 bytes) e falham no import sem ela — nenhum destes
+# valores é usado contra serviço real, e nenhum segredo de produção entra aqui.
+env:
+  CREDENTIAL_KEY: Q0hBTkdFLU1FLWRldi1jcmVkZW50aWFsLWtleS0zMmI=
+  SESSION_SECRET: ci-session-secret-32-bytes-minimo-ok
+  CRON_SECRET: ci-cron-secret
+  META_WEBHOOK_VERIFY_TOKEN: ci-meta-webhook-verify-token
+  APP_URL: http://localhost:3000
+
+jobs:
+  checks:
+    name: lint · typecheck · unit · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      # Node 20 espelha o Dockerfile (node:20-alpine). Testar numa versão e
+      # publicar em outra é como um bug de runtime chega em produção verde.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `next build` e o typecheck precisam dos tipos do Prisma Client, que não
+      # estão versionados.
+      - run: pnpm exec prisma generate
+
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      # Todas as 26 rotas são dinâmicas — o build não abre conexão com o banco.
+      - run: pnpm build
+
+  integration:
+    name: integração (Postgres real)
+    runs-on: ubuntu-latest
+
+    # Índice parcial e CHECK não existem em SQLite, e são justamente eles que
+    # garantem a dedupe diária e a unicidade da cobrança. Postgres de verdade
+    # ou o teste não vale nada. Ver .claude/rules/06-testes.md.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mtconexoes
+          POSTGRES_PASSWORD: mtconexoes
+          POSTGRES_DB: mtconexoes
+        ports:
+          - 5443:5432
+        options: >-
+          --health-cmd "pg_isready -U mtconexoes -d mtconexoes"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # A porta 5443 espelha o serviço db-test do docker-compose, pra receita
+      # local e a de CI serem a mesma. TEST_DATABASE_URL (e não DATABASE_URL)
+      # porque tests/setup-integration.ts avisa e degrada se só achar a de dev.
+      TEST_DATABASE_URL: postgresql://mtconexoes:mtconexoes@localhost:5443/mtconexoes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec prisma generate
+
+      # Mesmo script do fluxo local — aponta DATABASE_URL para TEST_DATABASE_URL
+      # sem tocar no de dev.
+      - run: pnpm db:migrate:test
+
+      - run: pnpm test:integration
