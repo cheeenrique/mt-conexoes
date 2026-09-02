@@ -9,6 +9,21 @@ RUN pnpm install --frozen-lockfile
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# ⚠️ Valores de brinquedo, só para o build passar. `lib/crypto.ts` avalia
+# CREDENTIAL_KEY no import (`const KEY = getKey()`), de propósito: chave ausente
+# tem que derrubar o container no boot, não na primeira credencial. Mas isso faz
+# `next build` importar o módulo e falhar em "Failed to collect page data" na
+# rota de cron que o alcança. Mesmos valores do job `checks` em ci.yml.
+#
+# NÃO chegam ao runtime: o estágio final é outro FROM, e o Cloud Run injeta os
+# valores reais a partir do Secret Manager (--set-secrets em 30-deploy.sh).
+ENV CREDENTIAL_KEY=Q0hBTkdFLU1FLWRldi1jcmVkZW50aWFsLWtleS0zMmI= \
+    SESSION_SECRET=build-time-placeholder-32-bytes-ok \
+    CRON_SECRET=build-time-placeholder \
+    META_WEBHOOK_VERIFY_TOKEN=build-time-placeholder \
+    APP_URL=http://localhost:3000
+
 RUN pnpm prisma generate && pnpm build
 
 FROM base AS runtime
