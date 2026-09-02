@@ -8,7 +8,7 @@
 Não é etapa de entrega, é o que sustenta as outras. Antes de qualquer tela:
 
 - [x] Next.js + TypeScript + Tailwind + shadcn/ui
-- [x] Prisma + Postgres, primeira migration
+- [x] Prisma + Neon, primeira migration
 - [x] `src/core/` com `money.ts` e `dates.ts` — **testes primeiro**
 - [x] Autenticação: login, sessão em cookie, middleware, troca de senha
 - [x] `lib/crypto.ts` com AES-256-GCM e teste de ida e volta

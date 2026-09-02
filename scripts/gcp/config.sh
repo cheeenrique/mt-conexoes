@@ -21,21 +21,6 @@ EVOLUTION_MACHINE_TYPE="${EVOLUTION_MACHINE_TYPE:-e2-micro}"
 EVOLUTION_DISK_GB="${EVOLUTION_DISK_GB:-20}"
 EVOLUTION_REGION="${EVOLUTION_ZONE%-*}"
 
-# Cloud SQL — a instância mais barata que a GCP oferece gerenciada.
-# db-f1-micro é o menor tier de Postgres da edição Enterprise: núcleo
-# compartilhado, sem SLA e fora do desconto por uso comprometido. Não existe
-# free tier de Cloud SQL — este é o piso, ~US$ 12-14/mês em São Paulo.
-SQL_INSTANCE="painel-db"
-SQL_DB="mtconexoes"
-SQL_USER="painel"
-SQL_TIER="${SQL_TIER:-db-f1-micro}"
-SQL_STORAGE_GB="${SQL_STORAGE_GB:-10}"     # 10 GB é o mínimo do Cloud SQL
-
-sql_connection_name() {
-  gcloud sql instances describe "$SQL_INSTANCE" --project "$PROJECT_ID" \
-    --format='value(connectionName)' 2>/dev/null
-}
-
 # GitHub Actions — federação de identidade (70-github-wif.sh). Sem chave JSON
 # de service account: chave longa em segredo de repositório é credencial que
 # não expira e vaza em fork/log.

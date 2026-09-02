@@ -54,14 +54,18 @@ grant() {
 
 grant roles/artifactregistry.writer      # empurrar a imagem
 grant roles/run.developer                # atualizar o serviço
-grant roles/cloudsql.client              # proxy para rodar as migrations
 grant roles/iam.serviceAccountUser       # deployar RODANDO COMO painel-runtime
 
-# Só a senha do banco, não o resto do cofre: o CI roda migration e seed pelo
-# proxy, e não tem por que ler CREDENTIAL_KEY nem SESSION_SECRET.
-gcloud secrets add-iam-policy-binding DATABASE_PASSWORD \
-  --member "serviceAccount:${DEPLOYER_EMAIL}" \
-  --role roles/secretmanager.secretAccessor --project "$PROJECT_ID" >/dev/null
+# Só a URL do banco, não o resto do cofre: o CI roda migration e seed, e não tem
+# por que ler CREDENTIAL_KEY nem SESSION_SECRET.
+if gcloud secrets describe DATABASE_URL --project "$PROJECT_ID" >/dev/null 2>&1; then
+  gcloud secrets add-iam-policy-binding DATABASE_URL \
+    --member "serviceAccount:${DEPLOYER_EMAIL}" \
+    --role roles/secretmanager.secretAccessor --project "$PROJECT_ID" >/dev/null
+else
+  echo "⚠️ DATABASE_URL ainda não existe (20-secrets.sh não rodou até o fim)."
+  echo "   Rode este script de novo depois — sem essa permissão o CI não roda migration."
+fi
 
 cat <<TXT
 

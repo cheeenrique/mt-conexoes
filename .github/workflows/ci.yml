@@ -123,8 +123,6 @@ jobs:
       REGION: southamerica-east1
       SERVICE: painel
       AR_REPO: painel
-      SQL_INSTANCE: painel-db
-      SQL_DB: mtconexoes
 
     steps:
       - uses: actions/checkout@v4
@@ -176,19 +174,9 @@ jobs:
           SEED_USER_EMAIL: ${{ secrets.SEED_USER_EMAIL }}
           SEED_USER_PASSWORD: ${{ secrets.SEED_USER_PASSWORD }}
         run: |
-          # A DATABASE_URL do Secret Manager aponta para o socket unix que só
-          # existe dentro do Cloud Run. Daqui o caminho é o proxy: autentica
-          # por IAM, sem abrir rede autorizada na instância.
-          curl -fsSL -o cloud-sql-proxy \
-            "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.18.0/cloud-sql-proxy.linux.amd64"
-          chmod +x cloud-sql-proxy
-          CONN="$(gcloud sql instances describe "$SQL_INSTANCE" --project "$PROJECT_ID" --format='value(connectionName)')"
-          ./cloud-sql-proxy --port 15432 "$CONN" &
-          for _ in $(seq 1 30); do nc -z 127.0.0.1 15432 2>/dev/null && break; sleep 1; done
-          nc -z 127.0.0.1 15432 2>/dev/null || { echo "::error::cloud-sql-proxy não subiu"; exit 1; }
-          PASS="$(gcloud secrets versions access latest --secret DATABASE_PASSWORD --project "$PROJECT_ID")"
-          echo "::add-mask::$PASS"
-          export DATABASE_URL="postgresql://painel:${PASS}@127.0.0.1:15432/${SQL_DB}"
+          DATABASE_URL="$(gcloud secrets versions access latest --secret DATABASE_URL --project "$PROJECT_ID")"
+          echo "::add-mask::$DATABASE_URL"
+          export DATABASE_URL
           pnpm exec prisma migrate deploy
           # Defaults do sistema: usuário do painel, singleton de settings e a
           # régua padrão com os 6 passos. Idempotente — não sobrescreve senha

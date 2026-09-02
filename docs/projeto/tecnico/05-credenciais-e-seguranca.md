@@ -155,7 +155,7 @@ A base tem nome, telefone e credencial de centenas de pessoas.
 
 ## Backup
 
-O Cloud SQL guarda backup automático diário (06:00, 7 retidos). PITR fica desligado por custo — a perda máxima em desastre é de um dia de lançamento. Além dele:
+Neon faz *point-in-time recovery* no plano free com janela curta. Além dele:
 
 - Dump diário via job para um bucket do Cloud Storage na conta do cliente, retenção de 30 dias.
 - ⚠️ **Restore testado antes da entrega final.** Backup nunca testado é backup que não existe — isso entra no critério de pronto da etapa 4.

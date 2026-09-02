@@ -31,13 +31,23 @@ create_random SESSION_SECRET
 create_random CRON_SECRET
 create_random META_WEBHOOK_VERIFY_TOKEN
 
-# DATABASE_URL não sai daqui: quem cria o banco é 25-cloudsql.sh, e é ele que
-# grava a connection string e a senha.
+# DATABASE_URL vem do Neon e não dá para gerar aqui. Lido do terminal, sem eco,
+# para não ficar no histórico do shell.
+if exists DATABASE_URL; then
+  echo "· DATABASE_URL já existe — mantido. Para trocar de banco, adicione uma"
+  echo "  versão nova à mão: gcloud secrets versions add DATABASE_URL --data-file=-"
+else
+  echo
+  echo "Cole a connection string do Neon (com ?connection_limit=<n>; o plano free"
+  echo "do Neon tem teto baixo de conexões e o pool do Prisma derruba o banco sem isso):"
+  read -rs neon_url
+  [[ -n "$neon_url" ]] || { echo "vazio — abortado." >&2; exit 1; }
+  gcloud secrets create DATABASE_URL --replication-policy=automatic --project "$PROJECT_ID" >/dev/null
+  add_version DATABASE_URL "$neon_url"
+  echo "· DATABASE_URL criado."
+fi
 
 for s in "${SECRETS[@]}"; do
-  # DATABASE_URL ainda não existe na primeira passada — 25-cloudsql.sh libera a
-  # leitura dele junto com a criação.
-  exists "$s" || continue
   gcloud secrets add-iam-policy-binding "$s" \
     --member "serviceAccount:${RUNTIME_EMAIL}" \
     --role roles/secretmanager.secretAccessor \
@@ -45,4 +55,3 @@ for s in "${SECRETS[@]}"; do
 done
 
 echo "Leitura liberada para ${RUNTIME_EMAIL}."
-echo "Próximo: 25-cloudsql.sh (cria o banco e a DATABASE_URL)."

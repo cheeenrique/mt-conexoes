@@ -6,7 +6,7 @@ Tudo vive em [`projeto/`](./projeto/) — comece por [`projeto/README.md`](./pro
 |---|---|
 | [`projeto/comercial/`](./projeto/comercial/) | Apresentação para o cliente e termos comerciais |
 | [`projeto/tecnico/`](./projeto/tecnico/) | Arquitetura, modelo de dados, datas, dinheiro, segurança, régua, plano de entrega |
-| [`deploy.md`](./deploy.md) | Subir o painel para produção — faturamento, Cloud SQL, os 7 scripts, CI, rollback |
+| [`deploy.md`](./deploy.md) | Subir o painel para produção — Neon, faturamento, os 7 scripts, CI, rollback |
 | [`whatsapp-cliente.md`](./whatsapp-cliente.md) | Guia para o cliente abrir a conta WhatsApp Business e gerar os tokens |
 
 ## Histórico

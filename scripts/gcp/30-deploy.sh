@@ -6,11 +6,6 @@ assert_billing
 
 RUNTIME_EMAIL="${RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
 IMAGE_HOST="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}"
-
-# O socket unix da DATABASE_URL só existe se o serviço declarar a instância.
-# Sem isto o painel sobe e falha em toda query, com "socket not found".
-SQL_CONN="$(sql_connection_name)"
-[[ -n "$SQL_CONN" ]] || { echo "Cloud SQL não existe ainda — rode 25-cloudsql.sh antes." >&2; exit 1; }
 TAG="$(git rev-parse --short HEAD)"
 IMAGE="${IMAGE_HOST}/${SERVICE}:${TAG}"
 
@@ -45,8 +40,7 @@ gcloud run deploy "$SERVICE" \
   --cpu 1 \
   --cpu-boost \
   --set-env-vars NODE_ENV=production \
-  --set-secrets "$SECRET_FLAGS" \
-  --add-cloudsql-instances "$SQL_CONN"
+  --set-secrets "$SECRET_FLAGS"
 
 URL="$(service_url)"
 [[ -n "$URL" ]] || { echo "não consegui ler a URL do serviço." >&2; exit 1; }

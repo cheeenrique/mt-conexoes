@@ -18,10 +18,9 @@ gcloud config configurations activate mt-conexoes
 |---|---|---|
 | `00-enable-apis.sh` | run · artifactregistry · cloudbuild · cloudscheduler · secretmanager | sim |
 | `10-service-accounts.sh` | `painel-runtime` e `cron-invoker` | não |
-| `20-secrets.sh` | 4 segredos gerados no Secret Manager + leitura para o runtime | sim |
-| `25-cloudsql.sh` | Postgres gerenciado no menor tier, banco, usuário e `DATABASE_URL` | sim |
+| `20-secrets.sh` | 5 segredos no Secret Manager + leitura para o runtime | sim |
 | `30-deploy.sh` | repo no Artifact Registry, build, deploy, `APP_URL`/`CRON_OIDC_AUDIENCE` | sim |
-| `40-migrate.sh` | `prisma migrate deploy` pelo proxy, e os defaults do sistema | não |
+| `40-migrate.sh` | `prisma migrate deploy` contra o Neon, e os defaults do sistema | não |
 | `50-scheduler.sh` | `run.invoker` + os 3 jobs de cron com OIDC | sim |
 | `60-evolution-vm.sh` | VM mínima do canal não oficial: IP fixo, firewall, snapshot diário | sim |
 | `70-github-wif.sh` | Federação de identidade para o GitHub Actions publicar sem chave | sim |
@@ -43,17 +42,16 @@ gcloud billing projects link mt-conexoes --billing-account=0131C0-18BABD-B7B8ED
 
 Sem isso, `00` para na hora com a mensagem certa.
 
-O banco não é mais externo: `25-cloudsql.sh` cria a instância, o banco, o
-usuário e a `DATABASE_URL`. Não existe free tier de Cloud SQL — `db-f1-micro` é
-o piso, ~US$ 12-14/mês em São Paulo.
+E o **banco no Neon**: projeto `noisy-paper-64529542`, branch `production`, com a
+connection string em mãos já com `?connection_limit=<n>` — `20-secrets.sh` pede
+ela colada, sem eco.
 
 ## Depois
 
 - `40-migrate.sh` roda as migrations **da máquina**, não de dentro do Cloud Run:
-  a imagem `standalone` não carrega o CLI do Prisma, e migration no boot faria N
-  instâncias disputarem o mesmo lock. Exige `cloud-sql-proxy` instalado
-  (`brew install cloud-sql-proxy`) — a `DATABASE_URL` gravada no cofre é o
-  socket unix, que só existe dentro do Cloud Run.
+  o Neon é Postgres público sobre TLS, alcançável daqui; a imagem `standalone`
+  não carrega o CLI do Prisma; e migration no boot faria N instâncias disputarem
+  o mesmo lock.
 - Depois do primeiro deploy à mão, `70-github-wif.sh` passa a esteira para o
   GitHub Actions: todo push em `main` que passar nos testes constrói a imagem,
   roda `migrate deploy` e publica. Ver o job `deploy` em `.github/workflows/ci.yml`.

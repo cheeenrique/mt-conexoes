@@ -22,25 +22,46 @@ pnpm typecheck && pnpm lint && pnpm test  # o que vai ao ar é o que passou
 publica o painel dentro de outro projeto. Todo script aborta se a ativa não for
 `mt-conexoes` — não desligar essa checagem.
 
-## 1 · Vincular faturamento
+## 1 · Banco no Neon
+
+Nenhum script cria isso. Projeto **`noisy-paper-64529542`**, branch
+`production`.
+
+1. Copiar a connection string do endpoint **pooled** (a que tem `-pooler` no
+   host).
+2. Acrescentar o limite de conexão explícito:
+
+```
+postgresql://USER:SENHA@HOST-pooler.REGIAO.aws.neon.tech/DB?sslmode=require&connection_limit=3&pool_timeout=20
+```
+
+⚠️ Sem `connection_limit`, o Prisma abre `nº de CPUs × 2 + 1` por instância e o
+Cloud Run escala até 3 — o teto do plano free estoura e o painel começa a dar
+erro de conexão sob carga. `3` é folgado para o volume deste cliente.
+
+⚠️ **Horas de computação.** O plano free do Neon dá ~192 h/mês e suspende o
+banco após ~5 min ocioso. O cron `messages-dispatch` roda a cada 15 min das 8h
+às 19h — 48 despertares por dia, cada um segurando o banco acordado pelo mínimo:
+~4 h/dia, ~120 h/mês, antes de qualquer uso da tela. Cabe, mas com pouca folga.
+Se apertar, passar o job para `*/30` corta pela metade (`50-scheduler.sh`).
+
+## 2 · Vincular faturamento
 
 ```bash
 gcloud billing projects link mt-conexoes --billing-account=0131C0-18BABD-B7B8ED
 gcloud billing projects describe mt-conexoes   # billingEnabled: true
 ```
 
-Sem isso o passo 2 falha com uma mensagem que não diz que o problema é
+Sem isso o passo 3 falha com uma mensagem que não diz que o problema é
 faturamento.
 
-## 2 · Provisionar (na ordem)
+## 3 · Provisionar (na ordem)
 
 ```bash
 ./scripts/gcp/00-enable-apis.sh        # run · artifactregistry · cloudbuild · scheduler · secretmanager
 ./scripts/gcp/10-service-accounts.sh   # painel-runtime · cron-invoker
-./scripts/gcp/20-secrets.sh            # gera os 4 segredos aleatórios
-./scripts/gcp/25-cloudsql.sh           # Postgres db-f1-micro + banco + usuário + DATABASE_URL
+./scripts/gcp/20-secrets.sh            # gera 4 segredos; pede a URL do Neon (colar, sem eco)
 ./scripts/gcp/30-deploy.sh             # build no Cloud Build + deploy + APP_URL/CRON_OIDC_AUDIENCE
-brew install cloud-sql-proxy           # uma vez, se ainda não tiver
 SEED_USER_EMAIL="cliente@exemplo.com" SEED_USER_PASSWORD='<senha forte>' \
   ./scripts/gcp/40-migrate.sh          # migrations + defaults (usuário, settings, régua padrão)
 ./scripts/gcp/50-scheduler.sh          # 3 jobs de cron com OIDC
@@ -51,22 +72,17 @@ O que cada um cobra de atenção:
 - **20** — `CREDENTIAL_KEY` nasce aqui e **nunca é rotacionada**. Versão nova
   torna ilegível toda senha de assinante e credencial de canal já gravada. Não
   existe migração automática.
-- **25** — a instância é **zonal, sem HA e sem PITR**, escolhas de custo (HA
-  dobra o preço; PITR cobra armazenamento de WAL). Backup diário às 06:00, 7
-  retidos: a perda máxima em desastre é de um dia de lançamento. Não existe free
-  tier de Cloud SQL — `db-f1-micro` é o piso.
 - **30** — build sai no Cloud Build de propósito: o Mac é arm64, o Cloud Run é
   amd64. São duas passadas de deploy (a URL do serviço só existe depois da
   primeira, e é ela que vira `APP_URL` e `CRON_OIDC_AUDIENCE`). ~8 min.
-- **40** — roda da máquina, não do container: a imagem `standalone` não carrega
-  o CLI do Prisma, e migration no boot faria N instâncias disputarem o lock. Vai
-  pelo `cloud-sql-proxy`, porque a `DATABASE_URL` do cofre é o socket unix que só
-  existe dentro do Cloud Run. Além das migrations, cria os **defaults**: usuário
+- **40** — roda da máquina, não do container: o Neon é Postgres público sobre
+  TLS, a imagem `standalone` não carrega o CLI do Prisma, e migration no boot
+  faria N instâncias disputarem o lock. Além das migrations, cria os **defaults**: usuário
   do painel, singleton de `settings` e a régua padrão com 6 passos. A senha do
   seed vai no comando; trocar depois em `/conta` sobrevive a novos seeds.
 - **50** — os 3 jobs ocupam o plano free inteiro. Não sobra slot para o `ping`.
 
-## 3 · Conferir que está de pé
+## 4 · Conferir que está de pé
 
 ```bash
 URL=$(gcloud run services describe painel --region southamerica-east1 --format='value(status.url)')
@@ -82,7 +98,7 @@ o OIDC está encanado. Se o job der 401, `CRON_OIDC_AUDIENCE` não bate com
 
 Login no `$URL` com o e-mail e senha do passo 40.
 
-## 4 · Configurar o painel (na UI, uma vez)
+## 5 · Configurar o painel (na UI, uma vez)
 
 1. **Ajustes › Negócio** — fuso `America/Sao_Paulo`, janela de silêncio
    (padrão 08:00–20:00), dados do negócio.
@@ -98,7 +114,7 @@ Login no `$URL` com o e-mail e senha do passo 40.
 ⚠️ Ativar não dispara retroativo: `UNIQUE(chargeId, stepId)` impede reprocessar
 o par. O que estava para trás fica para trás.
 
-## 5 · Rollback
+## 6 · Rollback
 
 ```bash
 gcloud run revisions list --service painel --region southamerica-east1
@@ -109,7 +125,7 @@ gcloud run services update-traffic painel --region southamerica-east1 \
 Instantâneo, sem rebuild. Migration **não** volta com isso — reverter schema é
 migration nova.
 
-## 6 · Endereços — decidido
+## 7 · Endereços — decidido
 
 | O quê | Onde | Por quê |
 |---|---|---|
@@ -158,7 +174,7 @@ Recuperar é apontar outro hostname e trocar o campo "Endereço da instância" n
 credencial do canal; a instância pareada e a sessão do WhatsApp continuam de pé,
 sem QR novo.
 
-## 7 · Deploy contínuo pelo GitHub Actions
+## 8 · Deploy contínuo pelo GitHub Actions
 
 Depois do primeiro deploy à mão, a esteira assume. `.github/workflows/ci.yml`
 ganhou o job `deploy`: todo push em `main` que passar em lint, typecheck, testes
@@ -200,7 +216,7 @@ Decisões que estão no workflow e não são óbvias:
 - **`gcloud run deploy` só com `--image`.** Qualquer outra flag ali
   sobrescreveria em silêncio o que `30-deploy.sh` configurou.
 
-## 8 · Canal não oficial (opcional)
+## 9 · Canal não oficial (opcional)
 
 Só se for usar o provider `EVOLUTION`. O painel funciona sem isso — mas hoje é
 o único canal que envia de verdade.
@@ -222,7 +238,7 @@ cliente decidiu por `us-east1` em 02/09/2026, ciente disso. O painel e o banco
 continuam em São Paulo.
 
 Depois da VM: registro A de `evolution.mtconexoes.com.br` no IP fixo, **cinza**
-(ver §6) → copiar `infra/evolution/` para a máquina → preencher `.env`
+(ver §7) → copiar `infra/evolution/` para a máquina → preencher `.env`
 (`EVOLUTION_DOMAIN=evolution.mtconexoes.com.br`, `AUTHENTICATION_API_KEY` com
 `openssl rand -hex 32`) → subir com o override de máquina pequena:
 
@@ -254,21 +270,20 @@ Se levar OOM na prática, subir de máquina não reinstala nada — `stop`,
 
 | Item | ~US$/mês |
 |---|---|
-| Cloud SQL `db-f1-micro`, 10 GB SSD, zonal | 12–14 |
+| Banco — Neon, plano free | 0 |
 | VM `e2-micro` da Evolution em `us-east1` (free tier — paga só o IPv4) | 3 |
 | Cloud Run | 0–2 · escala a zero, cota gratuita cobre este volume |
 | Artifact Registry | <1 |
 | Cloud Scheduler | 0 · 3 jobs, dentro da cota |
-| **Total** | **~US$ 18** com canal não oficial, **~US$ 15** sem |
+| **Total** | **~US$ 4** com canal não oficial, **~US$ 1** sem |
 
 Ordem de grandeza, não orçamento — conferir no calculador antes de prometer
-número ao cliente. Cloud SQL não tem free tier: `db-f1-micro` é o piso, e é o
-único item que não dá para zerar.
+número ao cliente. O que pode virar custo sem aviso é o Neon: passar das ~192 h
+de computação do plano free suspende o banco até o mês virar, ou obriga a subir
+de plano (~US$ 19/mês).
 
 Onde ainda dá para cortar, com o que se perde:
 
-- `--storage-type HDD` no Cloud SQL: ~US$ 0,80/mês. A instância tem 0,6 GB de
-  RAM, então quase toda leitura vai a disco — a lista de cobranças sente.
 - Já aplicado: VM da Evolution no free tier de `us-east1` em vez de São Paulo
   (~US$ 13/mês economizados), ao custo de sessão e contatos de assinantes
   brasileiros morarem fora do país.
