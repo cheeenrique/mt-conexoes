@@ -58,7 +58,7 @@ A única ligação é o formulário do site chamando `POST /api/leads` do painel
 | Camada | Escolha |
 |---|---|
 | App | Next.js App Router — Server Components para ler, Server Actions para escrever, Route Handlers para cron |
-| Banco | PostgreSQL (Neon) + Prisma |
+| Banco | PostgreSQL (Cloud SQL `db-f1-micro`) + Prisma |
 | Hospedagem | Google Cloud Run, `southamerica-east1` |
 | Agendamento | Cloud Scheduler → Route Handler autenticado por OIDC |
 | UI | Tailwind + shadcn/ui · react-hook-form + Zod |

@@ -59,7 +59,7 @@ São **duas aplicações separadas**, com domínios e hospedagens distintos. A �
 | Camada | Escolha | Por quê |
 |---|---|---|
 | App | Next.js App Router | Um deployable. Server Components para ler, Server Actions para escrever |
-| Banco | PostgreSQL — Neon free | Cobre 1.000 assinantes sem custo |
+| Banco | PostgreSQL — Cloud SQL `db-f1-micro` | Menor tier gerenciado; cobre 1.000 assinantes |
 | ORM | Prisma | `BigInt` nativo, migrations maduras |
 | Hospedagem | Cloud Run `southamerica-east1` | Free tier cobre o volume inteiro |
 | Agendamento | Cloud Scheduler → Route Handler com OIDC | 3 jobs grátis, substitui fila |

@@ -7,7 +7,7 @@
 | Camada | Escolha | Motivo |
 |---|---|---|
 | App | Next.js (App Router), TypeScript | Um único deployable. Server Components para leitura, Server Actions para escrita, Route Handlers para cron e webhook. |
-| Banco | PostgreSQL — Neon (plano free) | 0,5 GB cobre 1.000 assinantes com folga. Migra para Cloud SQL só se doer. |
+| Banco | PostgreSQL — Cloud SQL `db-f1-micro` | Menor tier gerenciado da GCP (~US$ 12-14/mês; não há free tier). 10 GB cobre 1.000 assinantes com folga. Zonal, sem HA, backup diário. |
 | ORM | Prisma | Schema legível, migrations maduras, `BigInt` nativo. |
 | Hospedagem | Google Cloud Run — `southamerica-east1` | Free tier cobre o volume inteiro. Container, então pool de conexão normal. |
 | Agendamento | Cloud Scheduler → Route Handler com OIDC | 3 jobs grátis. Substitui o Graphile Worker. |
@@ -212,7 +212,7 @@ a idempotência vale pelo caminho do agendador, não só pelo `curl` na mão.
 
 | | Desenvolvimento | Produção |
 |---|---|---|
-| Banco | **Dois** Postgres locais em Docker — `db` na 5442 (dev) e `db-test` na 5443 (`pnpm test:integration`), dados anonimizados. Ver [`prisma/README.md`](../../../prisma/README.md) | Neon principal, na conta do cliente |
+| Banco | **Dois** Postgres locais em Docker — `db` na 5442 (dev) e `db-test` na 5443 (`pnpm test:integration`), dados anonimizados. Ver [`prisma/README.md`](../../../prisma/README.md) | Cloud SQL na conta do cliente, alcançado por socket unix do conector do Cloud Run |
 | Chave de criptografia | `.env.local` | Secret Manager |
 | Deploy | `next dev` | `gcloud run deploy` a partir da branch `main` |
 

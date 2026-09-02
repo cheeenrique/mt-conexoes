@@ -20,7 +20,7 @@ Repositórios, domínios e contas de hospedagem separados — SEO no nicho é ad
 ## Stack do painel
 
 - Next.js App Router — Server Components pra ler, Server Actions pra escrever, Route Handlers pra cron
-- PostgreSQL (Neon) + Prisma
+- PostgreSQL (Cloud SQL) + Prisma
 - Google Cloud Run
 - Cloud Scheduler → Route Handler autenticado por OIDC
 - Tailwind + shadcn/ui, react-hook-form + Zod

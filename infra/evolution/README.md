@@ -65,11 +65,45 @@ régua de cobrança — não 1.000 sessões simultâneas. Carga é baixa: envio 
 | Disco | 20 GB SSD | Postgres cresce com histórico de mensagem (`DATABASE_SAVE_DATA_NEW_MESSAGE=true` por padrão da imagem) |
 | SO | Ubuntu 22.04/24.04 LTS ou Debian 12 | Suporte longo, `apt` com patch de segurança automático (ver "Segurança") |
 
+### Máquina de 1 GB (GCP e2-micro)
+
+Cabe, com `docker-compose.micro.yml` por cima do compose base:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.micro.yml up -d
+```
+
+O override capa o heap do V8 em 384 MB, aperta `shared_buffers` do Postgres
+para 64 MB, põe teto e política de descarte no Redis e desliga
+`DATABASE_SAVE_DATA_NEW_MESSAGE` — o painel já guarda a mensagem dele em
+`messages`, o histórico daqui é cópia que só faz o disco crescer.
+
+Consumo em repouso, medido por soma de RSS típico e não pelo limite declarado:
+SO ~150 MB · Node ~450 · Postgres ~80 · Redis ~12 · Caddy ~20 ≈ **710 MB**.
+A VM provisionada por `scripts/gcp/60-evolution-vm.sh` sobe com 2 GB de swap e
+`vm.swappiness=10` para absorver o pico do Baileys sem OOM kill.
+
+⚠️ `DATABASE_SAVE_DATA_INSTANCE` continua `true`. É ele que mantém a credencial
+de sessão no Postgres — com ela gravada, um restart (inclusive depois de um OOM
+kill) reconecta sozinho, **sem QR novo**. É o que torna a e2-micro um risco de
+minutos de atraso, não de reparear com o celular do cliente na mão.
+
+Em máquina de 2 GB+ não usar o override: os tetos só atrapalham.
+
 Isto é dimensionamento honesto, não testado sob carga real — não há VPS de homologação
 disponível nesta entrega. Se o WhatsApp do cliente tiver volume de mensagem alto (grupos,
 mídia pesada), reavaliar depois de medir.
 
 ## Subida passo a passo
+
+### 0. Endereço deste projeto
+
+`EVOLUTION_DOMAIN=evolution.mtconexoes.com.br`, registro A **cinza (DNS only)**
+no Cloudflare apontando para o IP fixo da VM. Com o proxy laranja ligado, o
+Caddy não fecha o desafio do Let's Encrypt e fica tentando em silêncio.
+
+O painel fica na URL `*.run.app` — Cloud Run não faz domínio custom em
+`southamerica-east1`. Ver `docs/deploy.md` §6.
 
 ### 1. Provisionar a VPS
 

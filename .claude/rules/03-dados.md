@@ -52,7 +52,7 @@ Na escala do projeto (até 1.000 assinantes) quase nada disso vira gargalo. A di
 ## Conexões no Cloud Run
 
 - Container, não função por requisição — pool normal do Prisma serve.
-- `connection_limit` do Neon é baixo no plano free. Instância com pool grande demais derruba o banco quando o Cloud Run escala. Definir `connection_limit` explicitamente na `DATABASE_URL`.
+- A instância é `db-f1-micro`, com `max_connections=25`. O pool do Prisma abre (nº de CPUs × 2 + 1) por instância e o Cloud Run escala até 3 — sem `connection_limit` explícito na `DATABASE_URL`, uma passada de cron junto com a tela esgota as conexões do banco.
 - Job de cron e requisição de UI compartilham o mesmo pool. Job que segura conexão por minutos trava a tela.
 
 ## Dados nos ambientes

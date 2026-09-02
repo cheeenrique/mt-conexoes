@@ -8,9 +8,13 @@ on:
 
 # Push seguido de push na mesma branch cancela a execução anterior — o que vale
 # é o estado final, e o job de integração segura um Postgres por execução.
+#
+# ⚠️ Em `main`, não. Lá a execução termina em `prisma migrate deploy`, e matar
+# o processo no meio de uma migration deixa o banco num estado que exige
+# intervenção à mão. Fila em vez de cancelamento.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # Valores de brinquedo. Os módulos exigem que a variável exista (requireEnv,
 # CREDENTIAL_KEY de 32 bytes) e falham no import sem ela — nenhum destes
@@ -98,3 +102,113 @@ jobs:
       - run: pnpm db:migrate:test
 
       - run: pnpm test:integration
+
+  deploy:
+    name: build · migrate · deploy (Cloud Run)
+    needs: [checks, integration]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    # Dois deploys sobrepostos rodariam duas migrations ao mesmo tempo. Fila.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    permissions:
+      contents: read
+      id-token: write        # exigido pela federação — é o que gera o token OIDC
+
+    env:
+      PROJECT_ID: mt-conexoes
+      REGION: southamerica-east1
+      SERVICE: painel
+      AR_REPO: painel
+      SQL_INSTANCE: painel-db
+      SQL_DB: mtconexoes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sem chave JSON: o runner troca o próprio token OIDC por credencial de
+      # curta duração. Ver scripts/gcp/70-github-wif.sh.
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec prisma generate
+
+      # O provisionamento (00 a 50) monta service account, segredos e variáveis
+      # de ambiente. Este workflow só troca a imagem — se o serviço ainda não
+      # existe, um `run deploy` daqui criaria um painel sem nada disso.
+      - name: exigir serviço já provisionado
+        run: |
+          gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT_ID" >/dev/null \
+            || { echo "::error::serviço '$SERVICE' não existe. Rode scripts/gcp/00..50 antes do primeiro deploy pelo CI."; exit 1; }
+
+      # Build no runner, não no Cloud Build: o runner do GitHub já está pago no
+      # plano da conta e o Cloud Build cobra por minuto acima da cota diária.
+      # O runner é amd64, mesma arquitetura do Cloud Run.
+      - name: build e push da imagem
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${SERVICE}:${GITHUB_SHA::7}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      # Antes do deploy, não depois: migration nova tem que ser compatível com o
+      # código que ainda está no ar (expand/contract). Ao contrário, o código
+      # novo sobe e encontra um schema que ainda não existe.
+      - name: migrations e defaults
+        env:
+          SEED_USER_EMAIL: ${{ secrets.SEED_USER_EMAIL }}
+          SEED_USER_PASSWORD: ${{ secrets.SEED_USER_PASSWORD }}
+        run: |
+          # A DATABASE_URL do Secret Manager aponta para o socket unix que só
+          # existe dentro do Cloud Run. Daqui o caminho é o proxy: autentica
+          # por IAM, sem abrir rede autorizada na instância.
+          curl -fsSL -o cloud-sql-proxy \
+            "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.18.0/cloud-sql-proxy.linux.amd64"
+          chmod +x cloud-sql-proxy
+          CONN="$(gcloud sql instances describe "$SQL_INSTANCE" --project "$PROJECT_ID" --format='value(connectionName)')"
+          ./cloud-sql-proxy --port 15432 "$CONN" &
+          for _ in $(seq 1 30); do nc -z 127.0.0.1 15432 2>/dev/null && break; sleep 1; done
+          nc -z 127.0.0.1 15432 2>/dev/null || { echo "::error::cloud-sql-proxy não subiu"; exit 1; }
+          PASS="$(gcloud secrets versions access latest --secret DATABASE_PASSWORD --project "$PROJECT_ID")"
+          echo "::add-mask::$PASS"
+          export DATABASE_URL="postgresql://painel:${PASS}@127.0.0.1:15432/${SQL_DB}"
+          pnpm exec prisma migrate deploy
+          # Defaults do sistema: usuário do painel, singleton de settings e a
+          # régua padrão com os 6 passos. Idempotente — não sobrescreve senha
+          # trocada em /conta nem passo de régua já editado.
+          if [[ -z "$SEED_USER_EMAIL" || -z "$SEED_USER_PASSWORD" ]]; then
+            echo "seed pulado: SEED_USER_EMAIL/SEED_USER_PASSWORD não configurados nos secrets do repositório."
+            echo "⚠️ sem eles o seed geraria uma senha aleatória e a imprimiria neste log."
+          else
+            pnpm exec tsx prisma/seed.ts
+          fi
+
+      # Só --image: qualquer outra flag aqui sobrescreveria em silêncio o que
+      # 30-deploy.sh configurou (APP_URL, CRON_OIDC_AUDIENCE, segredos, SA).
+      - name: deploy
+        run: |
+          gcloud run deploy "$SERVICE" --image "$IMAGE" \
+            --region "$REGION" --project "$PROJECT_ID" --quiet
+
+      - name: fumaça
+        run: |
+          URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')"
+          curl -fsS --retry 5 --retry-delay 3 --retry-all-errors "$URL/api/health" >/dev/null
+          echo "no ar: $URL"

@@ -1,0 +1,80 @@
+# Override para máquina de 1 GB (GCP e2-micro). Uso:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.micro.yml up -d
+#
+# Não substitui o docker-compose.yml — só aperta o que cabe apertar. Em máquina
+# de 2 GB+ (e2-small pra cima), não usar: os tetos daqui só atrapalham.
+#
+# Orçamento real medido em repouso, não o limite declarado:
+#   SO Ubuntu ~150 MB · evolution (Node) ~450 · postgres ~80 · redis ~12 · caddy ~20
+#   ≈ 710 MB, com ~240 de folga em 1 GB. Os 2 GB de swap da VM cobrem o pico.
+
+services:
+  postgres:
+    # shared_buffers padrão (128 MB) é dimensionado para máquina com folga.
+    # Aqui a base tem alguns MB: o dado quente cabe em 64, e os 64 devolvidos
+    # valem mais no heap do Node.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=192MB
+      - -c
+      - max_connections=20
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  redis:
+    # maxmemory com política: sem teto, o cache cresce até o limite do container
+    # e leva OOM kill em vez de descartar chave velha.
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 32mb
+      - --maxmemory-policy
+      - allkeys-lru
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+        # A reserva do arquivo base (128M) é maior que o teto daqui — o par
+        # ficaria contraditório se não fosse rebaixada junto.
+        reservations:
+          memory: 32M
+
+  evolution-api:
+    environment:
+      # Teto duro no heap do V8. Sem isso o Node só devolve memória sob pressão
+      # do SO — que numa máquina de 1 GB chega como OOM kill, não como GC.
+      NODE_OPTIONS: --max-old-space-size=384
+      # O painel guarda a própria mensagem em `messages`; o histórico da
+      # Evolution é cópia que só faz o Postgres desta VM crescer.
+      # ⚠️ DATABASE_SAVE_DATA_INSTANCE fica true (no .env) — é a credencial de
+      # sessão. Desligar aquele é reparear por QR a cada restart.
+      # ⚠️ Existem outros DATABASE_SAVE_* na imagem (update de mensagem,
+      # contatos, chats, histórico). Conferir o nome exato no código-fonte da
+      # tag 2.3.7 antes de acrescentar — não copiar de doc genérica.
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  caddy:
+    deploy:
+      resources:
+        limits:
+          memory: 64M
