@@ -9,6 +9,7 @@ import {
   Inbox, ChartNoAxesColumn, Truck, Layers, Settings, Pause, Play, KeyRound,
 } from 'lucide-react';
 import { Logo } from '@/components/ui/logo';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { AccountDrawer } from '@/features/auth/components/account-drawer';
 
 // Ordem e rótulos vêm do handoff (README §Sidebar). "Canais" não é item de
@@ -119,16 +120,43 @@ export function Sidebar({
   // reload, e não é dado de servidor.
   const [accountOpen, setAccountOpen] = useState(false);
 
+  // Confirmação só do lado "pausar" — retomar segue de um clique só. O efeito
+  // continua imediato assim que confirmado (T8 não muda: nada fica em fila
+  // esperando); a trava existe pra clique sem querer no botão que para o
+  // envio pra todo mundo, não pra atrasar o kill switch de verdade.
+  const [confirmPauseOpen, setConfirmPauseOpen] = useState(false);
+
+  function handleTogglePauseClick() {
+    if (paused) {
+      onTogglePause();
+      return;
+    }
+    setConfirmPauseOpen(true);
+  }
+
+  function handleConfirmPause() {
+    setConfirmPauseOpen(false);
+    onTogglePause();
+  }
+
   return (
     <>
       <AccountDrawer open={accountOpen} onOpenChange={setAccountOpen} />
+      <ConfirmDialog
+        open={confirmPauseOpen}
+        onOpenChange={setConfirmPauseOpen}
+        title="Pausar os envios?"
+        description="Nenhuma mensagem da régua sai enquanto estiver pausado — nem cobrança nova, nem lembrete. Retomar depois é um clique só."
+        confirmLabel="Pausar envios"
+        onConfirm={handleConfirmPause}
+      />
 
       {/* Sidebar fixa — só existe em telas ≥900px (README §Responsivo). */}
       <aside className="sticky top-0 hidden h-screen w-60 flex-col border-r border-border md:flex">
         <SidebarContent
           pathname={pathname}
           paused={paused}
-          onTogglePause={onTogglePause}
+          onTogglePause={handleTogglePauseClick}
           onOpenAccount={() => setAccountOpen(true)}
         />
       </aside>
@@ -145,7 +173,7 @@ export function Sidebar({
             <SidebarContent
               pathname={pathname}
               paused={paused}
-              onTogglePause={onTogglePause}
+              onTogglePause={handleTogglePauseClick}
               onOpenAccount={() => setAccountOpen(true)}
               onNavigate={() => onMobileOpenChange(false)}
             />
