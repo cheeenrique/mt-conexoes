@@ -2,9 +2,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import {
   createRule,
+  deleteRule,
   renameRule,
   setDefaultRule,
   setRuleStatus,
+  DunningRuleIsDefaultError,
   DunningRuleNotFoundError,
   InvalidDunningStatusTransitionError,
 } from './rule.service';
@@ -158,5 +160,28 @@ describe('setRuleStatus', () => {
 
     await setRuleStatus(id, 'ACTIVE');
     expect((await db.dunningRule.findUniqueOrThrow({ where: { id } })).status).toBe('ACTIVE');
+  });
+});
+
+describe('deleteRule', () => {
+  it('apaga a régua e cascade leva os passos junto', async () => {
+    const { id } = await newRule('descartável', 'suggested');
+
+    await deleteRule(id);
+
+    expect(await db.dunningRule.findUnique({ where: { id } })).toBeNull();
+    expect(await db.dunningStep.count({ where: { ruleId: id } })).toBe(0);
+  });
+
+  it('recusa apagar a régua padrão', async () => {
+    const { id } = await newRule('quase padrão');
+    await setDefaultRule(id);
+
+    await expect(deleteRule(id)).rejects.toThrow(DunningRuleIsDefaultError);
+    expect(await db.dunningRule.findUnique({ where: { id } })).not.toBeNull();
+  });
+
+  it('id que não existe mais vira erro de domínio, não erro do Prisma', async () => {
+    await expect(deleteRule('00000000-0000-7000-8000-000000000000')).rejects.toThrow(DunningRuleNotFoundError);
   });
 });

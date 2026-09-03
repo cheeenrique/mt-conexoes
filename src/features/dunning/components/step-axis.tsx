@@ -53,7 +53,13 @@ export function StepAxis({
       </h2>
 
       <div className="overflow-x-auto px-4 py-5">
-        <div className="flex min-w-[520px] items-start">
+        {/* Largura fixa por card (`w-[118px] shrink-0`), não `flex-1`: com
+            `flex-1` a largura de cada card mudava conforme o número de passos
+            (5 passos = cards mais largos que com 6), e o texto — uma única
+            "palavra" longa tipo `{{cliente.primeiro_nome}}` — podia estourar
+            a largura calculada e vazar visualmente por cima do card vizinho
+            em telas menores. Fixo é previsível; quem não cabe, rola. */}
+        <div className="flex min-w-[520px] items-start gap-2">
           {steps.map((step) => {
             const Icon = ACTION_ICON[step.action as keyof typeof ACTION_ICON] ?? Mail;
             return (
@@ -63,12 +69,12 @@ export function StepAxis({
                 onClick={() => open(step)}
                 // Passo inativo perde opacidade em vez de ganhar um badge
                 // "Inativo": o eixo já é denso e o badge competiria com o rótulo.
-                className={`flex min-w-[110px] flex-1 flex-col items-center gap-2.5 rounded px-1 py-2 text-center ${
+                className={`group flex w-[118px] shrink-0 flex-col items-center gap-2.5 rounded-lg border border-transparent px-2 py-3 text-center transition-colors duration-150 hover:border-border-strong hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${
                   step.isActive ? '' : 'opacity-45'
                 }`}
               >
                 <span
-                  className={`flex size-9 items-center justify-center rounded-full border border-border bg-surface-elevated ${
+                  className={`flex size-9 items-center justify-center rounded-full border border-border bg-surface-elevated transition-colors duration-150 group-hover:border-brand-light ${
                     step.action === 'SUSPEND' ? 'text-brand-light' : 'text-foreground'
                   }`}
                 >
@@ -77,7 +83,9 @@ export function StepAxis({
                 <span className="font-mono text-[13px] font-semibold tabular-mono text-foreground">
                   {stepLabel(step.offsetDays)}
                 </span>
-                <span className="line-clamp-3 text-xs leading-snug text-foreground-muted">{describe(step)}</span>
+                <span className="line-clamp-3 w-full break-words text-xs leading-snug text-foreground-muted">
+                  {describe(step)}
+                </span>
                 <span className="text-[11px] font-bold text-brand-light">Editar passo</span>
                 {!step.isActive && <span className="sr-only">Passo inativo</span>}
               </button>
@@ -87,7 +95,7 @@ export function StepAxis({
           <button
             type="button"
             onClick={() => open(null)}
-            className="flex w-[110px] flex-none flex-col items-center gap-2.5 px-1 py-2 text-foreground-muted"
+            className="flex w-[118px] shrink-0 flex-col items-center gap-2.5 rounded-lg border border-transparent px-2 py-3 text-center text-foreground-muted transition-colors duration-150 hover:border-border-strong hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           >
             <span className="flex size-9 items-center justify-center rounded-full border border-dashed border-border-strong text-foreground">
               <Plus size={16} />

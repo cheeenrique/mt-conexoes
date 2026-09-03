@@ -1,5 +1,10 @@
+import { Alert } from '@/components/ui/alert';
+
 /**
- * Cartão de nota sobre o canal em uso, no fim do detalhe da régua.
+ * Aviso sobre o canal em uso, no fim do detalhe da régua — o que a escolha
+ * dele significa para os passos é informação que muda comportamento, não nota
+ * de rodapé; por isso o mesmo componente `Alert` que o resto do painel usa
+ * para consequência operacional, não um cartão neutro.
  *
  * ⚠️ Nenhuma credencial chega aqui, nem mascarada — só o nome do canal e o que
  * a escolha dele significa para os passos.
@@ -22,18 +27,23 @@ export function ChannelNote({
 }: {
   channel: { label: string; requiresApprovedTemplate: boolean } | null;
 }) {
+  // Sem canal é o único caso em que NADA sai — grave o bastante pra ser
+  // `danger`, não `warning` junto dos outros dois, que são restrição
+  // operacional (template) ou risco já avisado em outro lugar (Evolution).
+  const tone = !channel ? 'danger' : 'warning';
+
   return (
-    <section className="flex flex-col gap-2.5 rounded border border-border bg-surface p-4">
-      <span className="text-xs font-bold uppercase tracking-[.08em] text-foreground-muted">
+    <Alert tone={tone} role="status">
+      <span className="block text-xs font-bold uppercase tracking-[.08em]">
         Canal padrão: {channel?.label ?? 'nenhum configurado'}
       </span>
-      <p className="leading-relaxed text-foreground-muted">
+      <p className="mt-1 leading-relaxed">
         {!channel
           ? 'Sem canal ativo, nenhum passo de mensagem chega ao cliente. Configure um canal em Ajustes antes de ativar a régua.'
           : channel.requiresApprovedTemplate
             ? 'Este canal só entrega template aprovado fora de conversa iniciada pelo cliente. Passo sem um template aprovado marcado é pulado automaticamente — não tenta um texto livre que a Meta recusaria. Cliente com mais de uma cobrança vencida no mesmo dia (mensagem consolidada) ainda é pulado mesmo com template marcado, até existir um template de consolidação aprovado.'
             : 'Aceita texto livre. Trocar para a Meta Cloud muda isso — lá, fora da janela de 24 horas, só template aprovado chega, e passo sem template marcado é pulado em vez de tentar sair.'}
       </p>
-    </section>
+    </Alert>
   );
 }

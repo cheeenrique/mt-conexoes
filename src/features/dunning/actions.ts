@@ -9,7 +9,7 @@ import {
   renameDunningRuleSchema,
 } from './schema';
 import { createStep, updateStep, deleteStep, activateDunningRule } from './service';
-import { createRule, renameRule, setDefaultRule, setRuleStatus } from './rule.service';
+import { createRule, deleteRule, renameRule, setDefaultRule, setRuleStatus } from './rule.service';
 import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -88,6 +88,12 @@ export async function createDunningRuleAction(input: unknown): Promise<ActionRes
 export async function renameDunningRuleAction(id: string, input: unknown): Promise<ActionResult<void>> {
   return run('dunning.renameRule', async () => {
     await renameRule(id, parseOrThrow(renameDunningRuleSchema, input).name);
+  });
+}
+
+export async function deleteDunningRuleAction(id: string): Promise<ActionResult<void>> {
+  return run('dunning.deleteRule', async () => {
+    await deleteRule(id);
   });
 }
 

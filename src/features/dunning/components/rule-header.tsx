@@ -1,10 +1,12 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Pause, Pencil, Play, Star } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Pause, Pencil, Play, Star, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toastError, toastSuccess } from '@/lib/toast';
-import { renameDunningRuleAction, setDunningRuleStatusAction } from '../actions';
+import { deleteDunningRuleAction, renameDunningRuleAction, setDunningRuleStatusAction } from '../actions';
 import { RuleStatusBadge } from './rule-status-badge';
 import { SetDefaultRuleDialog } from './set-default-rule-dialog';
 
@@ -19,8 +21,10 @@ export function RuleHeader({
   currentDefaultName: string | null;
   evaluableSubscriptions: number;
 }) {
+  const router = useRouter();
   const nameRef = useRef<HTMLInputElement>(null);
   const [confirmDefault, setConfirmDefault] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
   // Campo não controlado: o valor do servidor nunca entra em `useState`, então
@@ -47,6 +51,18 @@ export function RuleHeader({
     setBusy(false);
     if ('error' in result) toastError(result.error);
     else toastSuccess(successMessage);
+  }
+
+  async function handleDelete() {
+    setBusy(true);
+    const result = await deleteDunningRuleAction(rule.id);
+    setBusy(false);
+    setConfirmDelete(false);
+    if ('error' in result) return toastError(result.error);
+    toastSuccess('Régua excluída.');
+    // Sem `?regua=` — a régua some da lista fresca, e a página já cai na
+    // padrão sozinha para qualquer id que não exista mais (ver page.tsx).
+    router.push('/dunning');
   }
 
   return (
@@ -95,6 +111,13 @@ export function RuleHeader({
             <Play /> Retomar régua
           </Button>
         )}
+        {/* A padrão nunca some deste botão: apagá-la deixaria o cron sem o que
+            avaliar. Trocar a padrão é decisão à parte, em "Tornar padrão". */}
+        {!rule.isDefault && (
+          <Button variant="destructive" onClick={() => setConfirmDelete(true)} disabled={busy}>
+            <Trash2 /> Excluir régua
+          </Button>
+        )}
       </div>
 
       <SetDefaultRuleDialog
@@ -103,6 +126,14 @@ export function RuleHeader({
         rule={rule}
         currentDefaultName={currentDefaultName}
         evaluableSubscriptions={evaluableSubscriptions}
+      />
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={`Excluir "${rule.name}"?`}
+        description="Os passos e o histórico de execução desta régua somem junto. Mensagens já enviadas não são apagadas."
+        confirmLabel="Excluir"
+        onConfirm={handleDelete}
       />
     </div>
   );

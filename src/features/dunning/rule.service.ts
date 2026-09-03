@@ -99,6 +99,27 @@ export async function setDefaultRule(id: string): Promise<void> {
   });
 }
 
+export class DunningRuleIsDefaultError extends DomainError {
+  constructor(cause?: unknown) {
+    super('A régua padrão não pode ser excluída. Torne outra régua padrão primeiro.', 'DUNNING_RULE_IS_DEFAULT', {
+      cause,
+    });
+  }
+}
+
+/**
+ * Passos, execuções e a ligação com mensagem cascade pelo banco
+ * (`dunning_steps.ruleId` e `dunning_executions.stepId` são `onDelete: Cascade`)
+ * — a mensagem em si nunca é apagada, só o registro de qual passo a gerou.
+ */
+export async function deleteRule(id: string): Promise<void> {
+  const rule = await db.dunningRule.findUnique({ where: { id }, select: { isDefault: true } });
+  if (!rule) throw new DunningRuleNotFoundError();
+  if (rule.isDefault) throw new DunningRuleIsDefaultError();
+
+  await db.dunningRule.delete({ where: { id } });
+}
+
 export async function setRuleStatus(id: string, status: RuleStatus): Promise<void> {
   const rule = await db.dunningRule.findUnique({ where: { id }, select: { status: true } });
   if (!rule) throw new DunningRuleNotFoundError();
