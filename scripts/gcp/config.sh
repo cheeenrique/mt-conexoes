@@ -24,7 +24,7 @@ EVOLUTION_REGION="${EVOLUTION_ZONE%-*}"
 # GitHub Actions — federação de identidade (70-github-wif.sh). Sem chave JSON
 # de service account: chave longa em segredo de repositório é credencial que
 # não expira e vaza em fork/log.
-GH_REPO="${GH_REPO:-cheeenrique/subflow}"
+GH_REPO="${GH_REPO:-cheeenrique/mt-conexoes}"
 WIF_POOL="github"
 WIF_PROVIDER="github-actions"
 DEPLOYER_SA="github-deployer"
