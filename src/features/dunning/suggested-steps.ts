@@ -19,31 +19,31 @@ export const SUGGESTED_STEPS: {
     offsetDays: -5,
     action: 'SEND_MESSAGE',
     templateBody:
-      'Olá {{cliente.primeiro_nome}}! Sua renovação de {{cobranca.valor}} vence em breve, dia {{cobranca.vencimento}}.\n\n{{negocio.nome}}',
+      'Olá {{cliente.primeiro_nome}}! Sua renovação de *{{cobranca.valor}}* vence em breve, dia *{{cobranca.vencimento}}*.\n\n{{negocio.nome}}',
   },
   {
     offsetDays: -2,
     action: 'SEND_MESSAGE',
     templateBody:
-      'Olá {{cliente.primeiro_nome}}! Sua renovação de {{cobranca.valor}} vence dia {{cobranca.vencimento}}.\n\nPix: {{pix.chave}}\n\n{{negocio.nome}}',
+      'Olá {{cliente.primeiro_nome}}! Sua renovação de *{{cobranca.valor}}* vence dia *{{cobranca.vencimento}}*.\n\nPix: *{{pix.chave}}*\n\n{{negocio.nome}}',
   },
   {
     offsetDays: 0,
     action: 'SEND_MESSAGE',
     templateBody:
-      'Olá {{cliente.primeiro_nome}}! Sua renovação de {{cobranca.valor}} vence hoje ({{cobranca.vencimento}}).\n\nPix: {{pix.chave}}\n\nQualquer dúvida, é só responder aqui.\n{{negocio.nome}}',
+      'Olá {{cliente.primeiro_nome}}! Sua renovação de *{{cobranca.valor}}* vence hoje (*{{cobranca.vencimento}}*).\n\nPix: *{{pix.chave}}*\n\nQualquer dúvida, é só responder aqui.\n{{negocio.nome}}',
   },
   {
     offsetDays: 1,
     action: 'SEND_MESSAGE',
     templateBody:
-      'Olá {{cliente.primeiro_nome}}, sua renovação de {{cobranca.valor}} está {{cobranca.dias_atraso}} dia(s) atrasada.\n\nPix: {{pix.chave}}\n\n{{negocio.nome}}',
+      'Olá {{cliente.primeiro_nome}}, sua renovação de *{{cobranca.valor}}* está {{cobranca.dias_atraso}} dia(s) atrasada.\n\nPix: *{{pix.chave}}*\n\n{{negocio.nome}}',
   },
   {
     offsetDays: 3,
     action: 'SEND_MESSAGE',
     templateBody:
-      'Olá {{cliente.primeiro_nome}}, último aviso: sua renovação de {{cobranca.valor}} está {{cobranca.dias_atraso}} dia(s) atrasada e o acesso pode ser suspenso.\n\nPix: {{pix.chave}}\n\n{{negocio.nome}}',
+      'Olá {{cliente.primeiro_nome}}, último aviso: sua renovação de *{{cobranca.valor}}* está {{cobranca.dias_atraso}} dia(s) atrasada e o acesso pode ser suspenso.\n\nPix: *{{pix.chave}}*\n\n{{negocio.nome}}',
   },
   { offsetDays: 5, action: 'SUSPEND', templateBody: null },
 ];
