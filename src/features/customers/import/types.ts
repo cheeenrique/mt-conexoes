@@ -1,6 +1,7 @@
 import type Decimal from 'decimal.js';
 import { marginPercent } from '@/core/money';
 import type { ImportPlan, ImportPlanRow } from './plan';
+import type { PhoneIssue } from './workbook';
 
 /**
  * Formas compartilhadas entre o parser (`workbook.ts`), a orquestração
@@ -12,7 +13,7 @@ export interface ImportRowResult {
   identifier: string;
   reason?: string;
   priceCents?: bigint;
-  hasPhoneWarning?: boolean;
+  phoneIssue?: PhoneIssue;
 }
 
 export interface ImportSummary {
@@ -29,7 +30,7 @@ export interface ImportRowResultDTO {
   identifier: string;
   reason?: string;
   priceCents?: string;
-  hasPhoneWarning?: boolean;
+  phoneIssue?: PhoneIssue;
 }
 
 export interface ImportSummaryDTO {
@@ -76,7 +77,7 @@ export interface ImportPlanRowDTO {
   costCents: string;
   marginPercent: string | null;
   dueAt: string;
-  hasPhoneWarning: boolean;
+  phoneIssue: PhoneIssue;
 }
 
 export interface ImportPlanDTO {
@@ -104,7 +105,7 @@ function toPlanRowDTO(row: ImportPlanRow): ImportPlanRowDTO {
     costCents: row.costCents.toString(),
     marginPercent: toDecimalString(marginPercent(row.priceCents, row.costCents)),
     dueAt: row.dueDate.toISOString(),
-    hasPhoneWarning: row.hasPhoneWarning,
+    phoneIssue: row.phoneIssue,
   };
 }
 

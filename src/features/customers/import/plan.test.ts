@@ -41,7 +41,7 @@ describe('buildImportPlan', () => {
     expect(plan.alreadyExists).toHaveLength(0);
   });
 
-  it('telefone que não deu pra normalizar vira ressalva, mas a linha continua indo pra toImport', () => {
+  it('telefone que não deu pra normalizar vira ressalva "invalid", mas a linha continua indo pra toImport', () => {
     const parsed = [
       parse({ CODIGO: 'Sem Telefone Válido', WHATSAPP: 'abc123', VALIDADE: '10/08/2026', VALOR: '50,00' }),
     ];
@@ -49,7 +49,16 @@ describe('buildImportPlan', () => {
     const plan = buildImportPlan({ parsedRows: parsed, existingUsernames: new Set() });
 
     expect(plan.toImport).toHaveLength(1);
-    expect(plan.toImport[0]?.hasPhoneWarning).toBe(true);
+    expect(plan.toImport[0]?.phoneIssue).toBe('invalid');
+  });
+
+  it('célula de telefone vazia vira ressalva "missing" — bug real que não gerava aviso nenhum', () => {
+    const parsed = [parse({ CODIGO: 'Sem Telefone Nenhum', VALIDADE: '10/08/2026', VALOR: '50,00' })];
+
+    const plan = buildImportPlan({ parsedRows: parsed, existingUsernames: new Set() });
+
+    expect(plan.toImport).toHaveLength(1);
+    expect(plan.toImport[0]?.phoneIssue).toBe('missing');
   });
 
   it('planilha vazia devolve plano zerado, sem margem', () => {

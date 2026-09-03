@@ -65,11 +65,16 @@ export function readWorkbookRows(buffer: Buffer): Record<string, unknown>[] {
   return utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: undefined });
 }
 
+/** `'missing'` = célula vazia (nenhuma coluna de telefone tinha valor); `'invalid'`
+ * = tinha valor, não virou telefone válido (ex.: sem DDD). Os dois entram sem
+ * telefone — a distinção é só o que a tela mostra pro operador. */
+export type PhoneIssue = 'missing' | 'invalid' | null;
+
 export interface ParsedImportRow {
   identifier: string;
   name: string;
   phone: string | null;
-  phoneWasInvalid: boolean;
+  phoneIssue: PhoneIssue;
   username: string | null;
   password: string | null;
   startedAt: Date;
@@ -126,10 +131,10 @@ export function parseImportRow(rawRow: Record<string, unknown>, timezone: string
 
   const rawPhone = pick(row, COLUMN.phone);
   const phone = rawPhone !== undefined ? normalizePhoneBR(String(rawPhone)) : null;
-  const phoneWasInvalid = rawPhone !== undefined && !phone;
+  const phoneIssue: PhoneIssue = phone ? null : rawPhone !== undefined ? 'invalid' : 'missing';
 
   return {
     ok: true,
-    data: { identifier, name, phone, phoneWasInvalid, username, password, startedAt, dueDate, priceCents, costCents, screens },
+    data: { identifier, name, phone, phoneIssue, username, password, startedAt, dueDate, priceCents, costCents, screens },
   };
 }

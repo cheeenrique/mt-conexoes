@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { getSettings } from '@/lib/settings';
 import { resolveImportedCustomer } from '@/features/customers/service';
 import { createImportedSubscription, findImportedSubscriptionBySupplier } from '@/features/subscriptions/service';
-import { parseImportRow, readWorkbookRows, type ParseRowResult } from '@/features/customers/import/workbook';
+import { parseImportRow, readWorkbookRows, type ParseRowResult, type PhoneIssue } from '@/features/customers/import/workbook';
 import { buildImportPlan, type ImportPlan } from '@/features/customers/import/plan';
 import { ImportFileEmptyError, ImportSupplierNotFoundError } from '@/features/customers/import/errors';
 import type { ImportRowResult, ImportSummary } from '@/features/customers/import/types';
@@ -25,8 +25,10 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-function phoneWarningSuffix(hasWarning: boolean): string {
-  return hasWarning ? ' (telefone informado mas inválido, importado sem telefone)' : '';
+function phoneWarningSuffix(phoneIssue: PhoneIssue): string {
+  if (phoneIssue === 'invalid') return ' (telefone informado mas inválido, importado sem telefone)';
+  if (phoneIssue === 'missing') return ' (sem telefone na planilha, importado sem telefone)';
+  return '';
 }
 
 async function importRow(
@@ -64,9 +66,9 @@ async function importRow(
 
   return {
     status: 'imported',
-    identifier: data.identifier + phoneWarningSuffix(data.phoneWasInvalid),
+    identifier: data.identifier + phoneWarningSuffix(data.phoneIssue),
     priceCents: data.priceCents,
-    hasPhoneWarning: data.phoneWasInvalid,
+    phoneIssue: data.phoneIssue,
   };
 }
 
@@ -96,11 +98,20 @@ export async function importCustomersFromRows(params: {
   const results: ImportRowResult[] = [];
 
   for (const block of chunk(params.rows, IMPORT_BATCH_SIZE)) {
-    await db.$transaction(async (tx) => {
-      for (const row of block) {
-        results.push(await importRow(tx, row, params.supplierId, params.timezone, now));
-      }
-    });
+    await db.$transaction(
+      async (tx) => {
+        for (const row of block) {
+          results.push(await importRow(tx, row, params.supplierId, params.timezone, now));
+        }
+      },
+      // Timeout padrão do Prisma (5s) não sobrevive a uma planilha real: cada
+      // linha é 2-3 idas ao banco em série, e a latência de rede soma rápido.
+      // Passado o teto, a transação fecha sozinha e a query seguinte falha
+      // com "Transaction not found" — sem relação com o dado da linha, e
+      // nada visível pro operador além de "não fez nada". 500 linhas cabem
+      // em 120s, dentro do timeout do serviço.
+      { maxWait: 10_000, timeout: 120_000 },
+    );
   }
 
   return summarize(params.rows.length, results);

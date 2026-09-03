@@ -19,7 +19,7 @@ import { importCustomersFromRows } from '@/app/(app)/customers/customer-import';
 import type { ImportRowResult, ImportSummary } from '@/features/customers/import/types';
 
 function buildReportLines(supplierName: string, summary: ImportSummary): string[] {
-  const withPhoneWarning = summary.imported.filter((r) => r.hasPhoneWarning);
+  const withPhoneWarning = summary.imported.filter((r) => r.phoneIssue);
   return [
     `Importação — ${supplierName} — ${new Date().toISOString()}`,
     `Total de linhas: ${summary.totalRows}`,

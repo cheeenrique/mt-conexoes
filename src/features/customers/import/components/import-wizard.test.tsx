@@ -13,7 +13,7 @@ const PLAN = {
       costCents: '5000',
       marginPercent: '52,4',
       dueAt: '2026-09-05T02:59:59.999Z',
-      hasPhoneWarning: false,
+      phoneIssue: null,
     },
   ],
   alreadyExistsCount: 0,

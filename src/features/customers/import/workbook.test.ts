@@ -67,21 +67,37 @@ describe('parseImportRow', () => {
     expect(negativo).toMatchObject({ ok: false, reason: 'Valor do serviço ausente, inválido ou negativo.' });
   });
 
-  it('linha sem WHATSAPP entra sem telefone — ausência não é motivo de recusa', () => {
+  // Bug real em produção (03/09/2026): célula vazia não gerava ressalva
+  // nenhuma — a linha entrava sem telefone e sem aviso em lugar nenhum da
+  // tela. `phoneIssue: 'missing'` é o que a prévia usa agora pra destacar.
+  it('linha sem WHATSAPP entra sem telefone, com phoneIssue "missing" — ausência não é motivo de recusa', () => {
     const result = parseImportRow({ CODIGO: 'Ana', VALIDADE: '10/08/2026', VALOR: '50,00' }, TZ, NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.phone).toBeNull();
-      expect(result.data.phoneWasInvalid).toBe(false);
+      expect(result.data.phoneIssue).toBe('missing');
     }
   });
 
-  it('telefone presente mas sem DDD entra sem telefone, com ressalva — não recusa a linha', () => {
+  it('telefone presente mas sem DDD entra sem telefone, phoneIssue "invalid" — não recusa a linha', () => {
     const result = parseImportRow({ CODIGO: 'Ana', VALIDADE: '10/08/2026', VALOR: '50,00', WHATSAPP: '9999-8888' }, TZ, NOW);
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.phone).toBeNull();
-      expect(result.data.phoneWasInvalid).toBe(true);
+      expect(result.data.phoneIssue).toBe('invalid');
+    }
+  });
+
+  it('telefone válido entra sem ressalva — phoneIssue null', () => {
+    const result = parseImportRow(
+      { CODIGO: 'Ana', VALIDADE: '10/08/2026', VALOR: '50,00', WHATSAPP: '(62) 99813-3401' },
+      TZ,
+      NOW,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.phone).not.toBeNull();
+      expect(result.data.phoneIssue).toBeNull();
     }
   });
 

@@ -1,7 +1,9 @@
 'use client';
 
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, PhoneOff } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { formatCents, formatLocalDate, formatPercent } from '@/lib/format';
 import type { ImportPlanDTO } from '../types';
 import { SummaryStat } from './summary-stat';
@@ -25,7 +27,7 @@ export function PreviewImportStep({
   onBack: () => void;
   onConfirm: () => void;
 }) {
-  const phoneWarnings = plan.toImport.filter((row) => row.hasPhoneWarning);
+  const phoneWarnings = plan.toImport.filter((row) => row.phoneIssue !== null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -47,14 +49,17 @@ export function PreviewImportStep({
       {plan.toImport.length > 0 && <PreviewTable rows={plan.toImport} timezone={timezone} />}
 
       {phoneWarnings.length > 0 && (
-        <div>
-          <p className="text-sm font-medium text-foreground">Ressalva de telefone (importa sem telefone)</p>
-          <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto text-sm text-foreground-muted">
+        <Alert tone="warning" icon={PhoneOff}>
+          <p className="font-medium">
+            {phoneWarnings.length} cliente{phoneWarnings.length === 1 ? '' : 's'} sem telefone — a régua não manda
+            cobrança nenhuma pra quem não tem WhatsApp cadastrado.
+          </p>
+          <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto">
             {phoneWarnings.map((row) => (
               <li key={row.identifier}>{row.identifier}</li>
             ))}
           </ul>
-        </div>
+        </Alert>
       )}
 
       {plan.rejected.length > 0 && (
@@ -100,7 +105,16 @@ function PreviewTable({ rows, timezone }: { rows: ImportPlanDTO['toImport']; tim
         <tbody>
           {rows.map((row, index) => (
             <tr key={`${row.identifier}-${index}`} className="border-t border-border">
-              <td className="px-3 py-2 text-foreground">{row.identifier}</td>
+              <td className="px-3 py-2 text-foreground">
+                <div className="flex items-center gap-2">
+                  <span>{row.identifier}</span>
+                  {row.phoneIssue && (
+                    <StatusBadge tone="warning">
+                      {row.phoneIssue === 'missing' ? 'Sem telefone' : 'Telefone inválido'}
+                    </StatusBadge>
+                  )}
+                </div>
+              </td>
               <td className="px-3 py-2 text-foreground-muted">{row.username ?? '—'}</td>
               <td className="px-3 py-2 text-right font-mono tabular-mono text-foreground">
                 {formatCents(row.priceCents)}

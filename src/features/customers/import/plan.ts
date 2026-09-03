@@ -1,6 +1,6 @@
 import type Decimal from 'decimal.js';
 import { marginPercent } from '@/core/money';
-import type { ParsedImportRow, ParseRowResult } from './workbook';
+import type { ParsedImportRow, ParseRowResult, PhoneIssue } from './workbook';
 
 /**
  * Plano da Etapa 2 (conferência), montado a partir das linhas já parseadas
@@ -16,7 +16,7 @@ export interface ImportPlanRow {
   priceCents: bigint;
   costCents: bigint;
   dueDate: Date;
-  hasPhoneWarning: boolean;
+  phoneIssue: PhoneIssue;
 }
 
 export interface ImportPlanRejectedRow {
@@ -40,7 +40,7 @@ function toPlanRow(data: ParsedImportRow): ImportPlanRow {
     priceCents: data.priceCents,
     costCents: data.costCents,
     dueDate: data.dueDate,
-    hasPhoneWarning: data.phoneWasInvalid,
+    phoneIssue: data.phoneIssue,
   };
 }
 
