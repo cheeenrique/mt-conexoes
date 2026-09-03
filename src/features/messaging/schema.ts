@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { metaCloudCredentialsSchema } from './channels/meta-cloud/schema';
-import { evolutionCredentialsSchema, evolutionPairingInputSchema } from './channels/evolution/schema';
+import {
+  evolutionChangeNumberSchema,
+  evolutionCredentialsSchema,
+  evolutionPairingInputSchema,
+} from './channels/evolution/schema';
 
 /**
  * Entrada do caminho `CREDENTIALS` de cada canal: o operador cola valores que já tem.
@@ -29,6 +33,16 @@ export const beginChannelPairingSchema = z.discriminatedUnion('provider', [
 ]);
 
 export type BeginChannelPairingInput = z.infer<typeof beginChannelPairingSchema>;
+
+/**
+ * Trocar número não repete endereço nem chave — já estão salvos, e a tela nunca os pede
+ * de volta (`CLAUDE.md` §Segurança). Só o campo que muda quando o operador troca de chip.
+ */
+export const changeChannelNumberSchema = z.discriminatedUnion('provider', [
+  z.object({ provider: z.literal('EVOLUTION'), ...evolutionChangeNumberSchema.shape }),
+]);
+
+export type ChangeChannelNumberInput = z.infer<typeof changeChannelNumberSchema>;
 
 export const sendManualMessagesSchema = z.object({
   // ⚠️ Toda regra de borda leva mensagem própria: sem ela o Zod devolve o texto

@@ -142,3 +142,56 @@ describe('unpair', () => {
     expect(init.method).toBe('DELETE');
   });
 });
+
+describe('changeNumber', () => {
+  const WEBHOOK_URL = 'https://painel.exemplo.com/api/webhooks/evolution';
+
+  it('apaga a instância antiga e recria com o mesmo nome e a chave já salva — só o número muda', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ status: 'SUCCESS' }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => CREATE_RESPONSE });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const challenge = await evolutionPairing.changeNumber(CREDENTIALS, '+5511988887777', WEBHOOK_URL);
+
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[0];
+    expect(deleteUrl).toBe('https://evo.exemplo.com/instance/delete/painel-a1b2c3');
+    expect(deleteInit.method).toBe('DELETE');
+
+    const [createUrl, createInit] = fetchMock.mock.calls[1];
+    expect(createUrl).toBe('https://evo.exemplo.com/instance/create');
+    const body = JSON.parse(createInit.body);
+    // Mesmo nome de instância reaproveitado — não gera um `painel-xxxxxx` novo a cada troca.
+    expect(body.instanceName).toBe('painel-a1b2c3');
+    expect(body.number).toBe('5511988887777');
+    // Token de webhook e endereço/chave: nenhum foi redigitado, vieram do que já estava salvo.
+    expect(body.webhook.headers.apikey).toBe('token-do-webhook');
+    expect(deleteUrl).toContain('evo.exemplo.com');
+
+    expect(challenge).toEqual({ qrBase64: 'data:image/png;base64,iVBOR', pairingCode: '6MA24GK4', state: 'AWAITING_SCAN' });
+  });
+
+  it('segue para criar mesmo se apagar a instância antiga falhar — o create revela o problema de verdade', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('rede instável'))
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => CREATE_RESPONSE });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const challenge = await evolutionPairing.changeNumber(CREDENTIALS, '+5511988887777', WEBHOOK_URL);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(challenge.state).toBe('AWAITING_SCAN');
+  });
+
+  it('rejeita número em formato inválido antes de falar com o servidor', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(evolutionPairing.changeNumber(CREDENTIALS, '11988887777', WEBHOOK_URL)).rejects.toThrow(
+      ChannelCredentialsInvalidError,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

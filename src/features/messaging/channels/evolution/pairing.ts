@@ -2,6 +2,7 @@ import { ZodError } from 'zod';
 import type { PairableChannel, PairingChallenge, PairingProvisionOptions, PairingState } from '../pairing';
 import { ChannelCredentialsInvalidError } from '../types';
 import {
+  evolutionChangeNumberSchema,
   evolutionCredentialsSchema,
   evolutionPairingInputSchema,
   type EvolutionCredentials,
@@ -37,6 +38,16 @@ const STATE_BY_CONNECTION: Record<string, PairingState> = {
 function parseInput(raw: unknown): EvolutionPairingInput {
   try {
     return evolutionPairingInputSchema.parse(raw);
+  } catch (err) {
+    if (err instanceof ZodError) throw new ChannelCredentialsInvalidError(err);
+    throw err;
+  }
+}
+
+/** Só o formato do número — endereço e chave não são digitados de novo na troca. */
+function parseNewNumber(raw: string): string {
+  try {
+    return evolutionChangeNumberSchema.parse({ pairingNumber: raw }).pairingNumber;
   } catch (err) {
     if (err instanceof ZodError) throw new ChannelCredentialsInvalidError(err);
     throw err;
@@ -140,32 +151,48 @@ async function waitForQrCode(baseUrl: string, apiKey: string, instanceName: stri
  * ⚠️ O `hash` que a resposta traz é o token **interno** da instância, gerado pela Evolution
  * — é o `apikey` que ela manda no **corpo** de cada evento. Não é o `webhookToken`, e
  * confundir os dois criaria autenticação falsa. Ele é ignorado de propósito.
+ *
+ * Compartilhado entre `beginPairing` (nome e token gerados agora) e `changeNumber`
+ * (reusa os que já existem) — as duas só diferem em de onde vêm esses dois valores.
  */
-async function beginPairing(rawInput: unknown, options: PairingProvisionOptions): Promise<PairingChallenge> {
-  const input = parseInput(rawInput);
-  const payload = await callEvolution(input.baseUrl, input.apiKey, '/instance/create', {
+async function createInstance(
+  baseUrl: string,
+  apiKey: string,
+  instanceName: string,
+  webhookToken: string,
+  webhookUrl: string,
+  pairingNumber: string,
+): Promise<PairingChallenge> {
+  const payload = await callEvolution(baseUrl, apiKey, '/instance/create', {
     method: 'POST',
     body: {
-      instanceName: options.instanceName,
+      instanceName,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
-      number: input.pairingNumber.replace(/\D/g, ''),
+      number: pairingNumber.replace(/\D/g, ''),
       groupsIgnore: true,
       rejectCall: true,
       msgCall: CALL_REJECTION_MESSAGE,
       syncFullHistory: false,
-      webhook: {
-        enabled: true,
-        url: options.webhookUrl,
-        events: WEBHOOK_EVENTS,
-        headers: { apikey: options.webhookToken },
-      },
+      webhook: { enabled: true, url: webhookUrl, events: WEBHOOK_EVENTS, headers: { apikey: webhookToken } },
     },
   });
 
   const immediate = toChallenge((payload as { qrcode?: unknown } | null)?.qrcode, 'AWAITING_SCAN');
   if (immediate.qrBase64) return immediate;
-  return waitForQrCode(input.baseUrl, input.apiKey, options.instanceName);
+  return waitForQrCode(baseUrl, apiKey, instanceName);
+}
+
+async function beginPairing(rawInput: unknown, options: PairingProvisionOptions): Promise<PairingChallenge> {
+  const input = parseInput(rawInput);
+  return createInstance(
+    input.baseUrl,
+    input.apiKey,
+    options.instanceName,
+    options.webhookToken,
+    options.webhookUrl,
+    input.pairingNumber,
+  );
 }
 
 async function refreshChallenge(rawCredentials: unknown): Promise<PairingChallenge> {
@@ -184,4 +211,42 @@ async function unpair(rawCredentials: unknown): Promise<void> {
   );
 }
 
-export const evolutionPairing: PairableChannel = { beginPairing, refreshChallenge, unpair };
+/**
+ * Troca só o número, reusando endereço, chave, nome de instância e token de webhook já
+ * salvos — o operador digita um campo só.
+ *
+ * A Evolution não tem "trocar número" de uma instância existente: o WhatsApp amarra a
+ * sessão ao número na hora do pareamento. O jeito limpo é apagar a sessão antiga e criar
+ * de novo com o **mesmo** nome — sem apagar, ela fica presa em `close`, órfã, consumindo
+ * memória na VM até alguém entrar e limpar na mão (numa e2-micro de 1 GB isso dói rápido).
+ *
+ * Apagar é *best-effort*: se a instância já não existir, ou o delete falhar por motivo
+ * qualquer, o `create` a seguir revela o problema de verdade — "nome já em uso" é erro
+ * claro (`errorMessage` já trata essa forma de resposta), não falha silenciosa.
+ */
+async function changeNumber(rawCredentials: unknown, newPairingNumber: string, webhookUrl: string): Promise<PairingChallenge> {
+  const credentials = parseCredentials(rawCredentials);
+  const pairingNumber = parseNewNumber(newPairingNumber);
+
+  try {
+    await callEvolution(
+      credentials.baseUrl,
+      credentials.apiKey,
+      `/instance/delete/${encodeURIComponent(credentials.instanceName)}`,
+      { method: 'DELETE' },
+    );
+  } catch {
+    // Segue mesmo assim — ver comentário acima.
+  }
+
+  return createInstance(
+    credentials.baseUrl,
+    credentials.apiKey,
+    credentials.instanceName,
+    credentials.webhookToken,
+    webhookUrl,
+    pairingNumber,
+  );
+}
+
+export const evolutionPairing: PairableChannel = { beginPairing, refreshChallenge, unpair, changeNumber };

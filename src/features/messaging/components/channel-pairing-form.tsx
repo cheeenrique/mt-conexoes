@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Loader2, QrCode, Unplug } from 'lucide-react';
+import { Loader2, QrCode, RefreshCw, Unplug } from 'lucide-react';
 import type { ChannelProvider } from '@prisma/client';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -14,6 +14,7 @@ import type { ChannelConnectionMethod } from '../channels/types';
 import type { PairingChallengeDTO } from '../pairing.service';
 import { ChannelFieldList } from './channel-field-list';
 import { ChannelPairingDialog } from './channel-pairing-dialog';
+import { ChannelChangeNumberDialog } from './channel-change-number-dialog';
 
 /**
  * Caminho `PAIRING`: o painel provisiona no servidor do operador e devolve o QR. Nome de
@@ -36,6 +37,10 @@ export function ChannelPairingForm({
 }) {
   const [challenge, setChallenge] = useState<PairingChallengeDTO | null>(null);
   const [confirmUnpair, setConfirmUnpair] = useState(false);
+  const [changingNumber, setChangingNumber] = useState(false);
+  // Mesmo campo do pareamento inicial (label, placeholder, ajuda) — a troca de número
+  // não inventa um texto novo pro operador, é a mesma pergunta de novo.
+  const pairingNumberField = method.credentialFields.find((field) => field.name === 'pairingNumber');
   const {
     register,
     handleSubmit,
@@ -86,6 +91,12 @@ export function ChannelPairingForm({
           {isSubmitting ? <Loader2 aria-hidden="true" className="animate-spin" /> : <QrCode aria-hidden="true" />}
           {isSubmitting ? 'Criando a instância...' : 'Gerar QR Code'}
         </Button>
+        {connected && pairingNumberField && (
+          <Button type="button" variant="secondary" onClick={() => setChangingNumber(true)}>
+            <RefreshCw aria-hidden="true" />
+            Trocar número
+          </Button>
+        )}
         {connected && (
           <Button type="button" variant="secondary" onClick={() => setConfirmUnpair(true)}>
             <Unplug aria-hidden="true" />
@@ -114,6 +125,15 @@ export function ChannelPairingForm({
         confirmLabel="Desconectar"
         onConfirm={handleUnpair}
       />
+      {pairingNumberField && (
+        <ChannelChangeNumberDialog
+          open={changingNumber}
+          onOpenChange={setChangingNumber}
+          provider={provider}
+          field={pairingNumberField}
+          onChallenge={setChallenge}
+        />
+      )}
     </form>
   );
 }

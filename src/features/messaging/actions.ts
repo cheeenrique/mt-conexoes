@@ -2,10 +2,16 @@
 
 import { revalidatePath } from 'next/cache';
 import type { ChannelProvider } from '@prisma/client';
-import { beginChannelPairingSchema, saveChannelCredentialsSchema, sendManualMessagesSchema } from './schema';
+import {
+  beginChannelPairingSchema,
+  changeChannelNumberSchema,
+  saveChannelCredentialsSchema,
+  sendManualMessagesSchema,
+} from './schema';
 import { saveAndTestChannel, testChannelConnection, setSendingChannel, type ChannelTestResult } from './service';
 import {
   beginChannelPairing,
+  changeChannelNumber,
   refreshChannelPairing,
   unpairChannel,
   type PairingChallengeDTO,
@@ -90,6 +96,25 @@ export async function refreshChannelPairingAction(provider: ChannelProvider): Pr
     return challenge;
   } catch (err) {
     return toActionError(err, 'messaging.refreshPairing');
+  }
+}
+
+/**
+ * ⚠️ Mesma disciplina do pareamento: o desafio devolvido não é gravado nem loga — vai
+ * direto pra prop do diálogo e morre com ele.
+ */
+export async function changeChannelNumberAction(input: unknown): Promise<PairingChallengeDTO | ActionError> {
+  try {
+    await requireSession();
+    const parsed = changeChannelNumberSchema.safeParse(input);
+    if (!parsed.success) {
+      return { error: { code: 'VALIDATION', message: parsed.error.issues[0]?.message ?? messages.common.invalidInput } };
+    }
+    const challenge = await changeChannelNumber(parsed.data.provider, parsed.data.pairingNumber);
+    revalidatePath('/settings');
+    return challenge;
+  } catch (err) {
+    return toActionError(err, 'messaging.changeChannelNumber');
   }
 }
 

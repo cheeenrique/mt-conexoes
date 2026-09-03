@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { decrypt } from '@/lib/crypto';
 import {
   beginChannelPairing,
+  changeChannelNumber,
   refreshChannelPairing,
   unpairChannel,
   ChannelPairingNotSupportedError,
@@ -147,6 +148,47 @@ describe('refreshChannelPairing', () => {
 
   it('recusa canal nunca configurado', async () => {
     await expect(refreshChannelPairing('EVOLUTION')).rejects.toThrow(ChannelNotConfiguredError);
+  });
+});
+
+describe('changeChannelNumber', () => {
+  it('reusa endereço e chave já salvos — não pede nada além do número', async () => {
+    stubEvolution({ qrcode: QR });
+    await beginChannelPairing(INPUT);
+    const before = await storedCredentials();
+
+    const fetchMock = stubEvolution({ status: 'SUCCESS' }, { qrcode: { ...QR, base64: 'data:image/png;base64,NOVO' } });
+    const challenge = await changeChannelNumber('EVOLUTION', '+5511988887777');
+
+    // apaga a instância antiga, depois cria — mesma URL/chave, mesmo nome de instância.
+    expect(fetchMock.mock.calls[0][0]).toContain('/instance/delete/');
+    expect(fetchMock.mock.calls[1][0]).toBe('https://evo.exemplo.com/instance/create');
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(body.instanceName).toBe(before.instanceName);
+    expect(body.number).toBe('5511988887777');
+    expect(challenge.qrBase64).toBe('data:image/png;base64,NOVO');
+
+    const after = await storedCredentials();
+    expect(after.instanceName).toBe(before.instanceName);
+    expect(after.webhookToken).toBe(before.webhookToken);
+  });
+
+  it('volta o canal pra "ainda não testado" — sessão nova exige confirmação nova', async () => {
+    stubEvolution({ qrcode: QR });
+    await beginChannelPairing(INPUT);
+    stubEvolution({ instance: { instanceName: 'painel', state: 'open' } });
+    await refreshChannelPairing('EVOLUTION');
+
+    stubEvolution({ status: 'SUCCESS' }, { qrcode: QR });
+    await changeChannelNumber('EVOLUTION', '+5511988887777');
+
+    const row = await db.channelConfig.findUniqueOrThrow({ where: { provider: 'EVOLUTION' } });
+    expect(row.lastCheckOk).toBeNull();
+    expect(row.phoneNumber).toBeNull();
+  });
+
+  it('recusa canal nunca configurado', async () => {
+    await expect(changeChannelNumber('EVOLUTION', '+5511988887777')).rejects.toThrow(ChannelNotConfiguredError);
   });
 });
 

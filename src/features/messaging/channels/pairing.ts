@@ -53,6 +53,15 @@ export interface PairableChannel {
   refreshChallenge(credentials: unknown): Promise<PairingChallenge>;
   /** Desconecta o telefone sem apagar o que já foi provisionado. */
   unpair(credentials: unknown): Promise<void>;
+  /**
+   * Troca só o número — reusa endereço e chave já salvos, nunca pede de novo. É o que
+   * faz o operador leigo não precisar redigitar credencial nenhuma só porque trocou de
+   * chip: o painel já sabe onde falar e com qual chave, só falta o número novo.
+   *
+   * O adapter decide como por trás (na Evolution: apagar a sessão antiga e recriar —
+   * ela não tem "trocar número" de uma instância existente). Quem chama não sabe disso.
+   */
+  changeNumber(credentials: unknown, newPairingNumber: string, webhookUrl: string): Promise<PairingChallenge>;
 }
 
 export function isPairable(adapter: ChannelAdapter): adapter is ChannelAdapter & PairableChannel {
@@ -60,6 +69,7 @@ export function isPairable(adapter: ChannelAdapter): adapter is ChannelAdapter &
   return (
     typeof candidate.beginPairing === 'function' &&
     typeof candidate.refreshChallenge === 'function' &&
-    typeof candidate.unpair === 'function'
+    typeof candidate.unpair === 'function' &&
+    typeof candidate.changeNumber === 'function'
   );
 }

@@ -160,6 +160,37 @@ async function persistProvisioned(
 }
 
 /**
+ * Troca só o número de um canal já pareado — endereço e chave continuam sendo os que já
+ * estão salvos, nunca voltam pra tela pra serem redigitados. É pensado pro operador leigo:
+ * ele não sabe (nem devia precisar saber) o que é "endereço da instância".
+ *
+ * `persistProvisioned` é reusado de propósito: o estado depois de trocar o número é
+ * idêntico ao de um pareamento novo — canal existe, ainda não foi testado.
+ */
+export async function changeChannelNumber(provider: ChannelProvider, newPairingNumber: string): Promise<PairingChallengeDTO> {
+  const adapter = requirePairable(provider);
+  const existing = await storedCredentials(provider);
+  if (!existing) throw new ChannelNotConfiguredError();
+
+  let challenge: PairingChallenge;
+  try {
+    challenge = await adapter.changeNumber(existing, newPairingNumber, webhookUrl());
+  } catch (err) {
+    failure(err, provider, existing);
+  }
+
+  const descriptor = resolveDescriptor(provider);
+  await persistProvisioned(
+    provider,
+    descriptor.label,
+    { ...existing, pairingNumber: newPairingNumber },
+    descriptor.warning.requiresAcceptance,
+  );
+
+  return challenge;
+}
+
+/**
  * O que a tela chama a cada ~45s enquanto o diálogo está aberto: o QR do WhatsApp expira em
  * menos de um minuto. Quando o provider já reporta a sessão aberta, o canal passa a testado
  * — é o mesmo `state: 'open'` que `healthCheck()` confere.
