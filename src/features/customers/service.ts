@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { DomainError, isUniqueViolation } from '@/lib/errors';
+import { ANONYMIZED_CUSTOMER_NAME } from '@/core/anonymization';
 import type { z } from 'zod';
 import type { customerSchema } from './schema';
 
@@ -73,4 +74,31 @@ export async function resolveImportedCustomer(
     });
   }
   return tx.customer.create({ data: { name: params.name, phone: null }, select: { id: true } });
+}
+
+/**
+ * Direito de eliminação (LGPD) — o próprio `Customer`. Dentro de uma transação
+ * em curso: a composição em `app/(app)/customers/customer-anonymization.ts`
+ * junta este passo com os de assinatura, mensagem e lead num commit só — commit
+ * parcial deixaria nome neutro e credencial de acesso ainda gravada, o pior dos
+ * dois mundos. A trava (`assertAnonymizable`) já rodou antes de chegar aqui.
+ */
+export async function anonymizeCustomerRow(
+  tx: Prisma.TransactionClient,
+  id: string,
+  userId: string,
+  now: Date,
+): Promise<void> {
+  await tx.customer.update({
+    where: { id },
+    data: {
+      name: ANONYMIZED_CUSTOMER_NAME,
+      phone: null,
+      email: null,
+      document: null,
+      notes: null,
+      anonymizedAt: now,
+      anonymizedByUserId: userId,
+    },
+  });
 }

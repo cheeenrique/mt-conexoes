@@ -12,7 +12,7 @@ import { CustomerTable } from '@/features/customers/components/customer-table';
 import { CustomerFichaDrawer } from '@/features/customers/components/ficha/customer-ficha-drawer';
 import { NewCustomerButton } from '@/features/customers/components/new-customer-button';
 import { loadCustomerFichaAction, revealAccessPasswordAction } from './ficha-action';
-import { findCustomerByPhoneAction, saveCustomerFichaAction } from './customer-actions';
+import { anonymizeCustomerAction, findCustomerByPhoneAction, saveCustomerFichaAction } from './customer-actions';
 import { resolvePerPage } from '@/components/ui/data-table-paging';
 
 export default async function CustomersPage({
@@ -66,6 +66,7 @@ export default async function CustomersPage({
         revealPassword={revealAccessPasswordAction}
         saveFicha={saveCustomerFichaAction}
         checkPhone={findCustomerByPhoneAction}
+        anonymizeCustomer={anonymizeCustomerAction}
       />
     </AppShell>
   );

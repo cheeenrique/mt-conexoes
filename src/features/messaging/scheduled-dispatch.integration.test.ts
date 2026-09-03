@@ -106,6 +106,7 @@ describe('dispatchPendingMessages', () => {
       failed: 0,
       cancelledStale: 0,
       cancelledOptedOut: 0,
+      cancelledAnonymized: 0,
       cancelledPaid: 0,
       cancelledDedupe: 0,
       rescheduled: 0,

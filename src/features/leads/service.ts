@@ -2,6 +2,7 @@ import type { Lead, LeadStatus, Prisma } from '@prisma/client';
 import type { z } from 'zod';
 import { db } from '@/lib/db';
 import { DomainError, isRecordNotFound } from '@/lib/errors';
+import { ANONYMIZED_LEAD_NAME, ANONYMIZED_LEAD_PHONE } from '@/core/anonymization';
 import type { manualLeadSchema } from './schema';
 
 export class LeadNotFoundError extends DomainError {
@@ -76,4 +77,17 @@ export async function markLeadConverted(
   customerId: string,
 ): Promise<void> {
   await tx.lead.update({ where: { id: leadId }, data: { status: 'CONVERTED', customerId } });
+}
+
+/**
+ * Direito de eliminação (LGPD) — só os leads **vinculados** a este cliente
+ * (`customerId` preenchido, ou seja, convertidos). Lead nunca convertido com o
+ * mesmo telefone fica de fora de propósito: não há vínculo formal com o
+ * cliente, e é fora do alcance que o cliente aprovou (ver o design).
+ */
+export async function scrubLeadsOfCustomer(tx: Prisma.TransactionClient, customerId: string): Promise<void> {
+  await tx.lead.updateMany({
+    where: { customerId },
+    data: { name: ANONYMIZED_LEAD_NAME, phone: ANONYMIZED_LEAD_PHONE, city: null, note: null },
+  });
 }

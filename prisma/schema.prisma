@@ -16,6 +16,8 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  anonymizedCustomers Customer[] @relation("CustomerAnonymizedBy")
+
   @@map("users")
 }
 
@@ -138,6 +140,14 @@ model Customer {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  /// Direito de eliminação (LGPD). `null` enquanto o cliente não foi anonimizado —
+  /// é o que a tela usa pra decidir entre ficha normal e ficha "Anonimizado", e o
+  /// que os guards de despacho/avaliação da régua usam pra nunca mandar mensagem
+  /// pra quem pediu eliminação. Ver `core/anonymization.ts`.
+  anonymizedAt       DateTime?
+  anonymizedByUserId String?
+  anonymizedByUser   User?     @relation("CustomerAnonymizedBy", fields: [anonymizedByUserId], references: [id])
+
   subscriptions Subscription[]
   charges       Charge[]
   messages      Message[]
@@ -145,6 +155,7 @@ model Customer {
 
   @@unique([phone])
   @@index([name])
+  @@index([anonymizedAt])
   @@map("customers")
 }
 

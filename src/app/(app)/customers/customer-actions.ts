@@ -8,7 +8,10 @@ import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';
 import { saveCustomerWithSubscription } from './customer-onboarding';
+import { anonymizeCustomer } from './customer-anonymization';
 import type { SaveCustomerFicha, FindCustomerByPhone } from '@/features/customers/ficha-types';
+
+type ActionResult = { ok: true } | { error: { code: string; message: string } };
 
 /**
  * Gravação da ficha — cria ou edita cliente **e** assinatura num commit só.
@@ -43,3 +46,22 @@ export const findCustomerByPhoneAction: FindCustomerByPhone = async (phone) => {
   await requireSession();
   return findCustomerIdByPhone(phone);
 };
+
+/**
+ * Direito de eliminação (LGPD) — irreversível. A tela já exige digitação do
+ * nome do cliente antes de chamar isto; aqui é só sessão, chamada e
+ * revalidação, igual toda Server Action (`.claude/rules/02-servidor.md`).
+ */
+export async function anonymizeCustomerAction(customerId: string): Promise<ActionResult> {
+  try {
+    const user = await requireSession();
+    await anonymizeCustomer(customerId, user.id, new Date());
+    revalidatePath('/customers');
+    revalidatePath(`/customers/${customerId}`);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'customers.anonymize', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}

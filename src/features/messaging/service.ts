@@ -1,10 +1,11 @@
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { encrypt, decrypt } from '@/lib/crypto';
+import { ANONYMIZED_MESSAGE_BODY } from '@/core/anonymization';
 import { resolveAdapter, resolveDescriptor } from './channels/registry';
 import { redactSecrets } from './channels/redact';
 import type { SaveChannelCredentialsInput } from './schema';
-import type { ChannelProvider } from '@prisma/client';
+import { Prisma, type ChannelProvider } from '@prisma/client';
 
 export class ChannelRiskNotAcceptedError extends DomainError {
   constructor(cause?: unknown) {
@@ -102,5 +103,23 @@ export async function setSendingChannel(provider: ChannelProvider): Promise<void
   await db.$transaction(async (tx) => {
     await tx.channelConfig.updateMany({ where: { isDefault: true }, data: { isDefault: false } });
     await tx.channelConfig.update({ where: { provider }, data: { isActive: true, isDefault: true } });
+  });
+}
+
+/**
+ * Direito de eliminação (LGPD) — apaga o que a mensagem dizia, preserva que ela
+ * foi enviada (relatório, auditoria). `PENDING` vira `CANCELLED` primeiro: nada
+ * pode sair depois que o cliente pediu eliminação, mesmo que já estivesse na
+ * fila — o guard em `messages-dispatch` é a segunda linha de defesa, pro caso
+ * de uma linha escapar (mesmo padrão de T5).
+ */
+export async function scrubCustomerMessages(tx: Prisma.TransactionClient, customerId: string): Promise<void> {
+  await tx.message.updateMany({
+    where: { customerId, status: 'PENDING' },
+    data: { status: 'CANCELLED', cancelReason: 'customer_anonymized' },
+  });
+  await tx.message.updateMany({
+    where: { customerId },
+    data: { body: ANONYMIZED_MESSAGE_BODY, toPhone: '', templateParams: Prisma.DbNull },
   });
 }

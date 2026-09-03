@@ -6,7 +6,8 @@ import { FichaSubscription } from './ficha-subscription';
 import { FichaAccess } from './ficha-access';
 import { FichaPayments } from './ficha-payments';
 import { FichaMessages } from './ficha-messages';
-import type { CustomerFichaData, RevealAccessPassword } from '../../ficha-types';
+import { CustomerAnonymizeSection } from './customer-anonymize-section';
+import type { AnonymizeCustomer, CustomerFichaData, RevealAccessPassword } from '../../ficha-types';
 
 /**
  * Corpo da ficha do cliente, na ordem do handoff 04. O mesmo componente serve
@@ -18,10 +19,13 @@ export function CustomerFicha({
   data,
   revealPassword,
   subscriptionAction,
+  anonymizeCustomer,
 }: {
   data: CustomerFichaData;
   revealPassword: RevealAccessPassword;
   subscriptionAction?: ReactNode;
+  /** Ausente = seção de exclusão não aparece (ex.: tela que ainda não a fiou). */
+  anonymizeCustomer?: AnonymizeCustomer;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -54,6 +58,12 @@ export function CustomerFicha({
           <p className="whitespace-pre-wrap text-sm text-foreground">{data.notes}</p>
         </section>
       )}
+      <CustomerAnonymizeSection
+        customerId={data.id}
+        customerName={data.name}
+        anonymized={data.situation === 'ANONYMIZED'}
+        onAnonymize={anonymizeCustomer}
+      />
     </div>
   );
 }

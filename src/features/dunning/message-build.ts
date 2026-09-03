@@ -21,7 +21,7 @@ export type ChargeForStep = {
   principalCents: bigint;
   discountCents: bigint;
   payments: { amountCents: bigint }[];
-  customer: { name: string; phone: string | null; optedOut: boolean };
+  customer: { name: string; phone: string | null; optedOut: boolean; anonymizedAt: Date | null };
 };
 
 export type StepForEvaluation = {

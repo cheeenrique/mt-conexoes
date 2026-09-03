@@ -16,10 +16,13 @@ export type CustomerSituation =
   | 'OVERDUE'
   | 'OPEN'
   | 'SUSPENDED'
-  | 'NO_SUBSCRIPTION';
+  | 'NO_SUBSCRIPTION'
+  | 'ANONYMIZED';
 
-/** As três situações que viram chip de filtro na tela de Clientes. */
-export const CUSTOMER_SITUATION_FILTERS = ['ACTIVE', 'DUE_TODAY', 'OVERDUE'] as const;
+/** As quatro situações que viram chip de filtro na tela de Clientes. `ANONYMIZED`
+ * é o único que muda o comportamento padrão da lista: escondido a menos que o
+ * operador clique nele (direito de eliminação, LGPD — ver `queries.ts`). */
+export const CUSTOMER_SITUATION_FILTERS = ['ACTIVE', 'DUE_TODAY', 'OVERDUE', 'ANONYMIZED'] as const;
 
 export type CustomerSituationFilter = (typeof CUSTOMER_SITUATION_FILTERS)[number];
 
@@ -41,7 +44,11 @@ export function resolveCustomerSituation(params: {
   openChargeDueAt: Date | null;
   now: Date;
   timezone: string;
+  /** Direito de eliminação (LGPD) — ganha de tudo o mais: um cliente anonimizado
+   * não tem mais assinatura nem cobrança que valha a pena mostrar. */
+  anonymizedAt?: Date | null;
 }): CustomerSituation {
+  if (params.anonymizedAt) return 'ANONYMIZED';
   if (params.subscriptionStatus === null || params.subscriptionStatus === 'CANCELLED') {
     return 'NO_SUBSCRIPTION';
   }

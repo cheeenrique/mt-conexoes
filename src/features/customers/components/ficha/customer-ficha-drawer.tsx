@@ -14,7 +14,7 @@ import { CustomerFicha } from './customer-ficha';
 import { FichaForm } from './ficha-form';
 import { fichaFormValues } from './ficha-form-values';
 import { fichaSubtitle } from './ficha-subtitle';
-import type { FindCustomerByPhone, LoadCustomerFicha, RevealAccessPassword, SaveCustomerFicha } from '../../ficha-types';
+import type { AnonymizeCustomer, FindCustomerByPhone, LoadCustomerFicha, RevealAccessPassword, SaveCustomerFicha } from '../../ficha-types';
 
 type Loaded = { key: string; result: Awaited<ReturnType<LoadCustomerFicha>> };
 
@@ -32,11 +32,13 @@ export function CustomerFichaDrawer({
   revealPassword,
   saveFicha,
   checkPhone,
+  anonymizeCustomer,
 }: {
   loadFicha: LoadCustomerFicha;
   revealPassword: RevealAccessPassword;
   saveFicha: SaveCustomerFicha;
   checkPhone?: FindCustomerByPhone;
+  anonymizeCustomer?: AnonymizeCustomer;
 }) {
   const { customerId, closeCustomer } = useCustomerParam();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -130,7 +132,7 @@ export function CustomerFichaDrawer({
                       </Button>
                     </div>
                   )}
-                  {data && <CustomerFicha data={data} revealPassword={revealPassword} />}
+                  {data && <CustomerFicha data={data} revealPassword={revealPassword} anonymizeCustomer={anonymizeCustomer} />}
                 </DrawerBody>
                 <DrawerFooter>
                   {/* `nativeButton={false}` porque o base-ui avisa quando um

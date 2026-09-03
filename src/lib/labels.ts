@@ -81,6 +81,7 @@ export const CUSTOMER_SITUATION_LABELS: Record<CustomerSituation, string> = {
   OPEN: 'Em aberto',
   SUSPENDED: 'Suspenso',
   NO_SUBSCRIPTION: 'Sem assinatura',
+  ANONYMIZED: 'Anonimizado',
 };
 
 /** Cores do handoff: verde ativo, âmbar vence hoje, laranja atraso, contorno o resto. */
@@ -91,4 +92,5 @@ export const CUSTOMER_SITUATION_TONES: Record<CustomerSituation, 'success' | 'wa
   OPEN: 'neutral',
   SUSPENDED: 'neutral',
   NO_SUBSCRIPTION: 'neutral',
+  ANONYMIZED: 'neutral',
 };

@@ -77,6 +77,9 @@ function situationWhere(
     subscriptions: { some: { status: 'ACTIVE' } },
   };
 
+  // ANONYMIZED não cai aqui: o `and.push` único em `listCustomers` já cobre os
+  // dois lados (esconder por padrão, mostrar só quando o chip pede) — duplicar
+  // a condição aqui seria a mesma regra escrita em dois lugares.
   if (situation === 'ACTIVE') {
     return { ...activeSubscription, charges: { none: { status } } };
   }
@@ -122,7 +125,15 @@ export async function listCustomers(params: {
 }): Promise<{ rows: CustomerListRowDTO[]; total: number }> {
   const and: Prisma.CustomerWhereInput[] = [];
   if (params.q) and.push(searchWhere(params.q));
-  if (params.situation) and.push(situationWhere(params.situation, params.now, params.timezone));
+  // ANONYMIZED não passa por `situationWhere`: aquela função pressupõe
+  // assinatura ativa em todo branch, e cliente anonimizado nunca tem uma (é
+  // pré-condição da trava de anonimizar) — cairia num predicado que nunca bate.
+  if (params.situation && params.situation !== 'ANONYMIZED') {
+    and.push(situationWhere(params.situation, params.now, params.timezone));
+  }
+  // Direito de eliminação (LGPD): anonimizado só aparece se o chip pediu
+  // exatamente ele — some da lista (e de qualquer outro chip) por padrão.
+  and.push({ anonymizedAt: params.situation === 'ANONYMIZED' ? { not: null } : null });
   const where: Prisma.CustomerWhereInput = and.length > 0 ? { AND: and } : {};
 
   const [rows, total] = await Promise.all([
@@ -150,6 +161,7 @@ export async function listCustomers(params: {
           openChargeDueAt,
           now: params.now,
           timezone: params.timezone,
+          anonymizedAt: row.anonymizedAt,
         }),
       };
     }),
@@ -189,6 +201,7 @@ export async function getCustomerHead(
       openChargeDueAt: row.charges[0]?.dueAt ?? null,
       now,
       timezone,
+      anonymizedAt: row.anonymizedAt,
     }),
   };
 }

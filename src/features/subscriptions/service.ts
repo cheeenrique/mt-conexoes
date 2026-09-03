@@ -277,3 +277,16 @@ export async function findImportedSubscriptionBySupplier(
     select: { id: true },
   });
 }
+
+/**
+ * Direito de eliminação (LGPD) — zera a credencial de acesso do assinante em
+ * **todas** as assinaturas do cliente (histórico incluído, não só a vigente).
+ * `assertAnonymizable` já garantiu que nenhuma está `ACTIVE`, então isto nunca
+ * apaga credencial de acesso que alguém ainda usa.
+ */
+export async function scrubSubscriptionAccess(tx: Prisma.TransactionClient, customerId: string): Promise<void> {
+  await tx.subscription.updateMany({
+    where: { customerId },
+    data: { accessUsername: null, accessPasswordEnc: null, accessServer: null, accessNotes: null },
+  });
+}

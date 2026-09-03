@@ -85,6 +85,11 @@ export type RevealAccessPassword = (
   subscriptionId: string,
 ) => Promise<{ ok: true; value: string } | { error: { code: string; message: string } }>;
 
+/** Direito de eliminação (LGPD) — irreversível. Ver `customer-anonymization.ts`. */
+export type AnonymizeCustomer = (
+  customerId: string,
+) => Promise<{ ok: true } | { error: { code: string; message: string } }>;
+
 /** Ids que a gravação precisa e que não são campo de formulário. */
 export interface SaveCustomerIds {
   /** `null` cria o cliente; preenchido edita. */

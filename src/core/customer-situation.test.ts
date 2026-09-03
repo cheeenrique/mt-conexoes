@@ -9,6 +9,18 @@ function dueAtLocalEndOfDay(iso: string): Date {
 }
 
 describe('resolveCustomerSituation', () => {
+  it('anonimizado ganha de tudo — mesmo com assinatura ativa e cobrança vencendo hoje', () => {
+    expect(
+      resolveCustomerSituation({
+        subscriptionStatus: 'ACTIVE',
+        openChargeDueAt: dueAtLocalEndOfDay('2026-08-22'),
+        now: new Date('2026-08-22T12:00:00Z'),
+        timezone: TZ,
+        anonymizedAt: new Date('2026-08-20T12:00:00Z'),
+      }),
+    ).toBe('ANONYMIZED');
+  });
+
   it('cliente sem assinatura nenhuma não é "Ativo"', () => {
     expect(
       resolveCustomerSituation({
@@ -123,10 +135,11 @@ describe('resolveCustomerSituation', () => {
 });
 
 describe('isCustomerSituationFilter', () => {
-  it('aceita as três situações que viram chip', () => {
+  it('aceita as quatro situações que viram chip', () => {
     expect(isCustomerSituationFilter('ACTIVE')).toBe(true);
     expect(isCustomerSituationFilter('DUE_TODAY')).toBe(true);
     expect(isCustomerSituationFilter('OVERDUE')).toBe(true);
+    expect(isCustomerSituationFilter('ANONYMIZED')).toBe(true);
   });
 
   it('recusa situação derivada que não tem chip, e lixo vindo da URL', () => {

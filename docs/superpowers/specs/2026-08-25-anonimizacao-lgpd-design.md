@@ -1,7 +1,10 @@
 # Anonimização de cliente (direito de eliminação, LGPD) — design
 
-> **Status: aprovado no desenho, implementação adiada por decisão do cliente (25/08/2026).**
-> Nada deste documento existe em código. Ver §Estado no fim.
+> **Status: implementado em 03/09/2026**, retomado a pedido do cliente. Segue as
+> quatro decisões deste documento sem reabrir nenhuma. Uma divergência encontrada
+> só rodando contra Postgres real: `leads.phone` não pode virar `''` —
+> `leads_phone_length_check` exige 8–20 caracteres — vira `'anonimizado'`
+> (`core/anonymization.ts`). Ver §Estado no fim para os arquivos exatos.
 
 ## Problema
 
@@ -134,5 +137,20 @@ Desenho fechado com o cliente em 25/08/2026, com estas quatro decisões:
 3. Auditoria: `anonymizedAt` + `anonymizedByUserId` em coluna, sem tabela nova
 4. Tela: some da lista por padrão, volta por chip de situação
 
-**Implementação adiada a pedido do cliente.** Retomar por
-`superpowers:writing-plans` sobre este arquivo.
+**Implementado em 03/09/2026.** Migration `00000000000018_customer_anonymization`;
+`core/anonymization.ts` (constantes + `assertAnonymizable`); `anonymizeCustomerRow`
+(`features/customers/service.ts`), `scrubSubscriptionAccess`
+(`features/subscriptions/service.ts`), `scrubCustomerMessages`
+(`features/messaging/service.ts`), `scrubLeadsOfCustomer`
+(`features/leads/service.ts`); composição em
+`app/(app)/customers/customer-anonymization.ts`; ação em `customer-actions.ts`;
+guards em `dunning/evaluate.ts` e `messaging/scheduled-dispatch.ts`; tela em
+`customer-anonymize-section.tsx` (com `TypeToConfirmDialog`, generalizado pra
+aceitar texto além de número); situação `ANONYMIZED` em
+`core/customer-situation.ts`, escondida da lista por padrão
+(`features/customers/queries.ts`), chip a traz de volta.
+
+Fora do escopo entregue: bloquear "Editar"/"Registrar pagamento"/"Mandar
+mensagem" na tela quando `situation === 'ANONYMIZED'` — hoje só a seção
+destrutiva vira aviso; o resto da ficha não impede a ação (o *backend* recusa
+mesmo assim: sem telefone, sem assinatura ativa, não há o que editar de fato).

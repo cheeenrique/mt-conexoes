@@ -25,7 +25,8 @@ export function TypeToConfirmDialog({
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
-  expectedValue: number;
+  /** Número (confirmação de lote) ou texto (ex.: nome do cliente numa ação irreversível). */
+  expectedValue: number | string;
   confirmLabel: string;
   onConfirm: () => void;
 }) {

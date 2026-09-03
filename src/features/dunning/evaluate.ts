@@ -31,6 +31,14 @@ async function evaluateChargeStepPair(
     const ok = await recordExecution(charge.id, step.id, 'SKIPPED', 'template_not_approved');
     return ok ? { kind: 'skipped' } : { kind: 'none' };
   }
+  // Defesa em profundidade (LGPD): cobrança viva de cliente anonimizado não
+  // deveria existir — `assertAnonymizable` bloqueia anonimizar com cobrança em
+  // aberto — mas se uma linha escapar, isto impede a régua de mandar mensagem
+  // pro `toPhone` vazio que a eliminação deixou.
+  if (charge.customer.anonymizedAt) {
+    const ok = await recordExecution(charge.id, step.id, 'SKIPPED', 'customer_anonymized');
+    return ok ? { kind: 'skipped' } : { kind: 'none' };
+  }
   if (charge.customer.optedOut) {
     const ok = await recordExecution(charge.id, step.id, 'SKIPPED', 'opted_out');
     return ok ? { kind: 'skipped' } : { kind: 'none' };

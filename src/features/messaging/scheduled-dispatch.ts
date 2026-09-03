@@ -18,6 +18,8 @@ export type DispatchResult = {
   failed: number;
   cancelledStale: number;
   cancelledOptedOut: number;
+  /** LGPD — defesa em profundidade, ver o guard logo abaixo de opt-out. */
+  cancelledAnonymized: number;
   cancelledPaid: number;
   cancelledDedupe: number;
   rescheduled: number;
@@ -33,6 +35,7 @@ function emptyResult(): DispatchResult {
     failed: 0,
     cancelledStale: 0,
     cancelledOptedOut: 0,
+    cancelledAnonymized: 0,
     cancelledPaid: 0,
     cancelledDedupe: 0,
     rescheduled: 0,
@@ -44,7 +47,7 @@ const STALE_MS = 24 * 60 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 const OPEN_CHARGE_STATUSES = new Set(['OPEN', 'OVERDUE', 'PARTIALLY_PAID']);
 
-type PendingMessage = Prisma.MessageGetPayload<{ include: { customer: { select: { optedOut: true } } } }>;
+type PendingMessage = Prisma.MessageGetPayload<{ include: { customer: { select: { optedOut: true; anonymizedAt: true } } } }>;
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
@@ -108,6 +111,15 @@ async function processMessage(
   if (!isWithinQuietHours) {
     const outcome = await rescheduleOutOfQuietHours(msg, now, settings);
     return { outcome, calledProvider: false };
+  }
+
+  // Defesa em profundidade (LGPD) — mesma razão do guard em dunning/evaluate.ts:
+  // `scrubCustomerMessages` já cancela toda PENDING no momento da eliminação, isto
+  // é o que pega a linha que escapou (ex.: mensagem criada entre o `assertAnonymizable`
+  // e a transação de outra sessão, num sistema com mais de um operador no futuro).
+  if (msg.customer.anonymizedAt) {
+    await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'customer_anonymized' } });
+    return { outcome: 'cancelledAnonymized', calledProvider: false };
   }
 
   if (msg.customer.optedOut) {
@@ -210,7 +222,7 @@ export async function dispatchPendingMessages(
     where: { status: 'PENDING', scheduledFor: { lte: now } },
     orderBy: { createdAt: 'asc' },
     take: dispatchBatchSize(rateLimitPerMinute),
-    include: { customer: { select: { optedOut: true } } },
+    include: { customer: { select: { optedOut: true, anonymizedAt: true } } },
   });
 
   const result = emptyResult();
