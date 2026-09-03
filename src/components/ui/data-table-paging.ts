@@ -20,7 +20,7 @@ export const PER_PAGE_OPTIONS = [10, 12, 20] as const;
 export type PerPage = (typeof PER_PAGE_OPTIONS)[number];
 
 /** O que a tabela mostra quando o endereço não pede outra coisa. */
-export const DEFAULT_PER_PAGE: PerPage = 10;
+export const DEFAULT_PER_PAGE: PerPage = 20;
 
 /** Traduz `?perPage=` do endereço. Valor ausente, quebrado ou fora da lista cai no padrão. */
 export function resolvePerPage(raw: string | undefined): PerPage {

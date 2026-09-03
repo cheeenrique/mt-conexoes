@@ -55,9 +55,12 @@ export function DataTable<T>({
   const to = Math.min(page * perPage, total);
   const canPrev = page > 1;
   const canNext = to < total;
-  // README §Padrão de tabela: acima de 8 por página, a lista rola dentro do
-  // card em vez de esticar a página.
-  const tableScrollStyle = perPage > 8 ? { maxHeight: perPage * 44 + 44 } : undefined;
+  // README §Padrão de tabela: a tabela mostra até 20 itens por página, mas a
+  // altura visível fica fixa em ~10 linhas — acima disso rola dentro do card
+  // em vez de esticar a página. Fixo, não `perPage * 44` — antes a altura
+  // crescia junto com o `perPage` e uma página de 20 nunca chegava a rolar.
+  const VISIBLE_ROWS = 10;
+  const tableScrollStyle = rows.length > VISIBLE_ROWS ? { maxHeight: VISIBLE_ROWS * 44 + 44 } : undefined;
 
   return (
     <div className="overflow-hidden rounded border border-border bg-surface">
