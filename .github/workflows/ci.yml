@@ -35,11 +35,17 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
-      # Node 20 espelha o Dockerfile (node:20-alpine). Testar numa versão e
-      # publicar em outra é como um bug de runtime chega em produção verde.
+      # ⚠️ NÃO precisa espelhar o Dockerfile (node:20-alpine) — motivo real de
+      # ter sido 20 antes. `jsdom` (dependência do vitest, ambiente dos testes
+      # de componente) exige Node ^22.22.2 || ^24.15.0 || >=26; Node 20 não tem
+      # `webidl.util.markAsUncloneable` (chegou no 21) e todo teste de
+      # componente falha com esse erro. Achado em 03/09/2026 rodando o job
+      # local com Postgres zerado — nada a ver com código de produto. Inofensivo
+      # pra produção: `jsdom` é devDependency, nunca entra na imagem, e o
+      # binário do Cloud Build sai do Dockerfile, não do Node deste runner.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -90,7 +96,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -149,7 +155,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
