@@ -39,6 +39,13 @@ async function evaluateChargeStepPair(
     const ok = await recordExecution(charge.id, step.id, 'SKIPPED', 'customer_anonymized');
     return ok ? { kind: 'skipped' } : { kind: 'none' };
   }
+  // Soft delete ("Remover" na tabela): cliente saiu da lista, para de ser
+  // cobrado também — sem isto a régua seguiria mandando mensagem pra alguém
+  // que o operador não consegue mais achar na tela pra acompanhar.
+  if (charge.customer.deletedAt) {
+    const ok = await recordExecution(charge.id, step.id, 'SKIPPED', 'customer_deleted');
+    return ok ? { kind: 'skipped' } : { kind: 'none' };
+  }
   if (charge.customer.optedOut) {
     const ok = await recordExecution(charge.id, step.id, 'SKIPPED', 'opted_out');
     return ok ? { kind: 'skipped' } : { kind: 'none' };

@@ -20,6 +20,8 @@ export type DispatchResult = {
   cancelledOptedOut: number;
   /** LGPD — defesa em profundidade, ver o guard logo abaixo de opt-out. */
   cancelledAnonymized: number;
+  /** Soft delete ("Remover" na tabela) — mesma defesa em profundidade. */
+  cancelledDeleted: number;
   cancelledPaid: number;
   cancelledDedupe: number;
   rescheduled: number;
@@ -36,6 +38,7 @@ function emptyResult(): DispatchResult {
     cancelledStale: 0,
     cancelledOptedOut: 0,
     cancelledAnonymized: 0,
+    cancelledDeleted: 0,
     cancelledPaid: 0,
     cancelledDedupe: 0,
     rescheduled: 0,
@@ -47,7 +50,7 @@ const STALE_MS = 24 * 60 * 60 * 1000;
 const MAX_ATTEMPTS = 3;
 const OPEN_CHARGE_STATUSES = new Set(['OPEN', 'OVERDUE', 'PARTIALLY_PAID']);
 
-type PendingMessage = Prisma.MessageGetPayload<{ include: { customer: { select: { optedOut: true; anonymizedAt: true } } } }>;
+type PendingMessage = Prisma.MessageGetPayload<{ include: { customer: { select: { optedOut: true; anonymizedAt: true; deletedAt: true } } } }>;
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === 'P2002';
@@ -120,6 +123,12 @@ async function processMessage(
   if (msg.customer.anonymizedAt) {
     await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'customer_anonymized' } });
     return { outcome: 'cancelledAnonymized', calledProvider: false };
+  }
+
+  // Soft delete — mesma defesa em profundidade do anonimizado logo acima.
+  if (msg.customer.deletedAt) {
+    await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'customer_deleted' } });
+    return { outcome: 'cancelledDeleted', calledProvider: false };
   }
 
   if (msg.customer.optedOut) {
@@ -222,7 +231,7 @@ export async function dispatchPendingMessages(
     where: { status: 'PENDING', scheduledFor: { lte: now } },
     orderBy: { createdAt: 'asc' },
     take: dispatchBatchSize(rateLimitPerMinute),
-    include: { customer: { select: { optedOut: true, anonymizedAt: true } } },
+    include: { customer: { select: { optedOut: true, anonymizedAt: true, deletedAt: true } } },
   });
 
   const result = emptyResult();

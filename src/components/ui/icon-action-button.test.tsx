@@ -76,4 +76,10 @@ describe('IconActionButton', () => {
 
     expect(screen.getByRole('link', { name: 'Converter em cliente' })).toHaveClass('text-brand-light');
   });
+
+  it('tone="danger" chega como classe no botão — mesmo vermelho do Alert e do Button destrutivo', () => {
+    renderWithProvider(<IconActionButton icon={Pencil} label="Remover cliente" tone="danger" onClick={() => {}} />);
+
+    expect(screen.getByRole('button', { name: 'Remover cliente' })).toHaveClass('text-danger');
+  });
 });

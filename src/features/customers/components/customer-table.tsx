@@ -1,14 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { MessageCircle, Pencil, SearchX, Users, X } from 'lucide-react';
+import { MessageCircle, Pencil, SearchX, Trash2, Users, X } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconActionButton } from '@/components/ui/icon-action-button';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { formatLocalDate, formatPhoneBR, whatsAppUrl } from '@/lib/format';
 import { CUSTOMER_SITUATION_LABELS, CUSTOMER_SITUATION_TONES } from '@/lib/labels';
+import { toastError, toastSuccess } from '@/lib/toast';
 import { useCustomerParam } from '../use-customer-param';
 import { NewCustomerButton } from './new-customer-button';
 import type { CustomerListRowDTO } from '../queries';
@@ -26,6 +29,7 @@ export function CustomerTable({
   suppliers,
   saveFicha,
   checkPhone,
+  softDeleteCustomer,
 }: {
   rows: CustomerListRowDTO[];
   total: number;
@@ -39,10 +43,26 @@ export function CustomerTable({
   suppliers: { id: string; name: string }[];
   saveFicha: SaveCustomerFicha;
   checkPhone?: FindCustomerByPhone;
+  /** "Remover" — soft delete. Ausente = coluna de ação não ganha o botão. */
+  softDeleteCustomer?: (customerId: string) => Promise<{ ok: true } | { error: { code: string; message: string } }>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { openCustomer } = useCustomerParam();
+  // Um id só, não um Set: a confirmação é modal — só uma linha por vez pode
+  // estar com o diálogo aberto.
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
+  const pendingRemove = rows.find((row) => row.id === pendingRemoveId) ?? null;
+
+  async function handleConfirmRemove() {
+    if (!pendingRemoveId || !softDeleteCustomer) return;
+    const id = pendingRemoveId;
+    setPendingRemoveId(null);
+    const result = await softDeleteCustomer(id);
+    if ('error' in result) return toastError(result.error);
+    toastSuccess('Cliente removido.');
+    router.refresh();
+  }
 
   function setParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams);
@@ -98,45 +118,65 @@ export function CustomerTable({
             />
           )}
           <IconActionButton icon={Pencil} label="Ver e editar cliente" onClick={() => openCustomer(row.id)} />
+          {/* Some para quem já saiu de vista por outro caminho (removido ou
+              anonimizado) — remover de novo não tem o que fazer. */}
+          {softDeleteCustomer && row.situation !== 'DELETED' && row.situation !== 'ANONYMIZED' && (
+            <IconActionButton
+              icon={Trash2}
+              label="Remover cliente"
+              tone="danger"
+              onClick={() => setPendingRemoveId(row.id)}
+            />
+          )}
         </div>
       ),
     },
   ];
 
   return (
-    <DataTable
-      columns={columns}
-      rows={rows}
-      rowKey={(row) => row.id}
-      page={page}
-      perPage={perPage}
-      total={total}
-      onPageChange={(next) => setParam('page', String(next))}
-      onPerPageChange={(next) => setParam('perPage', String(next))}
-      emptyState={
-        filtered ? (
-          <EmptyState
-            icon={SearchX}
-            title="Nenhum cliente com esses filtros"
-            description="Ninguém na base casa com a busca e a situação escolhidas."
-            action={
-              <Button variant="outline" onClick={() => router.push('/customers')}>
-                <X aria-hidden="true" />
-                Limpar filtros
-              </Button>
-            }
-          />
-        ) : (
-          <EmptyState
-            icon={Users}
-            title="Nenhum cliente ainda"
-            description="Cadastre o assinante que usa o serviço para o sistema começar a cobrar sozinho."
-            action={
-              <NewCustomerButton plans={plans} suppliers={suppliers} saveFicha={saveFicha} checkPhone={checkPhone} />
-            }
-          />
-        )
-      }
-    />
+    <>
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => row.id}
+        page={page}
+        perPage={perPage}
+        total={total}
+        onPageChange={(next) => setParam('page', String(next))}
+        onPerPageChange={(next) => setParam('perPage', String(next))}
+        emptyState={
+          filtered ? (
+            <EmptyState
+              icon={SearchX}
+              title="Nenhum cliente com esses filtros"
+              description="Ninguém na base casa com a busca e a situação escolhidas."
+              action={
+                <Button variant="outline" onClick={() => router.push('/customers')}>
+                  <X aria-hidden="true" />
+                  Limpar filtros
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={Users}
+              title="Nenhum cliente ainda"
+              description="Cadastre o assinante que usa o serviço para o sistema começar a cobrar sozinho."
+              action={
+                <NewCustomerButton plans={plans} suppliers={suppliers} saveFicha={saveFicha} checkPhone={checkPhone} />
+              }
+            />
+          )
+        }
+      />
+      <ConfirmDialog
+        open={!!pendingRemove}
+        onOpenChange={(open) => !open && setPendingRemoveId(null)}
+        title={pendingRemove ? `Remover "${pendingRemove.name}"?` : ''}
+        description="Some da lista de clientes. O cadastro continua no banco — cobrança e histórico não mudam, mas a régua para de mensagear e cobrar enquanto estiver removido."
+        confirmLabel="Remover"
+        onConfirm={handleConfirmRemove}
+      />
+    </>
   );
 }

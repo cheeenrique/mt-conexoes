@@ -5,11 +5,21 @@ import { evaluateDunningRule } from './evaluate';
 
 const NOW = new Date('2026-08-10T12:00:00-03:00');
 
-async function seedFixture(overrides: { optedOut?: boolean; phone?: string | null } = {}) {
+async function seedFixture(
+  overrides: { optedOut?: boolean; phone?: string | null; anonymizedAt?: Date; deletedAt?: Date } = {},
+) {
   const supplier = await db.supplier.create({ data: { name: 'Fornecedor Teste', unitCostCents: 1000n } });
   const plan = await db.plan.create({ data: { name: 'Plano Teste', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });
   const phone = 'phone' in overrides ? overrides.phone : '+5511999990100';
-  const customer = await db.customer.create({ data: { name: 'Dunning Teste', phone, optedOut: overrides.optedOut ?? false } });
+  const customer = await db.customer.create({
+    data: {
+      name: 'Dunning Teste',
+      phone,
+      optedOut: overrides.optedOut ?? false,
+      anonymizedAt: overrides.anonymizedAt,
+      deletedAt: overrides.deletedAt,
+    },
+  });
   const subscription = await db.subscription.create({
     data: { customerId: customer.id, planId: plan.id, supplierId: supplier.id, priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY', status: 'ACTIVE', startedAt: NOW, nextDueAt: NOW },
   });
@@ -93,6 +103,40 @@ describe('evaluateDunningRule', () => {
     expect(executions).toHaveLength(1);
     expect(executions[0].outcome).toBe('SKIPPED');
     expect(executions[0].reason).toBe('opted_out');
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(0);
+  });
+
+  // Defesa em profundidade (LGPD): não deveria existir cobrança em aberto de
+  // cliente anonimizado (a trava de anonimizar bloqueia isso), mas se uma
+  // linha escapar, este guard é o que impede a régua de mandar mensagem.
+  it('régua ACTIVE, cliente anonymizedAt: SKIPPED reason=customer_anonymized, zero Message', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { customer, charge } = await seedFixture({ anonymizedAt: new Date('2026-08-01T12:00:00Z') });
+
+    await evaluateDunningRule(NOW, false);
+
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+    expect(executions).toHaveLength(1);
+    expect(executions[0].outcome).toBe('SKIPPED');
+    expect(executions[0].reason).toBe('customer_anonymized');
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(0);
+  });
+
+  // Soft delete ("Remover" na tabela): cliente saiu da lista, régua para de
+  // cobrar também — senão a mensagem sai pra alguém que o operador não
+  // consegue mais achar na tela pra acompanhar.
+  it('régua ACTIVE, cliente deletedAt: SKIPPED reason=customer_deleted, zero Message', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { customer, charge } = await seedFixture({ deletedAt: new Date('2026-08-01T12:00:00Z') });
+
+    await evaluateDunningRule(NOW, false);
+
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+    expect(executions).toHaveLength(1);
+    expect(executions[0].outcome).toBe('SKIPPED');
+    expect(executions[0].reason).toBe('customer_deleted');
     const messages = await db.message.findMany({ where: { customerId: customer.id } });
     expect(messages).toHaveLength(0);
   });

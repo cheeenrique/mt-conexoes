@@ -17,12 +17,15 @@ export type CustomerSituation =
   | 'OPEN'
   | 'SUSPENDED'
   | 'NO_SUBSCRIPTION'
-  | 'ANONYMIZED';
+  | 'ANONYMIZED'
+  | 'DELETED';
 
-/** As quatro situações que viram chip de filtro na tela de Clientes. `ANONYMIZED`
- * é o único que muda o comportamento padrão da lista: escondido a menos que o
- * operador clique nele (direito de eliminação, LGPD — ver `queries.ts`). */
-export const CUSTOMER_SITUATION_FILTERS = ['ACTIVE', 'DUE_TODAY', 'OVERDUE', 'ANONYMIZED'] as const;
+/** As cinco situações que viram chip de filtro na tela de Clientes. `ANONYMIZED`
+ * e `DELETED` mudam o comportamento padrão da lista: escondidos a menos que o
+ * operador clique no chip (ver `queries.ts`). `DELETED` é soft delete
+ * ("Remover" na tabela) — diferente de `ANONYMIZED` (direito de eliminação,
+ * LGPD): aqui o dado continua intacto, só sai da lista e da régua. */
+export const CUSTOMER_SITUATION_FILTERS = ['ACTIVE', 'DUE_TODAY', 'OVERDUE', 'ANONYMIZED', 'DELETED'] as const;
 
 export type CustomerSituationFilter = (typeof CUSTOMER_SITUATION_FILTERS)[number];
 
@@ -47,8 +50,14 @@ export function resolveCustomerSituation(params: {
   /** Direito de eliminação (LGPD) — ganha de tudo o mais: um cliente anonimizado
    * não tem mais assinatura nem cobrança que valha a pena mostrar. */
   anonymizedAt?: Date | null;
+  /** Soft delete ("Remover" na tabela) — ganha de tudo, menos de `anonymizedAt`:
+   * se as duas aconteceram (removeu, depois alguém achou pelo chip e anonimizou
+   * de verdade), o nome já virou "Cliente anonimizado" — mostrar "Removido" ali
+   * seria informar menos do que se sabe. */
+  deletedAt?: Date | null;
 }): CustomerSituation {
   if (params.anonymizedAt) return 'ANONYMIZED';
+  if (params.deletedAt) return 'DELETED';
   if (params.subscriptionStatus === null || params.subscriptionStatus === 'CANCELLED') {
     return 'NO_SUBSCRIPTION';
   }

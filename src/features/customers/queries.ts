@@ -77,9 +77,8 @@ function situationWhere(
     subscriptions: { some: { status: 'ACTIVE' } },
   };
 
-  // ANONYMIZED não cai aqui: o `and.push` único em `listCustomers` já cobre os
-  // dois lados (esconder por padrão, mostrar só quando o chip pede) — duplicar
-  // a condição aqui seria a mesma regra escrita em dois lugares.
+  // ANONYMIZED e DELETED não caem aqui — `listCustomers` já resolve os dois
+  // antes de chamar esta função (ver o comentário lá).
   if (situation === 'ACTIVE') {
     return { ...activeSubscription, charges: { none: { status } } };
   }
@@ -125,15 +124,24 @@ export async function listCustomers(params: {
 }): Promise<{ rows: CustomerListRowDTO[]; total: number }> {
   const and: Prisma.CustomerWhereInput[] = [];
   if (params.q) and.push(searchWhere(params.q));
-  // ANONYMIZED não passa por `situationWhere`: aquela função pressupõe
-  // assinatura ativa em todo branch, e cliente anonimizado nunca tem uma (é
-  // pré-condição da trava de anonimizar) — cairia num predicado que nunca bate.
-  if (params.situation && params.situation !== 'ANONYMIZED') {
-    and.push(situationWhere(params.situation, params.now, params.timezone));
+
+  // ANONYMIZED e DELETED não passam por `situationWhere`: aquela função
+  // pressupõe assinatura ativa em todo branch, e nenhum dos dois estados tem
+  // uma (anonimizar exige cancelar antes; remover não mexe na assinatura, mas
+  // não faz sentido cruzar com "vence hoje"/"em atraso" — o cliente já saiu do
+  // fluxo de cobrança do dia a dia). Os dois somem da lista por padrão; o chip
+  // exato é o único jeito de trazer de volta.
+  if (params.situation === 'ANONYMIZED') {
+    and.push({ anonymizedAt: { not: null } });
+  } else if (params.situation === 'DELETED') {
+    // Sem `anonymizedAt: null` aqui, um cliente removido e depois anonimizado
+    // apareceria nos dois chips — ANONYMIZED já ganha a exibição (ver
+    // `resolveCustomerSituation`), então some daqui pra não duplicar.
+    and.push({ deletedAt: { not: null }, anonymizedAt: null });
+  } else {
+    and.push({ anonymizedAt: null, deletedAt: null });
+    if (params.situation) and.push(situationWhere(params.situation, params.now, params.timezone));
   }
-  // Direito de eliminação (LGPD): anonimizado só aparece se o chip pediu
-  // exatamente ele — some da lista (e de qualquer outro chip) por padrão.
-  and.push({ anonymizedAt: params.situation === 'ANONYMIZED' ? { not: null } : null });
   const where: Prisma.CustomerWhereInput = and.length > 0 ? { AND: and } : {};
 
   const [rows, total] = await Promise.all([
@@ -162,6 +170,7 @@ export async function listCustomers(params: {
           now: params.now,
           timezone: params.timezone,
           anonymizedAt: row.anonymizedAt,
+          deletedAt: row.deletedAt,
         }),
       };
     }),
@@ -202,6 +211,7 @@ export async function getCustomerHead(
       now,
       timezone,
       anonymizedAt: row.anonymizedAt,
+      deletedAt: row.deletedAt,
     }),
   };
 }

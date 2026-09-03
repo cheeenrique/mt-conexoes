@@ -31,9 +31,17 @@ async function seedActiveDefaultChannel(overrides: { lastCheckOk?: boolean; last
   });
 }
 
-async function seedCustomer(overrides: { optedOut?: boolean } = {}) {
+async function seedCustomer(
+  overrides: { optedOut?: boolean; anonymizedAt?: Date; deletedAt?: Date } = {},
+) {
   return db.customer.create({
-    data: { name: 'Dispatch Teste', phone: '+5511998880000', optedOut: overrides.optedOut ?? false },
+    data: {
+      name: 'Dispatch Teste',
+      phone: '+5511998880000',
+      optedOut: overrides.optedOut ?? false,
+      anonymizedAt: overrides.anonymizedAt,
+      deletedAt: overrides.deletedAt,
+    },
   });
 }
 
@@ -107,6 +115,7 @@ describe('dispatchPendingMessages', () => {
       cancelledStale: 0,
       cancelledOptedOut: 0,
       cancelledAnonymized: 0,
+      cancelledDeleted: 0,
       cancelledPaid: 0,
       cancelledDedupe: 0,
       rescheduled: 0,
@@ -195,6 +204,32 @@ describe('dispatchPendingMessages', () => {
     const reloaded = await db.message.findUnique({ where: { id: msg.id } });
     expect(reloaded?.status).toBe('CANCELLED');
     expect(reloaded?.cancelReason).toBe('opted_out');
+  });
+
+  it('customer.anonymizedAt cancela o envio, motivo customer_anonymized (LGPD, defesa em profundidade)', async () => {
+    await seedActiveDefaultChannel();
+    const customer = await seedCustomer({ anonymizedAt: new Date('2026-08-01T12:00:00Z') });
+    const msg = await seedPendingMessage(customer.id);
+
+    const result = await dispatchPendingMessages(IN_HOURS_NOW);
+
+    expect(result.cancelledAnonymized).toBe(1);
+    const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+    expect(reloaded?.status).toBe('CANCELLED');
+    expect(reloaded?.cancelReason).toBe('customer_anonymized');
+  });
+
+  it('customer.deletedAt cancela o envio, motivo customer_deleted (soft delete, defesa em profundidade)', async () => {
+    await seedActiveDefaultChannel();
+    const customer = await seedCustomer({ deletedAt: new Date('2026-08-01T12:00:00Z') });
+    const msg = await seedPendingMessage(customer.id);
+
+    const result = await dispatchPendingMessages(IN_HOURS_NOW);
+
+    expect(result.cancelledDeleted).toBe(1);
+    const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+    expect(reloaded?.status).toBe('CANCELLED');
+    expect(reloaded?.cancelReason).toBe('customer_deleted');
   });
 
   it('mensagem com única cobrança ligada já paga é cancelada, motivo charge_closed', async () => {

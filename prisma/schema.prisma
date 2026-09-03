@@ -148,6 +148,12 @@ model Customer {
   anonymizedByUserId String?
   anonymizedByUser   User?     @relation("CustomerAnonymizedBy", fields: [anonymizedByUserId], references: [id])
 
+  /// Soft delete — "Remover" na tabela de clientes. Diferente de `anonymizedAt`:
+  /// dado continua intacto (nome, telefone, credencial), só sai da lista e para
+  /// de ser cobrado/mensageado. Não é o direito de eliminação da LGPD — quem
+  /// precisa daquele usa "Excluir cliente" na ficha (`anonymizedAt`).
+  deletedAt DateTime?
+
   subscriptions Subscription[]
   charges       Charge[]
   messages      Message[]
@@ -156,6 +162,7 @@ model Customer {
   @@unique([phone])
   @@index([name])
   @@index([anonymizedAt])
+  @@index([deletedAt])
   @@map("customers")
 }
 

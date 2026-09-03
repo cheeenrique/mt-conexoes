@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireSession } from '@/lib/auth';
 import { customerFichaSchema } from '@/features/customers/ficha-schema';
-import { findCustomerIdByPhone } from '@/features/customers/service';
+import { findCustomerIdByPhone, softDeleteCustomer } from '@/features/customers/service';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';
@@ -62,6 +62,24 @@ export async function anonymizeCustomerAction(customerId: string): Promise<Actio
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
     logger.error({ route: 'customers.anonymize', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+/**
+ * "Remover" na tabela de clientes — soft delete, não o direito de eliminação
+ * (esse é `anonymizeCustomerAction`, na ficha). Some da lista, dado continua
+ * intacto no banco.
+ */
+export async function softDeleteCustomerAction(customerId: string): Promise<ActionResult> {
+  try {
+    await requireSession();
+    await softDeleteCustomer(customerId, new Date());
+    revalidatePath('/customers');
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'customers.softDelete', error: String(err), stack: err instanceof Error ? err.stack : undefined });
     return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
   }
 }

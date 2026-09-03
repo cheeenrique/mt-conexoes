@@ -13,6 +13,12 @@ export class CustomerPhoneTakenError extends DomainError {
   }
 }
 
+export class CustomerNotFoundError extends DomainError {
+  constructor(cause?: unknown) {
+    super('Este cliente não existe mais.', 'CUSTOMER_NOT_FOUND', { cause });
+  }
+}
+
 function toData(input: CustomerInput) {
   return {
     name: input.name,
@@ -83,6 +89,22 @@ export async function resolveImportedCustomer(
  * parcial deixaria nome neutro e credencial de acesso ainda gravada, o pior dos
  * dois mundos. A trava (`assertAnonymizable`) já rodou antes de chegar aqui.
  */
+/**
+ * Soft delete — "Remover" na tabela de clientes. Diferente de
+ * `anonymizeCustomerRow`: nenhum dado é apagado, só sai de vista. Sem trava:
+ * não mexe em assinatura nem cobrança, então não há estado de negócio que
+ * bloqueie (quem cobra continua sabendo cobrar — os guards em
+ * `dunning/evaluate.ts` e `messaging/scheduled-dispatch.ts` é que param).
+ * Idempotente: já removido não regrava `deletedAt` por cima.
+ */
+export async function softDeleteCustomer(id: string, now: Date): Promise<void> {
+  const existing = await db.customer.findUnique({ where: { id }, select: { deletedAt: true } });
+  if (!existing) throw new CustomerNotFoundError();
+  if (existing.deletedAt) return;
+
+  await db.customer.update({ where: { id }, data: { deletedAt: now } });
+}
+
 export async function anonymizeCustomerRow(
   tx: Prisma.TransactionClient,
   id: string,

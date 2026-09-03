@@ -8,10 +8,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
  * Tom que reforça o significado da ação — nunca é o único sinal (o ícone e o
  * tooltip já identificam a ação; ver handoff §"Nada depende só de cor").
  * `success` = mesmo verde do badge "Paga" (dinheiro entrando). `brand` =
- * mesmo laranja do badge "Novo" (ação primária de conversão). `neutral` é o
- * padrão: ação frequente ou sem carga semântica própria (editar, WhatsApp).
+ * mesmo laranja do badge "Novo" (ação primária de conversão). `danger` =
+ * mesmo vermelho do `Alert` tom `danger` e do `Button` `variant="destructive"`
+ * — ação de linha que remove ou apaga. `neutral` é o padrão: ação frequente ou
+ * sem carga semântica própria (editar, WhatsApp).
  */
-export type IconActionTone = 'neutral' | 'success' | 'brand';
+export type IconActionTone = 'neutral' | 'success' | 'brand' | 'danger';
 
 const BASE_CLASS_NAME =
   'flex size-11 items-center justify-center rounded-badge border border-border transition-colors md:size-8';
@@ -23,6 +25,7 @@ const TONE_CLASS_NAMES: Record<IconActionTone, string> = {
   // botão destrutivo em `button.tsx` (`bg-destructive/10` → `/20` no hover).
   success: 'text-success hover:bg-success/10',
   brand: 'text-brand-light hover:bg-brand/10',
+  danger: 'text-danger hover:bg-danger/10',
 };
 
 const DISABLED_CLASS_NAME =

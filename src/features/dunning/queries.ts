@@ -178,7 +178,9 @@ export async function listReviewMessages(ruleId: string, now = new Date()): Prom
       step: { select: { id: true, offsetDays: true, templateBody: true, action: true, metaTemplateName: true, metaTemplateParams: true } },
       charge: {
         include: {
-          customer: { select: { id: true, name: true, phone: true, optedOut: true, anonymizedAt: true } },
+          customer: {
+            select: { id: true, name: true, phone: true, optedOut: true, anonymizedAt: true, deletedAt: true },
+          },
           payments: { select: { amountCents: true } },
         },
       },
