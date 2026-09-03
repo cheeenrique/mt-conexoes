@@ -6,6 +6,7 @@ import { MessageCircle, Pencil, SearchX, Trash2, Users, X } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconActionButton } from '@/components/ui/icon-action-button';
+import { Select } from '@/components/ui/select';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -15,7 +16,7 @@ import { toastError, toastSuccess } from '@/lib/toast';
 import { useCustomerParam } from '../use-customer-param';
 import { NewCustomerButton } from './new-customer-button';
 import type { CustomerListRowDTO } from '../queries';
-import type { FichaPlanOption, FindCustomerByPhone, SaveCustomerFicha } from '../ficha-types';
+import type { ChangePlan, FichaPlanOption, FindCustomerByPhone, SaveCustomerFicha } from '../ficha-types';
 import type { PerPage } from '@/components/ui/data-table-paging';
 
 export function CustomerTable({
@@ -30,6 +31,7 @@ export function CustomerTable({
   saveFicha,
   checkPhone,
   softDeleteCustomer,
+  changePlan,
 }: {
   rows: CustomerListRowDTO[];
   total: number;
@@ -45,6 +47,8 @@ export function CustomerTable({
   checkPhone?: FindCustomerByPhone;
   /** "Remover" — soft delete. Ausente = coluna de ação não ganha o botão. */
   softDeleteCustomer?: (customerId: string) => Promise<{ ok: true } | { error: { code: string; message: string } }>;
+  /** Ação rápida: clicar na célula "Plano" vira select. Ausente = coluna some (só texto). */
+  changePlan?: ChangePlan;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -53,6 +57,9 @@ export function CustomerTable({
   // estar com o diálogo aberto.
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const pendingRemove = rows.find((row) => row.id === pendingRemoveId) ?? null;
+  // Idem para a edição rápida de plano: uma célula em modo select por vez.
+  const [editingPlanRowId, setEditingPlanRowId] = useState<string | null>(null);
+  const [savingPlanRowId, setSavingPlanRowId] = useState<string | null>(null);
 
   async function handleConfirmRemove() {
     if (!pendingRemoveId || !softDeleteCustomer) return;
@@ -61,6 +68,17 @@ export function CustomerTable({
     const result = await softDeleteCustomer(id);
     if ('error' in result) return toastError(result.error);
     toastSuccess('Cliente removido.');
+    router.refresh();
+  }
+
+  async function handleChangePlan(row: CustomerListRowDTO, planId: string) {
+    setEditingPlanRowId(null);
+    if (!changePlan || !row.subscriptionId || planId === row.planId) return;
+    setSavingPlanRowId(row.id);
+    const result = await changePlan(row.subscriptionId, row.id, planId);
+    setSavingPlanRowId(null);
+    if ('error' in result) return toastError(result.error);
+    toastSuccess('Plano atualizado.');
     router.refresh();
   }
 
@@ -90,7 +108,33 @@ export function CustomerTable({
         </div>
       ),
     },
-    { header: 'Plano', cell: (row) => row.planName ?? '—' },
+    {
+      header: 'Plano',
+      cell: (row) => {
+        if (!changePlan || !row.subscriptionId) return row.planName ?? '—';
+        if (editingPlanRowId === row.id) {
+          return (
+            <Select
+              aria-label={`Trocar plano de ${row.name}`}
+              value={row.planId ?? ''}
+              onValueChange={(next) => handleChangePlan(row, next)}
+              options={plans.map((plan) => ({ value: plan.id, label: plan.name }))}
+              className="h-9 w-full min-w-40"
+            />
+          );
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => setEditingPlanRowId(row.id)}
+            disabled={savingPlanRowId === row.id}
+            className="rounded px-1 -mx-1 text-left text-sm text-foreground hover:bg-surface-elevated hover:underline disabled:opacity-60"
+          >
+            {savingPlanRowId === row.id ? 'Salvando…' : (row.planName ?? '—')}
+          </button>
+        );
+      },
+    },
     { header: 'Fornecedor', cell: (row) => row.supplierName ?? '—' },
     {
       header: 'Vencimento',

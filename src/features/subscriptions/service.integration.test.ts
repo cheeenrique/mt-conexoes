@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import { encrypt } from '@/lib/crypto';
-import { createSubscription, revealCredential } from './service';
+import {
+  createSubscription,
+  revealCredential,
+  changeSubscriptionPlan,
+  SubscriptionNotFoundError,
+  SubscriptionCancelledError,
+  PlanNotFoundError,
+} from './service';
 import type { subscriptionSchema } from './schema';
 import type { z } from 'zod';
 
@@ -147,6 +154,127 @@ describe('createSubscription — emissão da primeira Charge', () => {
 
     await db.charge.deleteMany({ where: { subscriptionId: subscription.id } });
     await db.subscription.delete({ where: { id: subscription.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
+});
+
+describe('changeSubscriptionPlan — troca rápida de plano na tabela de Clientes', () => {
+  it('atualiza preço, custo, ciclo e fornecedor a partir do plano escolhido', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Troca de Plano' } });
+    const supplier = await db.supplier.create({ data: { name: `Fornecedor Troca ${randomUUID()}`, isActive: true } });
+    const plan = await db.plan.create({
+      data: { name: `Plano Troca ${randomUUID()}`, priceCents: 5000n, costCents: 2000n, cycle: 'QUARTERLY', supplierId: supplier.id },
+    });
+    const subscription = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 1000n, costCents: 500n, cycle: 'MONTHLY', nextDueAt: new Date() },
+    });
+
+    const updated = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
+
+    expect(updated.planId).toBe(plan.id);
+    expect(updated.priceCents.toString()).toBe('5000');
+    expect(updated.costCents.toString()).toBe('2000');
+    expect(updated.cycle).toBe('QUARTERLY');
+    expect(updated.supplierId).toBe(supplier.id);
+
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.plan.delete({ where: { id: plan.id } });
+    await db.supplier.delete({ where: { id: supplier.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
+
+  // Bug que a troca inline tinha que evitar: `patchSubscription`/`toBaseData`
+  // reescreve `screens` em toda chamada porque o form completo sempre reenvia
+  // o valor atual — a troca rápida não tem esse form, então precisa preservar
+  // na mão, ou telas e desconto voltariam pro default em silêncio.
+  it('preserva telas e desconto — a troca rápida não passa pelo form completo', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Troca Preserva' } });
+    const plan = await db.plan.create({
+      data: { name: `Plano Preserva ${randomUUID()}`, priceCents: 8000n, costCents: 3000n, cycle: 'MONTHLY' },
+    });
+    const subscription = await db.subscription.create({
+      data: {
+        customerId: customer.id,
+        priceCents: 1000n,
+        costCents: 500n,
+        cycle: 'MONTHLY',
+        nextDueAt: new Date(),
+        screens: 3,
+        discountType: 'PERCENT',
+        discountValue: '10',
+      },
+    });
+
+    const updated = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
+
+    expect(updated.screens).toBe(3);
+    expect(updated.discountType).toBe('PERCENT');
+    expect(updated.discountValue?.toString()).toBe('10');
+
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.plan.delete({ where: { id: plan.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
+
+  it('plano sem fornecedor não zera o fornecedor atual da assinatura', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Troca Sem Fornecedor' } });
+    const supplier = await db.supplier.create({ data: { name: `Fornecedor Atual ${randomUUID()}`, isActive: true } });
+    const plan = await db.plan.create({
+      data: { name: `Plano Sem Fornecedor ${randomUUID()}`, priceCents: 4000n, costCents: 1500n, cycle: 'MONTHLY' },
+    });
+    const subscription = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 1000n, costCents: 500n, cycle: 'MONTHLY', nextDueAt: new Date(), supplierId: supplier.id },
+    });
+
+    const updated = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
+
+    expect(updated.supplierId).toBe(supplier.id);
+
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.plan.delete({ where: { id: plan.id } });
+    await db.supplier.delete({ where: { id: supplier.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
+
+  it('assinatura de outro cliente não é alterada', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Dono' } });
+    const other = await db.customer.create({ data: { name: 'Cliente Estranho' } });
+    const plan = await db.plan.create({ data: { name: `Plano Dono ${randomUUID()}`, priceCents: 4000n, costCents: 1500n } });
+    const subscription = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 1000n, costCents: 500n, cycle: 'MONTHLY', nextDueAt: new Date() },
+    });
+
+    await expect(changeSubscriptionPlan(subscription.id, other.id, plan.id)).rejects.toThrow(SubscriptionNotFoundError);
+
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.plan.delete({ where: { id: plan.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+    await db.customer.delete({ where: { id: other.id } });
+  });
+
+  it('plano inexistente recusa a troca', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Plano Inexistente' } });
+    const subscription = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 1000n, costCents: 500n, cycle: 'MONTHLY', nextDueAt: new Date() },
+    });
+
+    await expect(changeSubscriptionPlan(subscription.id, customer.id, randomUUID())).rejects.toThrow(PlanNotFoundError);
+
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.customer.delete({ where: { id: customer.id } });
+  });
+
+  it('assinatura cancelada não aceita troca de plano', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Cancelado' } });
+    const plan = await db.plan.create({ data: { name: `Plano Cancelado ${randomUUID()}`, priceCents: 4000n, costCents: 1500n } });
+    const subscription = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 1000n, costCents: 500n, cycle: 'MONTHLY', nextDueAt: new Date(), status: 'CANCELLED' },
+    });
+
+    await expect(changeSubscriptionPlan(subscription.id, customer.id, plan.id)).rejects.toThrow(SubscriptionCancelledError);
+
+    await db.subscription.delete({ where: { id: subscription.id } });
+    await db.plan.delete({ where: { id: plan.id } });
     await db.customer.delete({ where: { id: customer.id } });
   });
 });

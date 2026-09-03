@@ -23,6 +23,12 @@ export class SubscriptionCancelledError extends DomainError {
   }
 }
 
+export class PlanNotFoundError extends DomainError {
+  constructor(cause?: unknown) {
+    super('Plano não encontrado.', 'PLAN_NOT_FOUND', { cause });
+  }
+}
+
 /**
  * Situação nova da assinatura. `suspendedAt` acompanha a transição em vez de
  * ficar preso ao primeiro valor: reativar e suspender de novo tem que datar a
@@ -208,6 +214,38 @@ export async function patchSubscription(
 export async function updateSubscription(id: string, input: SubscriptionInput) {
   const settings = await getSettings();
   return db.$transaction((tx) => patchSubscription(tx, { id, input, timezone: settings.timezone, now: new Date() }));
+}
+
+/**
+ * Troca rápida de plano — ação da coluna "Plano" na tabela de Clientes. Ao
+ * contrário de `updateSubscription`, não passa por `toBaseData`: aquela
+ * função reescreve `screens` em toda chamada porque o form completo sempre
+ * reenvia o valor atual junto. Aqui não há form — só o id do plano — então
+ * `screens` e desconto ficam de fora do `data` para não sobrescrever com
+ * nada. Fornecedor segue a mesma regra do form (handoff 08 §"Fornecedor: o
+ * padrão"): plano com fornecedor troca, plano sem fornecedor não zera o
+ * que a assinatura já tinha.
+ */
+export async function changeSubscriptionPlan(id: string, customerId: string, planId: string) {
+  const [existing, plan] = await Promise.all([
+    db.subscription.findUnique({ where: { id }, select: { customerId: true, status: true } }),
+    db.plan.findUnique({ where: { id: planId } }),
+  ]);
+  if (!existing || existing.customerId !== customerId) throw new SubscriptionNotFoundError();
+  if (!plan) throw new PlanNotFoundError();
+  if (existing.status === 'CANCELLED') throw new SubscriptionCancelledError();
+
+  return db.subscription.update({
+    where: { id },
+    data: {
+      planId: plan.id,
+      priceCents: plan.priceCents,
+      costCents: plan.costCents,
+      cycle: plan.cycle,
+      ...(plan.supplierId ? { supplierId: plan.supplierId } : {}),
+    },
+    omit: { accessPasswordEnc: true },
+  });
 }
 
 export async function revealCredential(subscriptionId: string, userId: string, ip: string | null) {

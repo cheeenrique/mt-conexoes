@@ -19,6 +19,8 @@ const ROW: CustomerListRowDTO = {
   email: null,
   document: null,
   notes: null,
+  subscriptionId: 'assinatura-1',
+  planId: 'plano-1',
   planName: 'Plano Mensal',
   supplierName: 'Fornecedor Teste',
   nextDueAt: null,
@@ -83,5 +85,52 @@ describe('CustomerTable — Remover (soft delete)', () => {
   it('cliente já removido ou anonimizado não ganha o botão de novo', () => {
     setup({ rows: [{ ...ROW, situation: 'DELETED' }] });
     expect(screen.queryByRole('button', { name: 'Remover cliente' })).not.toBeInTheDocument();
+  });
+});
+
+const PLANS = [
+  { id: 'plano-1', name: 'Plano Mensal', priceCents: '5000', costCents: '2000', cycle: 'MONTHLY', supplierId: null },
+  { id: 'plano-2', name: 'Plano Trimestral', priceCents: '13000', costCents: '5000', cycle: 'QUARTERLY', supplierId: null },
+];
+
+describe('CustomerTable — troca rápida de plano', () => {
+  function desktopTable() {
+    return within(screen.getByRole('table'));
+  }
+
+  it('sem a prop changePlan, a célula de plano é só texto', () => {
+    setup({ plans: PLANS });
+    expect(screen.queryByRole('button', { name: /Plano Mensal/ })).not.toBeInTheDocument();
+    expect(desktopTable().getByText('Plano Mensal')).toBeInTheDocument();
+  });
+
+  it('assinatura sem id (sem assinatura de verdade) não vira clicável, mesmo com changePlan', () => {
+    setup({ plans: PLANS, changePlan: vi.fn(), rows: [{ ...ROW, subscriptionId: null }] });
+    expect(screen.queryByRole('button', { name: /Plano Mensal/ })).not.toBeInTheDocument();
+  });
+
+  it('clicar no plano revela o select com o plano atual selecionado', async () => {
+    const user = userEvent.setup();
+    setup({ plans: PLANS, changePlan: vi.fn() });
+
+    await user.click(desktopTable().getByRole('button', { name: /Plano Mensal/ }));
+
+    const gatilho = desktopTable().getByRole('combobox', { name: /Trocar plano de Maria Teste/ });
+    expect(gatilho).toHaveTextContent('Plano Mensal');
+  });
+
+  it('escolher outro plano chama changePlan com os ids certos e atualiza a tela', async () => {
+    const user = userEvent.setup();
+    const changePlan = vi.fn().mockResolvedValue({ ok: true });
+    setup({ plans: PLANS, changePlan });
+
+    await user.click(desktopTable().getByRole('button', { name: /Plano Mensal/ }));
+    const gatilho = desktopTable().getByRole('combobox', { name: /Trocar plano de Maria Teste/ });
+    gatilho.focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard('{ArrowDown}{Enter}');
+
+    expect(changePlan).toHaveBeenCalledWith('assinatura-1', 'cliente-1', 'plano-2');
+    expect(refresh).toHaveBeenCalled();
   });
 });

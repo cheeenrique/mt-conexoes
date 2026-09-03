@@ -90,6 +90,13 @@ export type AnonymizeCustomer = (
   customerId: string,
 ) => Promise<{ ok: true } | { error: { code: string; message: string } }>;
 
+/** Troca rápida de plano — clique na coluna "Plano" da tabela de Clientes. */
+export type ChangePlan = (
+  subscriptionId: string,
+  customerId: string,
+  planId: string,
+) => Promise<{ ok: true } | { error: { code: string; message: string } }>;
+
 /** Ids que a gravação precisa e que não são campo de formulário. */
 export interface SaveCustomerIds {
   /** `null` cria o cliente; preenchido edita. */

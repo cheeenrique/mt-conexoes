@@ -79,3 +79,8 @@ export const subscriptionSchema = z
       }
     }
   });
+
+/** Troca rápida de plano — coluna "Plano" da tabela de Clientes. */
+export const changeSubscriptionPlanSchema = z.object({
+  planId: z.string().uuid('Plano inválido.'),
+});

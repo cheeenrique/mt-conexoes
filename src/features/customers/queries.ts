@@ -19,6 +19,9 @@ export interface CustomerDTO {
 }
 
 export interface CustomerListRowDTO extends CustomerDTO {
+  /** Ausente sem assinatura nenhuma — a edição rápida de plano na tabela some nesse caso. */
+  subscriptionId: string | null;
+  planId: string | null;
   planName: string | null;
   supplierName: string | null;
   /** Vencimento da cobrança em aberto mais antiga; sem cobrança em aberto, o da assinatura. */
@@ -100,8 +103,10 @@ const LIST_INCLUDE = {
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
     take: 1,
     select: {
+      id: true,
       status: true,
       nextDueAt: true,
+      planId: true,
       plan: { select: { name: true } },
       supplier: { select: { name: true } },
     },
@@ -119,11 +124,15 @@ export async function listCustomers(params: {
   perPage: PerPage;
   q?: string;
   situation?: CustomerSituationFilter;
+  planId?: string;
+  supplierId?: string;
   now: Date;
   timezone: string;
 }): Promise<{ rows: CustomerListRowDTO[]; total: number }> {
   const and: Prisma.CustomerWhereInput[] = [];
   if (params.q) and.push(searchWhere(params.q));
+  if (params.planId) and.push({ subscriptions: { some: { planId: params.planId } } });
+  if (params.supplierId) and.push({ subscriptions: { some: { supplierId: params.supplierId } } });
 
   // ANONYMIZED e DELETED não passam por `situationWhere`: aquela função
   // pressupõe assinatura ativa em todo branch, e nenhum dos dois estados tem
@@ -161,6 +170,8 @@ export async function listCustomers(params: {
       const openChargeDueAt = row.charges[0]?.dueAt ?? null;
       return {
         ...toDTO(row),
+        subscriptionId: sub?.id ?? null,
+        planId: sub?.planId ?? null,
         planName: sub?.plan?.name ?? null,
         supplierName: sub?.supplier?.name ?? null,
         nextDueAt: (openChargeDueAt ?? sub?.nextDueAt)?.toISOString() ?? null,

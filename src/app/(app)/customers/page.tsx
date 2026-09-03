@@ -18,12 +18,13 @@ import {
   saveCustomerFichaAction,
   softDeleteCustomerAction,
 } from './customer-actions';
+import { changePlanAction } from '@/features/subscriptions/actions';
 import { resolvePerPage } from '@/components/ui/data-table-paging';
 
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; perPage?: string; q?: string; situacao?: string }>;
+  searchParams: Promise<{ page?: string; perPage?: string; q?: string; situacao?: string; plano?: string; fornecedor?: string }>;
 }) {
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
@@ -31,10 +32,21 @@ export default async function CustomersPage({
   const q = params.q ?? '';
   const situacao = params.situacao ?? '';
   const situation = isCustomerSituationFilter(situacao) ? situacao : undefined;
+  const planId = params.plano ?? '';
+  const supplierId = params.fornecedor ?? '';
 
   const settings = await getSettings();
   const [{ rows, total }, plans, suppliers] = await Promise.all([
-    listCustomers({ page, perPage, q: q || undefined, situation, now: new Date(), timezone: settings.timezone }),
+    listCustomers({
+      page,
+      perPage,
+      q: q || undefined,
+      situation,
+      planId: planId || undefined,
+      supplierId: supplierId || undefined,
+      now: new Date(),
+      timezone: settings.timezone,
+    }),
     listActivePlansForSelect(),
     listActiveSuppliersForSelect(),
   ]);
@@ -53,19 +65,20 @@ export default async function CustomersPage({
         </div>
       }
     >
-      <CustomerFilters q={q} situation={situation ?? ''} />
+      <CustomerFilters q={q} situation={situation ?? ''} planId={planId} supplierId={supplierId} plans={plans} suppliers={suppliers} />
       <CustomerTable
         rows={rows}
         total={total}
         page={page}
         perPage={perPage}
-        filtered={!!q || !!situation}
+        filtered={!!q || !!situation || !!planId || !!supplierId}
         timezone={settings.timezone}
         plans={plans}
         suppliers={suppliers}
         saveFicha={saveCustomerFichaAction}
         checkPhone={findCustomerByPhoneAction}
         softDeleteCustomer={softDeleteCustomerAction}
+        changePlan={changePlanAction}
       />
       <CustomerFichaDrawer
         loadFicha={loadCustomerFichaAction}

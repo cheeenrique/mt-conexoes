@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Search } from 'lucide-react';
 import { CUSTOMER_SITUATION_FILTERS } from '@/core/customer-situation';
 import { CUSTOMER_SITUATION_LABELS } from '@/lib/labels';
+import { Select } from '@/components/ui/select';
 
 const DEBOUNCE_MS = 300;
 
@@ -26,7 +27,21 @@ function chipClass(selected: boolean): string {
  * A busca espera 300 ms antes de navegar (handoff 03 §Busca). Sem isso cada
  * tecla vira uma navegação e uma query — digitar "Fernanda" disparava oito.
  */
-export function CustomerFilters({ q, situation }: { q: string; situation: string }) {
+export function CustomerFilters({
+  q,
+  situation,
+  planId,
+  supplierId,
+  plans,
+  suppliers,
+}: {
+  q: string;
+  situation: string;
+  planId: string;
+  supplierId: string;
+  plans: { id: string; name: string }[];
+  suppliers: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,6 +101,22 @@ export function CustomerFilters({ q, situation }: { q: string; situation: string
           </button>
         ))}
       </div>
+      <Select
+        aria-label="Filtrar por plano"
+        placeholder="Todos os planos"
+        value={planId}
+        onValueChange={(next) => router.push(urlWith('plano', next))}
+        options={[{ value: '', label: 'Todos os planos' }, ...plans.map((plan) => ({ value: plan.id, label: plan.name }))]}
+        className="h-10 w-44"
+      />
+      <Select
+        aria-label="Filtrar por fornecedor"
+        placeholder="Todos os fornecedores"
+        value={supplierId}
+        onValueChange={(next) => router.push(urlWith('fornecedor', next))}
+        options={[{ value: '', label: 'Todos os fornecedores' }, ...suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))]}
+        className="h-10 w-48"
+      />
     </div>
   );
 }

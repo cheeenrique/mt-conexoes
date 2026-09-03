@@ -226,3 +226,29 @@ describe('listCustomers — busca', () => {
     expect(rows[0].phone).toBe('+5562990000007');
   });
 });
+
+describe('listCustomers — filtro por plano e fornecedor', () => {
+  it('planId e supplierId recortam só quem tem aquele plano ou fornecedor na assinatura', async () => {
+    const supplier = await db.supplier.create({ data: { name: `${TAG} Fornecedor`, isActive: true } });
+    const plan = await db.plan.create({ data: { name: `${TAG} Plano`, priceCents: 5000n, costCents: 2000n, supplierId: supplier.id } });
+    const comPlano = await db.customer.create({ data: { name: `${TAG} ComPlano`, phone: '+5562990000009' } });
+    const semPlano = await db.customer.create({ data: { name: `${TAG} SemPlano`, phone: '+5562990000010' } });
+    await db.subscription.create({
+      data: { customerId: comPlano.id, priceCents: 5000n, costCents: 2000n, nextDueAt: new Date(), planId: plan.id, supplierId: supplier.id },
+    });
+    await db.subscription.create({
+      data: { customerId: semPlano.id, priceCents: 3000n, costCents: 1000n, nextDueAt: new Date() },
+    });
+
+    const byPlan = await listCustomers({ page: 1, perPage: 20, planId: plan.id, now: NOW, timezone: TZ });
+    expect(byPlan.rows.map((r) => r.name)).toEqual([`${TAG} ComPlano`]);
+
+    const bySupplier = await listCustomers({ page: 1, perPage: 20, supplierId: supplier.id, now: NOW, timezone: TZ });
+    expect(bySupplier.rows.map((r) => r.name)).toEqual([`${TAG} ComPlano`]);
+
+    await db.subscription.deleteMany({ where: { customerId: { in: [comPlano.id, semPlano.id] } } });
+    await db.customer.deleteMany({ where: { id: { in: [comPlano.id, semPlano.id] } } });
+    await db.plan.delete({ where: { id: plan.id } });
+    await db.supplier.delete({ where: { id: supplier.id } });
+  });
+});

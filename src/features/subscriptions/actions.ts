@@ -2,8 +2,8 @@
 
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import { subscriptionSchema } from './schema';
-import { createSubscription, updateSubscription, revealCredential } from './service';
+import { subscriptionSchema, changeSubscriptionPlanSchema } from './schema';
+import { createSubscription, updateSubscription, revealCredential, changeSubscriptionPlan } from './service';
 import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -44,6 +44,26 @@ export async function updateSubscriptionAction(id: string, customerId: string, i
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
     logger.error({ route: 'subscriptions.update', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+/** Ação rápida da coluna "Plano" na tabela de Clientes — clica na linha, troca, salva. */
+export async function changePlanAction(subscriptionId: string, customerId: string, planId: unknown): Promise<ActionResult> {
+  try {
+    await requireSession();
+    const parsed = changeSubscriptionPlanSchema.safeParse({ planId });
+    if (!parsed.success) {
+      return { error: { code: 'VALIDATION', message: parsed.error.issues[0]?.message ?? messages.common.invalidInput } };
+    }
+
+    await changeSubscriptionPlan(subscriptionId, customerId, parsed.data.planId);
+    revalidatePath('/customers');
+    revalidatePath(`/customers/${customerId}`);
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'subscriptions.changePlan', error: String(err), stack: err instanceof Error ? err.stack : undefined });
     return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
   }
 }
