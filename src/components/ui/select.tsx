@@ -53,7 +53,17 @@ export function Select({
   return (
     <SelectPrimitive.Root
       value={value}
-      onValueChange={(next) => onValueChange(next ?? '')}
+      onValueChange={(next) => {
+        // Bug do base-ui (1.7.0): quando o `value` controlado não bate com
+        // nenhum item da lista — plano sem opção "Nenhum", ou busca filtrando
+        // pra fora o item selecionado — o Root corrige sozinho chamando
+        // `onValueChange(null)`, sem clique nem Enter do operador. Só propaga
+        // quando o valor resultante corresponde a uma opção de verdade —
+        // inclui a `''` de "Nenhum"/"Todos" quando ela existe na lista.
+        const normalized = next ?? '';
+        if (!options.some((opt) => opt.value === normalized)) return;
+        onValueChange(normalized);
+      }}
       open={open}
       onOpenChange={onOpenChange}
       disabled={disabled}
