@@ -101,6 +101,15 @@ jobs:
       # sem tocar no de dev.
       - run: pnpm db:migrate:test
 
+      # ⚠️ Sem isto a suíte inteira falha em `Settings.findUniqueOrThrow` e
+      # "Nenhuma régua padrão configurada": o Postgres deste job nasce vazio a
+      # cada execução (serviço efêmero do Actions), diferente do `db-test`
+      # local, que é um container que sobrevive entre sessões e já estava
+      # semeado. Sem `SEED_USER_EMAIL`/`SEED_USER_PASSWORD`, o seed cai no
+      # e-mail default e numa senha aleatória — sem problema aqui, o usuário
+      # nasce só para o Postgres efêmero deste job morrer no fim.
+      - run: pnpm db:seed:test
+
       - run: pnpm test:integration
 
   deploy:

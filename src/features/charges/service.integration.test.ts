@@ -18,6 +18,15 @@ let customerId: string;
 let subscriptionId: string;
 let chargeId: string;
 
+// Bug real encontrado em 03/09/2026: `dueAt` fixo em '2026-08-31' passou a ficar
+// no passado assim que o calendário real cruzou essa data — os testes de
+// pagamento parcial (nenhum deles quer testar "vencida", só querem uma
+// cobrança em aberto) começaram a receber `deriveChargeStatus` computando
+// OVERDUE em vez de PARTIALLY_PAID (core/billing.ts está correto: overdue com
+// pagamento parcial É OVERDUE de propósito, ver core/billing.test.ts). Relativo
+// a `Date.now()`, nunca mais uma bomba-relógio.
+const FUTURE_DUE_AT = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
 beforeEach(async () => {
   const customer = await db.customer.create({ data: { name: `Cliente Cobrança ${randomUUID()}` } });
   customerId = customer.id;
@@ -28,7 +37,7 @@ beforeEach(async () => {
       priceCents: 10000n,
       costCents: 3000n,
       cycle: 'MONTHLY',
-      nextDueAt: new Date('2026-08-31T23:59:59.000Z'),
+      nextDueAt: FUTURE_DUE_AT,
     },
   });
   subscriptionId = subscription.id;
@@ -42,7 +51,7 @@ beforeEach(async () => {
       costCents: 3000n,
       periodStart: new Date('2026-07-31T00:00:00.000Z'),
       periodEnd: new Date('2026-08-31T00:00:00.000Z'),
-      dueAt: new Date('2026-08-31T23:59:59.000Z'),
+      dueAt: FUTURE_DUE_AT,
     },
   });
   chargeId = charge.id;
