@@ -19,7 +19,10 @@ const optional = z.string().optional().or(z.literal(''));
 
 export const customerFichaSchema = z.object({
   name: z.string().trim().min(1, 'Informe o nome do cliente.').max(120),
-  phone: z.string().regex(/^\+55\d{10,11}$/, 'Informe um WhatsApp brasileiro com DDD.'),
+  // E.164 genérico — não só Brasil. `+55` continua sendo o padrão do
+  // `PhoneInput`, mas o campo aceita `+` de qualquer país (limite do E.164:
+  // até 15 dígitos após o código do país).
+  phone: z.string().regex(/^\+\d{8,15}$/, 'Informe um WhatsApp válido, com código do país.'),
   email: z.string().email('E-mail inválido.').optional().or(z.literal('')),
   document: optional,
   notes: z.string().max(2000).optional().or(z.literal('')),

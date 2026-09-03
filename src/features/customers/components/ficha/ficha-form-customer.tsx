@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Controller } from 'react-hook-form';
 import type { Control, FieldErrors, UseFormRegister } from 'react-hook-form';
 import { Alert } from '@/components/ui/alert';
@@ -66,7 +67,12 @@ export function FichaFormCustomer({
         />
         {duplicate && (
           <Alert tone="warning" className="mt-2">
-            Já existe um cliente com esse WhatsApp: {duplicate.name}.
+            Já existe um cliente com esse WhatsApp: {duplicate.name}. Duas assinaturas da mesma
+            pessoa são um cliente só, com dois planos —{' '}
+            <Link href={`/customers/${duplicate.id}`} className="font-semibold underline underline-offset-2">
+              abrir a ficha de {duplicate.name}
+            </Link>{' '}
+            e usar &quot;Nova assinatura&quot; lá, em vez de cadastrar de novo.
           </Alert>
         )}
       </FichaField>
