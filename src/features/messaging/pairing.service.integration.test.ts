@@ -12,8 +12,12 @@ import { ChannelNotConfiguredError, ChannelRiskNotAcceptedError } from './servic
 
 process.env.CREDENTIAL_KEY = process.env.CREDENTIAL_KEY ?? Buffer.alloc(32, 7).toString('base64');
 process.env.APP_URL = process.env.APP_URL ?? 'https://painel.exemplo.com';
+// Endereço e chave do servidor Evolution não vêm mais da tela — vêm de env (a
+// agência já provisionou o servidor deste cliente).
+process.env.EVOLUTION_BASE_URL = process.env.EVOLUTION_BASE_URL ?? 'https://evo.exemplo.com';
+process.env.EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY ?? 'chave-da-evolution';
 
-const TYPED = { baseUrl: 'https://evo.exemplo.com', apiKey: 'chave-da-evolution', pairingNumber: '+5565999998888' };
+const TYPED = { pairingNumber: '+5565999998888' };
 
 const INPUT = { provider: 'EVOLUTION', methodId: 'qr', credentials: TYPED, riskAccepted: true } as const;
 
@@ -54,7 +58,7 @@ describe('beginChannelPairing', () => {
 
     expect(credentials.instanceName).toMatch(/^painel-[0-9a-f]{12}$/);
     expect(credentials.webhookToken).toHaveLength(64);
-    expect(credentials.baseUrl).toBe(TYPED.baseUrl);
+    expect(credentials.baseUrl).toBe(process.env.EVOLUTION_BASE_URL);
   });
 
   it('grava a credencial criptografada e devolve o desafio sem persistir o QR', async () => {
@@ -64,7 +68,7 @@ describe('beginChannelPairing', () => {
     const row = await db.channelConfig.findUniqueOrThrow({ where: { provider: 'EVOLUTION' } });
 
     expect(challenge).toEqual({ qrBase64: QR.base64, pairingCode: QR.pairingCode, state: 'AWAITING_SCAN' });
-    expect(row.credentials).not.toContain(TYPED.apiKey);
+    expect(row.credentials).not.toContain(process.env.EVOLUTION_API_KEY);
     expect(JSON.stringify(row)).not.toContain(QR.base64);
     expect(JSON.stringify(row)).not.toContain(QR.pairingCode);
   });
@@ -93,15 +97,15 @@ describe('beginChannelPairing', () => {
     expect((await storedCredentials()).instanceName).toBe(first.instanceName);
   });
 
-  it('trocar o servidor provisiona do zero — não parear contra a instância antiga', async () => {
+  it('mandar um número diferente provisiona do zero — não parear contra a instância antiga', async () => {
     stubEvolution({ qrcode: QR });
     await beginChannelPairing(INPUT);
     const first = await storedCredentials();
 
     const fetchMock = stubEvolution({ qrcode: QR });
-    await beginChannelPairing({ ...INPUT, credentials: { ...TYPED, baseUrl: 'https://outro.exemplo.com' } });
+    await beginChannelPairing({ ...INPUT, credentials: { pairingNumber: '+5511988887777' } });
 
-    expect(fetchMock.mock.calls[0][0]).toBe('https://outro.exemplo.com/instance/create');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://evo.exemplo.com/instance/create');
     expect((await storedCredentials()).instanceName).not.toBe(first.instanceName);
   });
 

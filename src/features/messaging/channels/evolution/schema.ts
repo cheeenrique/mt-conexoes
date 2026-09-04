@@ -26,12 +26,13 @@ const pairingNumberSchema = z
   .regex(/^\+55\d{10,11}$/, 'Informe o número que vai enviar no formato +5565999998888.');
 
 /**
- * O que o operador digita para parear. Nome de instância e token de webhook não estão
- * aqui de propósito: pedir ao operador um valor que o painel gera é convite a divergência.
+ * O que o operador digita para parear: só o número. Endereço do servidor e chave de API não
+ * estão aqui de propósito — vêm de `EVOLUTION_BASE_URL`/`EVOLUTION_API_KEY` (a agência já
+ * provisionou o servidor; pedir esses dois valores a um operador leigo era convite a erro de
+ * digitação). Nome de instância e token de webhook, pela mesma razão, também não aparecem: o
+ * painel gera os dois. Ver `channels/evolution/pairing.ts` §beginPairing.
  */
 export const evolutionPairingInputSchema = z.object({
-  baseUrl: z.string().url('Informe a URL do servidor Evolution.'),
-  apiKey: z.string().min(1, 'Informe a API key.'),
   pairingNumber: pairingNumberSchema,
 });
 

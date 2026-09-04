@@ -253,6 +253,14 @@ guarda o dele). Em máquina de 2 GB+ não usar.
 Se levar OOM na prática, subir de máquina não reinstala nada — `stop`,
 `set-machine-type e2-small`, `start`.
 
+⚠️ **Depois de subir a VM, configurar o painel também.** `EVOLUTION_BASE_URL`
+(`https://evolution.mtconexoes.com.br`) e `EVOLUTION_API_KEY` (o mesmo valor de
+`AUTHENTICATION_API_KEY` do `.env` acima) viram env vars do Cloud Run do
+painel — é o que deixa o operador conectar o canal digitando só o número do
+WhatsApp, sem saber o que é "endereço da instância". Sem essas duas, o botão
+"Ler o QR Code aqui" falha com um erro claro (`EVOLUTION_BASE_URL não
+definido`), não silenciosamente.
+
 ## O que este passo a passo NÃO cobre
 
 - **Site de captação (Astro/Cloudflare Pages)** — repositório, domínio e conta

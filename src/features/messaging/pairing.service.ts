@@ -108,25 +108,22 @@ export async function beginChannelPairing(input: BeginChannelPairingInput): Prom
   const resumed = await resumePairing(input.provider, adapter, input.credentials);
   if (resumed) return resumed;
 
-  // O que o operador digitou + o que o painel gera. Campo que só serve ao pareamento
-  // (o número que vai parear) fica no blob e é ignorado pelo schema de envio do adapter.
-  const credentials = {
-    ...input.credentials,
-    instanceName: `painel-${randomBytes(6).toString('hex')}`,
-    webhookToken: randomBytes(32).toString('hex'),
-  };
+  const instanceName = `painel-${randomBytes(6).toString('hex')}`;
+  const webhookToken = randomBytes(32).toString('hex');
 
   let challenge: PairingChallenge;
+  let resolvedCredentials: Record<string, unknown>;
   try {
-    challenge = await adapter.beginPairing(input.credentials, {
-      instanceName: credentials.instanceName,
-      webhookToken: credentials.webhookToken,
-      webhookUrl: webhookUrl(),
-    });
+    const result = await adapter.beginPairing(input.credentials, { instanceName, webhookToken, webhookUrl: webhookUrl() });
+    challenge = result.challenge;
+    resolvedCredentials = result.credentials;
   } catch (err) {
     failure(err, input.provider, input.credentials);
   }
 
+  // `resolvedCredentials` é o que o adapter decidiu persistir (Evolution: endereço e chave
+  // saem de env, não do que o operador digitou) — instanceName/webhookToken quem gera é aqui.
+  const credentials = { ...resolvedCredentials, instanceName, webhookToken };
   await persistProvisioned(input.provider, descriptor.label, credentials, descriptor.warning.requiresAcceptance);
   return challenge;
 }

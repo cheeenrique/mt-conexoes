@@ -1,11 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { evolutionPairing } from './pairing';
 import { isPairable } from '../pairing';
 import { evolutionAdapter } from './adapter';
 import { metaCloudAdapter } from '../meta-cloud/adapter';
 import { ChannelCredentialsInvalidError } from '../types';
 
-const PAIRING_INPUT = { baseUrl: 'https://evo.exemplo.com', apiKey: 'chave', pairingNumber: '+5565999998888' };
+// Endereço e chave do servidor não vêm mais da tela — vêm de env (a agência já provisionou).
+const PAIRING_INPUT = { pairingNumber: '+5565999998888' };
 const CREDENTIALS = {
   baseUrl: 'https://evo.exemplo.com',
   apiKey: 'chave',
@@ -17,6 +18,11 @@ const OPTIONS = {
   webhookToken: 'token-do-webhook',
   webhookUrl: 'https://painel.exemplo.com/api/webhooks/evolution',
 };
+
+beforeEach(() => {
+  vi.stubEnv('EVOLUTION_BASE_URL', 'https://evo.exemplo.com');
+  vi.stubEnv('EVOLUTION_API_KEY', 'chave');
+});
 
 /** Forma real do `POST /instance/create` da tag 2.3.7, conferida contra a stack local. */
 const CREATE_RESPONSE = {
@@ -33,6 +39,7 @@ function stubJson(payload: unknown, ok = true, status = 200) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe('isPairable', () => {
@@ -80,7 +87,7 @@ describe('beginPairing', () => {
   it('devolve o QR e o código de pareamento, aguardando leitura', async () => {
     stubJson(CREATE_RESPONSE);
 
-    const challenge = await evolutionPairing.beginPairing(PAIRING_INPUT, OPTIONS);
+    const { challenge } = await evolutionPairing.beginPairing(PAIRING_INPUT, OPTIONS);
 
     expect(challenge).toEqual({
       qrBase64: 'data:image/png;base64,iVBOR',
@@ -89,10 +96,22 @@ describe('beginPairing', () => {
     });
   });
 
+  it('devolve endereço, chave (de env) e número pra persistir — instanceName/webhookToken vêm de options', async () => {
+    stubJson(CREATE_RESPONSE);
+
+    const { credentials } = await evolutionPairing.beginPairing(PAIRING_INPUT, OPTIONS);
+
+    expect(credentials).toEqual({
+      baseUrl: 'https://evo.exemplo.com',
+      apiKey: 'chave',
+      pairingNumber: '+5565999998888',
+    });
+  });
+
   it('ignora o hash da resposta — é o token interno da instância, não o nosso segredo', async () => {
     stubJson(CREATE_RESPONSE);
 
-    const challenge = await evolutionPairing.beginPairing(PAIRING_INPUT, OPTIONS);
+    const { challenge } = await evolutionPairing.beginPairing(PAIRING_INPUT, OPTIONS);
 
     expect(JSON.stringify(challenge)).not.toContain(CREATE_RESPONSE.hash);
   });
@@ -100,9 +119,9 @@ describe('beginPairing', () => {
   it('rejeita entrada com forma inválida antes de falar com o servidor', async () => {
     const fetchMock = stubJson(CREATE_RESPONSE);
 
-    await expect(
-      evolutionPairing.beginPairing({ baseUrl: 'não-é-url', apiKey: '', pairingNumber: '99' }, OPTIONS),
-    ).rejects.toThrow(ChannelCredentialsInvalidError);
+    await expect(evolutionPairing.beginPairing({ pairingNumber: '99' }, OPTIONS)).rejects.toThrow(
+      ChannelCredentialsInvalidError,
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -111,6 +130,14 @@ describe('beginPairing', () => {
     stubJson({ status: 403, error: 'Forbidden', response: { message: ['This name "x" is already in use.'] } }, false, 403);
 
     await expect(evolutionPairing.beginPairing(PAIRING_INPUT, OPTIONS)).rejects.toThrow('already in use');
+  });
+
+  it('deploy sem EVOLUTION_BASE_URL/EVOLUTION_API_KEY configurado estoura alto, não deixa o operador digitar', async () => {
+    vi.unstubAllEnvs();
+    const fetchMock = stubJson(CREATE_RESPONSE);
+
+    await expect(evolutionPairing.beginPairing(PAIRING_INPUT, OPTIONS)).rejects.toThrow('EVOLUTION_BASE_URL');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

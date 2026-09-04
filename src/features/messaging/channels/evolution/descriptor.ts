@@ -23,10 +23,13 @@ const SERVER_FIELDS = [
  * `qr` é o recomendado: o painel cria a instância na sua Evolution já com as opções
  * que só dá pra escolher no momento da criação (ignorar grupo, recusar ligação, não
  * puxar histórico) e com o webhook apontado pra cá — e devolve o QR pra ler no celular.
- * Nome da instância e token do webhook são gerados pelo painel; não há o que digitar.
+ * Nome da instância, token do webhook, endereço do servidor e chave de API não aparecem
+ * aqui: os dois primeiros o painel gera, os dois últimos a agência já provisionou e
+ * configurou em `EVOLUTION_BASE_URL`/`EVOLUTION_API_KEY` no deploy. Só o número que vai
+ * enviar depende do operador.
  *
  * `manual` existe para quem já tem instância pareada por fora (Evolution Manager, curl)
- * e não quer parear de novo.
+ * — aí sim pede endereço e chave, porque pode ser um servidor diferente do provisionado.
  */
 export const evolutionDescriptor: ChannelDescriptor = {
   label: 'Evolution API',
@@ -42,18 +45,15 @@ export const evolutionDescriptor: ChannelDescriptor = {
       label: 'Ler o QR Code aqui',
       recommended: true,
       requirements: [
-        'A Evolution API rodando numa VPS sua, alcançável por HTTPS — ela mantém a sessão aberta e não roda em servidor que escala a zero.',
-        'A chave AUTHENTICATION_API_KEY do .env desse servidor.',
         'O celular do número que vai cobrar, com o WhatsApp aberto, na mão.',
       ],
       setupSteps: [
-        'Informe o endereço do servidor, a chave de API e o número que vai enviar.',
+        'Informe o número que vai enviar.',
         'O painel cria a instância já ignorando grupos, recusando ligações e sem puxar seu histórico de conversas.',
         'Leia o QR Code no WhatsApp do celular, em Aparelhos conectados › Conectar aparelho.',
         'Sem a câmera à mão, use o código de 8 caracteres em Conectar com número de telefone.',
       ],
       credentialFields: [
-        ...SERVER_FIELDS,
         {
           name: 'pairingNumber',
           label: 'Número que vai enviar',

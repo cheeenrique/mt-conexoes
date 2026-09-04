@@ -1,5 +1,6 @@
 import { ZodError } from 'zod';
-import type { PairableChannel, PairingChallenge, PairingProvisionOptions, PairingState } from '../pairing';
+import { requireEnv } from '@/lib/env';
+import type { PairableChannel, PairingChallenge, PairingProvisionOptions, PairingProvisionResult, PairingState } from '../pairing';
 import { ChannelCredentialsInvalidError } from '../types';
 import {
   evolutionChangeNumberSchema,
@@ -183,16 +184,24 @@ async function createInstance(
   return waitForQrCode(baseUrl, apiKey, instanceName);
 }
 
-async function beginPairing(rawInput: unknown, options: PairingProvisionOptions): Promise<PairingChallenge> {
+/**
+ * Endereço e chave não vêm da tela — a agência já provisionou o servidor Evolution deste
+ * cliente (ver `docs/deploy.md` §Evolution). `requireEnv` estoura alto se faltar, o que só
+ * pode acontecer em deploy mal configurado, nunca por operador esquecendo de digitar algo.
+ */
+async function beginPairing(rawInput: unknown, options: PairingProvisionOptions): Promise<PairingProvisionResult> {
   const input = parseInput(rawInput);
-  return createInstance(
-    input.baseUrl,
-    input.apiKey,
+  const baseUrl = requireEnv('EVOLUTION_BASE_URL');
+  const apiKey = requireEnv('EVOLUTION_API_KEY');
+  const challenge = await createInstance(
+    baseUrl,
+    apiKey,
     options.instanceName,
     options.webhookToken,
     options.webhookUrl,
     input.pairingNumber,
   );
+  return { challenge, credentials: { baseUrl, apiKey, pairingNumber: input.pairingNumber } };
 }
 
 async function refreshChallenge(rawCredentials: unknown): Promise<PairingChallenge> {

@@ -42,9 +42,22 @@ export type PairingProvisionOptions = {
   webhookUrl: string;
 };
 
+/**
+ * O que `beginPairing` devolve: o desafio pro operador **e** o que persistir em
+ * `ChannelConfig.credentials` além de `instanceName`/`webhookToken` (esses dois quem gera é
+ * `pairing.service.ts`, que já os manda em `options`). O adapter decide o resto porque só ele
+ * sabe se algum campo — endereço do servidor, chave de API — vem de variável de ambiente em
+ * vez do que o operador digitou (Evolution: os dois vêm de `EVOLUTION_BASE_URL`/`EVOLUTION_API_KEY`,
+ * não da tela — ver `channels/evolution/pairing.ts`).
+ */
+export type PairingProvisionResult = {
+  challenge: PairingChallenge;
+  credentials: Record<string, unknown>;
+};
+
 export interface PairableChannel {
   /** Provisiona do zero e devolve o primeiro desafio. */
-  beginPairing(credentials: unknown, options: PairingProvisionOptions): Promise<PairingChallenge>;
+  beginPairing(credentials: unknown, options: PairingProvisionOptions): Promise<PairingProvisionResult>;
   /**
    * Pede um desafio novo — o anterior expirou, ou o operador só quer reabrir a tela. Já
    * devolve `CONNECTED` quando a sessão abriu, então não existe um `pairingState()` separado:
