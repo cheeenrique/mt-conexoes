@@ -47,6 +47,23 @@ else
   echo "· DATABASE_URL criado."
 fi
 
+# EVOLUTION_API_KEY tem que ser IDÊNTICO ao AUTHENTICATION_API_KEY do .env da
+# VM Evolution (60-evolution-vm.sh + docs/deploy.md §Evolution) — não dá pra
+# gerar aleatório aqui, o valor já existe lá. Lido do terminal, sem eco.
+if exists EVOLUTION_API_KEY; then
+  echo "· EVOLUTION_API_KEY já existe — mantido. Se a chave da VM mudou, adicione"
+  echo "  uma versão nova à mão: gcloud secrets versions add EVOLUTION_API_KEY --data-file=-"
+else
+  echo
+  echo "Cole o AUTHENTICATION_API_KEY do .env da VM Evolution (mesmo valor dos"
+  echo "dois lados, senão o painel não consegue falar com ela):"
+  read -rs evolution_key
+  [[ -n "$evolution_key" ]] || { echo "vazio — abortado." >&2; exit 1; }
+  gcloud secrets create EVOLUTION_API_KEY --replication-policy=automatic --project "$PROJECT_ID" >/dev/null
+  add_version EVOLUTION_API_KEY "$evolution_key"
+  echo "· EVOLUTION_API_KEY criado."
+fi
+
 for s in "${SECRETS[@]}"; do
   gcloud secrets add-iam-policy-binding "$s" \
     --member "serviceAccount:${RUNTIME_EMAIL}" \

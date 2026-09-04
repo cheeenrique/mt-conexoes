@@ -48,9 +48,12 @@ URL="$(service_url)"
 # Segunda passada. APP_URL alimenta a URL de webhook que o pareamento por QR
 # entrega à Evolution; CRON_OIDC_AUDIENCE tem que bater exatamente com o
 # --oidc-token-audience dos jobs (50-scheduler.sh) ou os três crons dão 401.
+# EVOLUTION_BASE_URL é pra onde o painel manda a requisição de pareamento —
+# junto com o segredo EVOLUTION_API_KEY (20-secrets.sh), é o que deixa o
+# operador conectar o canal digitando só o número do WhatsApp.
 gcloud run services update "$SERVICE" \
   --region "$REGION" --project "$PROJECT_ID" \
-  --update-env-vars "APP_URL=${URL},CRON_OIDC_AUDIENCE=${URL}"
+  --update-env-vars "APP_URL=${URL},CRON_OIDC_AUDIENCE=${URL},EVOLUTION_BASE_URL=https://${EVOLUTION_DOMAIN}"
 
 echo
 echo "no ar: $URL"

@@ -20,6 +20,10 @@ EVOLUTION_ZONE="${EVOLUTION_ZONE:-us-east1-b}"
 EVOLUTION_MACHINE_TYPE="${EVOLUTION_MACHINE_TYPE:-e2-micro}"
 EVOLUTION_DISK_GB="${EVOLUTION_DISK_GB:-20}"
 EVOLUTION_REGION="${EVOLUTION_ZONE%-*}"
+# Domínio que aponta pra essa VM (registro A cinza, ver docs/deploy.md §6-7) —
+# é o que vira EVOLUTION_BASE_URL no painel, pra ele saber onde falar sem
+# perguntar ao operador (ver §Evolution em `docs/deploy.md`).
+EVOLUTION_DOMAIN="${EVOLUTION_DOMAIN:-evolution.mtconexoes.com.br}"
 
 # GitHub Actions — federação de identidade (70-github-wif.sh). Sem chave JSON
 # de service account: chave longa em segredo de repositório é credencial que
@@ -31,7 +35,10 @@ DEPLOYER_SA="github-deployer"
 
 # Segredos que o serviço lê do Secret Manager. CREDENTIAL_KEY não está sozinho
 # nesta lista por acaso — ver o aviso em 20-secrets.sh antes de mexer nele.
-SECRETS=(DATABASE_URL SESSION_SECRET CREDENTIAL_KEY CRON_SECRET META_WEBHOOK_VERIFY_TOKEN)
+# EVOLUTION_API_KEY é o AUTHENTICATION_API_KEY que já está no .env da VM
+# (60-evolution-vm.sh) — os dois valores têm que ser idênticos, o painel usa
+# essa chave pra falar com a Evolution.
+SECRETS=(DATABASE_URL SESSION_SECRET CREDENTIAL_KEY CRON_SECRET META_WEBHOOK_VERIFY_TOKEN EVOLUTION_API_KEY)
 
 # Existem quatro configurações de gcloud nesta máquina (ceia-ufg, default,
 # hora-da-saida, mt-conexoes) e três contas credenciadas. Um `gcloud run deploy`

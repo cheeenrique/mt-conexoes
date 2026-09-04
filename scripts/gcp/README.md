@@ -18,7 +18,7 @@ gcloud config configurations activate mt-conexoes
 |---|---|---|
 | `00-enable-apis.sh` | run · artifactregistry · cloudbuild · cloudscheduler · secretmanager | sim |
 | `10-service-accounts.sh` | `painel-runtime` e `cron-invoker` | não |
-| `20-secrets.sh` | 5 segredos no Secret Manager + leitura para o runtime | sim |
+| `20-secrets.sh` | 6 segredos no Secret Manager + leitura para o runtime | sim |
 | `30-deploy.sh` | repo no Artifact Registry, build, deploy, `APP_URL`/`CRON_OIDC_AUDIENCE` | sim |
 | `40-migrate.sh` | `prisma migrate deploy` contra o Neon, e os defaults do sistema | não |
 | `50-scheduler.sh` | `run.invoker` + os 3 jobs de cron com OIDC | sim |
@@ -29,6 +29,11 @@ gcloud config configurations activate mt-conexoes
 Só é necessário para o provider `EVOLUTION`, que precisa de máquina ligada o
 tempo todo — ver `infra/evolution/README.md` "Por que não é Cloud Run". Roda
 depois de `30`, porque a VM precisa da URL do painel no webhook.
+
+⚠️ Depois de preencher o `.env` da VM (`60`), o `AUTHENTICATION_API_KEY` de lá
+precisa virar o segredo `EVOLUTION_API_KEY` daqui (`20-secrets.sh` pede colado,
+sem eco) — os dois valores têm que ser idênticos, senão o pareamento por QR do
+painel fala com a Evolution errada.
 
 ## Antes de começar
 
