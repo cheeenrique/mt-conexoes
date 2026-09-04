@@ -70,7 +70,7 @@ describe('import-customers script', () => {
     expect(firstOutput).toContain('Importadas: 2');
     expect(firstOutput).toContain('Recusadas: 1');
 
-    const withPhone = await db.customer.findUnique({ where: { phone: '+5511988887777' } });
+    const withPhone = await db.customer.findFirst({ where: { phone: '+5511988887777' } });
     expect(withPhone?.name).toBe('Maria Teste Import');
 
     const withoutPhone = await db.customer.findFirst({ where: { name: 'Cliente Sem Telefone' } });

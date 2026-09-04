@@ -1,4 +1,4 @@
-import { CustomerPhoneTakenError, findCustomerIdByPhone } from '@/features/customers/service';
+import { findCustomerIdByPhone } from '@/features/customers/service';
 import { assertLeadConvertible, markLeadConverted } from '@/features/leads/service';
 import { db } from '@/lib/db';
 import { saveCustomerWithSubscription } from '../customers/customer-onboarding';
@@ -26,10 +26,8 @@ export interface ConvertLeadResult {
 /**
  * ⚠️ Cliente que já existe **não ganha uma assinatura a mais** aqui.
  *
- * `Customer.phone` é `@@unique` e é a única defesa real contra cadastro
- * duplicado (regra 2 do handoff 08). Assinatura não tem constraint
- * equivalente: nada no banco impede duas assinaturas para o mesmo cliente. Se
- * a conversão criasse uma assinatura sempre, o mesmo lead reenviado — ou dois
+ * Assinatura não tem constraint que impeça duas pro mesmo cliente. Se a
+ * conversão criasse uma assinatura sempre, o mesmo lead reenviado — ou dois
  * operadores no mesmo lead — daria duas assinaturas ativas, cada uma com sua
  * cobrança em aberto (o índice único parcial é *por assinatura*, então ele não
  * pega esse caso), e a régua cobraria a pessoa duas vezes no mesmo dia.
@@ -39,6 +37,13 @@ export interface ConvertLeadResult {
  * verdade é decisão deliberada — e a tela para isso é a ficha do cliente, não
  * um formulário do site. Aqui o lead só é vinculado, e a tela diz isso ao
  * operador **antes** dele preencher a assinatura.
+ *
+ * A checagem por telefone é só um palpite (`Customer.phone` não é mais
+ * `@@unique` — ver `features/customers/service.ts`), sem trava de banco por
+ * trás: duas conversões do mesmo telefone em paralelo podem, dependendo do
+ * timing, criar dois clientes em vez de reconciliar num só. Mesmo risco que
+ * o resto do cadastro manual corre agora — aceito porque conversão de lead é
+ * ação de operador único, não tráfego concorrente de verdade.
  */
 export async function convertLeadToCustomer(
   leadId: string,
@@ -49,23 +54,13 @@ export async function convertLeadToCustomer(
   const existing = await findCustomerIdByPhone(values.phone);
   if (existing) return linkToExisting(leadId, existing);
 
-  try {
-    const { customerId, subscriptionId } = await saveCustomerWithSubscription({
-      customerId: null,
-      subscriptionId: null,
-      values,
-      alsoInTransaction: (tx, id) => markLeadConverted(tx, leadId, id),
-    });
-    return { customerId, subscriptionId, reusedExistingCustomer: false, customerName: values.name };
-  } catch (err) {
-    // Duas conversões do mesmo telefone em paralelo: a checagem acima passou
-    // nas duas e o `@@unique` derrubou a segunda. O banco é a defesa real —
-    // aqui só reconciliamos apontando para quem venceu a corrida.
-    if (!(err instanceof CustomerPhoneTakenError)) throw err;
-    const winner = await findCustomerIdByPhone(values.phone);
-    if (!winner) throw err;
-    return linkToExisting(leadId, winner);
-  }
+  const { customerId, subscriptionId } = await saveCustomerWithSubscription({
+    customerId: null,
+    subscriptionId: null,
+    values,
+    alsoInTransaction: (tx, id) => markLeadConverted(tx, leadId, id),
+  });
+  return { customerId, subscriptionId, reusedExistingCustomer: false, customerName: values.name };
 }
 
 async function linkToExisting(leadId: string, customer: { id: string; name: string }): Promise<ConvertLeadResult> {

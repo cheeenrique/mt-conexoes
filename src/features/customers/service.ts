@@ -1,17 +1,11 @@
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
-import { DomainError, isUniqueViolation } from '@/lib/errors';
+import { DomainError } from '@/lib/errors';
 import { ANONYMIZED_CUSTOMER_NAME } from '@/core/anonymization';
 import type { z } from 'zod';
 import type { customerSchema } from './schema';
 
 type CustomerInput = z.infer<typeof customerSchema>;
-
-export class CustomerPhoneTakenError extends DomainError {
-  constructor(cause?: unknown) {
-    super('Já existe um cliente com esse telefone.', 'CUSTOMER_PHONE_TAKEN', { cause });
-  }
-}
 
 export class CustomerNotFoundError extends DomainError {
   constructor(cause?: unknown) {
@@ -36,48 +30,51 @@ function toData(input: CustomerInput) {
  * operador cadastra de novo.
  */
 export async function insertCustomer(tx: Prisma.TransactionClient, input: CustomerInput) {
-  try {
-    return await tx.customer.create({ data: toData(input) });
-  } catch (err) {
-    if (isUniqueViolation(err)) throw new CustomerPhoneTakenError(err);
-    throw err;
-  }
+  return tx.customer.create({ data: toData(input) });
 }
 
-/** Telefone é `@@unique` — é ele que responde "essa pessoa já está na base?". */
+/**
+ * "Essa pessoa já está na base?" — telefone não é mais `@@unique` (migration
+ * 00000000000020: duas pessoas cobradas separadamente podem dividir um
+ * WhatsApp). `findFirst` com o cadastro mais antigo primeiro é só o palpite
+ * pra avisar o operador antes de submeter — nunca uma trava; ele decide se
+ * quer abrir esse cliente ou cadastrar mesmo assim.
+ */
 export function findCustomerIdByPhone(phone: string): Promise<{ id: string; name: string } | null> {
-  return db.customer.findUnique({ where: { phone }, select: { id: true, name: true } });
+  return db.customer.findFirst({ where: { phone }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true } });
 }
 
 /** Contraparte de `insertCustomer` para a edição — mesma razão de existir. */
 export async function patchCustomer(tx: Prisma.TransactionClient, id: string, input: CustomerInput) {
-  try {
-    return await tx.customer.update({ where: { id }, data: toData(input) });
-  } catch (err) {
-    if (isUniqueViolation(err)) throw new CustomerPhoneTakenError(err);
-    throw err;
-  }
+  return tx.customer.update({ where: { id }, data: toData(input) });
 }
 
 /**
  * Resolve o `Customer` de uma linha da importação da planilha (Etapa 1c).
- * Upsert por telefone quando a linha tem telefone válido — o mesmo cliente
- * presente em duas planilhas de fornecedores diferentes vira um `Customer`
- * só. Sem telefone, cria um `Customer` novo por linha: não há como saber se
- * é "a mesma pessoa" de outra planilha sem telefone pra comparar, e chutar
- * seria pior que duplicar.
+ * Consolida por telefone quando a linha tem telefone válido — o mesmo
+ * cliente presente em duas planilhas de fornecedores diferentes vira um
+ * `Customer` só. Sem telefone, cria um `Customer` novo por linha: não há
+ * como saber se é "a mesma pessoa" de outra planilha sem telefone pra
+ * comparar, e chutar seria pior que duplicar.
+ *
+ * ⚠️ Telefone não é mais `@@unique`. Se já existirem 2+ `Customer` com esse
+ * telefone (cadastro manual explícito, "mesmo assim"), a linha da planilha
+ * consolida no mais antigo — determinístico, mas é um palpite: a importação
+ * não sabe qual dos dois cadastros é "a pessoa da planilha". Caso raro; o
+ * comum é telefone com no máximo um `Customer`.
  */
 export async function resolveImportedCustomer(
   tx: Prisma.TransactionClient,
   params: { name: string; phone: string | null },
 ): Promise<{ id: string }> {
   if (params.phone) {
-    return tx.customer.upsert({
+    const existing = await tx.customer.findFirst({
       where: { phone: params.phone },
-      update: {},
-      create: { name: params.name, phone: params.phone },
+      orderBy: { createdAt: 'asc' },
       select: { id: true },
     });
+    if (existing) return existing;
+    return tx.customer.create({ data: { name: params.name, phone: params.phone }, select: { id: true } });
   }
   return tx.customer.create({ data: { name: params.name, phone: null }, select: { id: true } });
 }

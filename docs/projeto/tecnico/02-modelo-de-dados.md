@@ -124,13 +124,13 @@ model Customer {
   charges        Charge[]
   messages       Message[]
 
-  @@unique([phone])
+  @@index([phone])
   @@index([name])
   @@map("customers")
 }
 ```
 
-⚠️ `phone` é único. Duas linhas com o mesmo telefone quebram a deduplicação diária (T7) e o opt-out. A importação precisa consolidar antes de gravar.
+⚠️ `phone` **não** é único (migration 00000000000020) — duas pessoas cobradas separadamente podem legitimamente dividir um WhatsApp (telefone de casa). O cadastro avisa quando já existe um `Customer` com aquele telefone e deixa o operador escolher: nova assinatura no cliente existente, ou um segundo cadastro mesmo assim. Quem lê `phone` como se fosse único quebra: opt-out (T5, `messaging/inbound.ts`) usa `findMany` e aplica a todos os que casam, e a importação (`resolveImportedCustomer`) consolida no mais antigo em vez de assumir um só.
 
 ---
 

@@ -18,7 +18,7 @@ function ControlledPhoneInput({ initial = '' }: { initial?: string }) {
 describe('PhoneInput', () => {
   it('nasce no modo Brasil (máscara de DDD)', () => {
     render(<ControlledPhoneInput />);
-    expect(screen.getByRole('button', { name: 'Cliente de outro país?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cliente de outro país' })).toBeInTheDocument();
   });
 
   it('exibe o telefone formatado a partir de E.164 no modo Brasil', () => {
@@ -41,11 +41,11 @@ describe('PhoneInput', () => {
     expect(screen.getByRole('textbox')).toHaveValue('+13055551234');
   });
 
-  it('"Cliente de outro país?" troca pro campo livre e guarda o número completo digitado', async () => {
+  it('"Cliente de outro país" troca pro campo livre e guarda o número completo digitado', async () => {
     const user = userEvent.setup();
     render(<ControlledPhoneInput />);
 
-    await user.click(screen.getByRole('button', { name: 'Cliente de outro país?' }));
+    await user.click(screen.getByRole('button', { name: 'Cliente de outro país' }));
     expect(screen.getByRole('button', { name: 'Usar formato brasileiro' })).toBeInTheDocument();
 
     await user.type(screen.getByRole('textbox'), '+13055551234');

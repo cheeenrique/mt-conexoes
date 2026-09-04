@@ -19,9 +19,10 @@ let supplierId: string;
 /**
  * Purga por chave natural nos dois lados. O Postgres de integração é
  * compartilhado entre suítes e sessões: resíduo de uma passada que morreu no
- * meio derruba a próxima com `Unique constraint failed on (phone)` sem ter
- * relação nenhuma com o código sob teste. FK obriga a ordem
- * cobrança → assinatura → cliente.
+ * meio (cliente ou lead da fixture ainda no banco) confunde os testes de
+ * "existe um cliente com esse telefone" da passada seguinte, sem ter relação
+ * nenhuma com o código sob teste. FK obriga a ordem cobrança → assinatura →
+ * cliente.
  */
 async function purge() {
   const customers = await db.customer.findMany({
@@ -133,31 +134,15 @@ describe('convertLeadToCustomer', () => {
     expect(saved.customerId).toBe(existing.id);
   });
 
-  /**
-   * Duas conversões simultâneas do mesmo número: o `findUnique` de dentro da
-   * transação não vê o insert concorrente ainda não commitado. Quem segura é o
-   * `@@unique` de `Customer.phone` — a conversão perdedora reconcilia
-   * apontando para quem venceu, em vez de estourar erro técnico na tela.
-   */
-  it('reconcilia a corrida de duas conversões simultâneas do mesmo WhatsApp', async () => {
-    const first = await seedLead();
-    const second = await seedLead();
-
-    const [a, b] = await Promise.all([
-      convertLeadToCustomer(first.id, convertValues()),
-      convertLeadToCustomer(second.id, convertValues()),
-    ]);
-
-    expect(a.customerId).toBe(b.customerId);
-    expect(await db.customer.count({ where: { phone: PHONE } })).toBe(1);
-    // Só o vencedor criou assinatura: o perdedor caiu no caminho de vínculo.
-    expect(await db.subscription.count({ where: { customerId: a.customerId } })).toBe(1);
-    expect(await db.charge.count({ where: { customerId: a.customerId } })).toBe(1);
-
-    const leads = await db.lead.findMany({ where: { id: { in: [first.id, second.id] } } });
-    expect(leads.every((lead) => lead.status === 'CONVERTED')).toBe(true);
-    expect(leads.every((lead) => lead.customerId === a.customerId)).toBe(true);
-  });
+  // Removido: o teste antigo afirmava que duas conversões simultâneas do
+  // mesmo WhatsApp reconciliavam num único `Customer`, garantido pelo
+  // `@@unique([phone])` que segurava a segunda escrita. Telefone não é mais
+  // único (migration 00000000000020 — duas pessoas cobradas separadamente
+  // podem dividir um WhatsApp), então não existe mais trava de banco
+  // reconciliando a corrida. O resultado de duas conversões concorrentes de
+  // verdade passa a depender de timing (nenhuma garantia determinística pra
+  // testar) — aceito porque conversão de lead é ação de operador único, não
+  // tráfego concorrente real.
 
   it('recusa converter o mesmo lead duas vezes', async () => {
     const lead = await seedLead();

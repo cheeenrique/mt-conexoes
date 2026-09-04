@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Globe } from 'lucide-react';
 import { IMaskInput } from 'react-imask';
 
 function toE164(digits: string): string {
@@ -23,11 +24,16 @@ function looksBrazilian(e164: string): boolean {
   return digits.startsWith('55') && (digits.length === 12 || digits.length === 13);
 }
 
+const FIELD_CLASS =
+  'h-11 w-full rounded-sm border border-border bg-surface-elevated py-2 pl-3 pr-10 font-mono tabular-mono text-foreground disabled:cursor-not-allowed disabled:opacity-50';
+
 /**
  * WhatsApp do cliente, em E.164. Padrão é o Brasil, com máscara de DDD —
- * cobre a imensa maioria dos cadastros. "Outro país" troca pra um campo livre
- * (sem máscara): o operador digita o número completo com o código do país,
- * porque uma máscara única não serve pra tamanho/formato que varia por país.
+ * cobre a imensa maioria dos cadastros. O globo (mesmo padrão do "mostrar
+ * senha" de `PasswordInput`: botão dentro da borda do campo) troca pra um
+ * campo livre, sem máscara — o operador digita o número completo com o
+ * código do país, porque uma máscara única não serve pra tamanho/formato que
+ * varia por país.
  */
 export function PhoneInput({
   value,
@@ -46,7 +52,7 @@ export function PhoneInput({
   const [international, setInternational] = useState(() => !looksBrazilian(value));
 
   return (
-    <div>
+    <div className="relative w-full">
       {international ? (
         <input
           id={id}
@@ -56,14 +62,13 @@ export function PhoneInput({
           value={value}
           disabled={disabled}
           onChange={(event) => {
-            // Mantém só "+" (uma vez, na frente) e dígitos — sem máscara de
-            // formato porque o tamanho varia por país.
-            const raw = event.target.value;
-            const digits = raw.replace(/[^\d]/g, '');
+            // Mantém só dígitos e reconstitui o "+" na frente — sem máscara
+            // de formato porque o tamanho varia por país.
+            const digits = event.target.value.replace(/[^\d]/g, '');
             onValueChange(digits ? `+${digits}` : '');
           }}
           onBlur={onBlur}
-          className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 font-mono tabular-mono text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          className={FIELD_CLASS}
         />
       ) : (
         <IMaskInput
@@ -76,19 +81,22 @@ export function PhoneInput({
             onValueChange(toE164(instance.unmaskedValue));
           }}
           onBlur={onBlur}
-          className="h-11 w-full rounded-sm border border-border bg-surface-elevated px-3 font-mono tabular-mono text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          className={FIELD_CLASS}
         />
       )}
       <button
         type="button"
         disabled={disabled}
+        aria-pressed={international}
+        aria-label={international ? 'Usar formato brasileiro' : 'Cliente de outro país'}
+        title={international ? 'Usar formato brasileiro' : 'Cliente de outro país'}
         onClick={() => {
           onValueChange('');
           setInternational((current) => !current);
         }}
-        className="mt-1 text-xs text-foreground-muted underline-offset-2 hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-50"
+        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-sm text-foreground-muted transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50 aria-pressed:bg-brand/10 aria-pressed:text-brand-light"
       >
-        {international ? 'Usar formato brasileiro' : 'Cliente de outro país?'}
+        <Globe size={16} aria-hidden />
       </button>
     </div>
   );

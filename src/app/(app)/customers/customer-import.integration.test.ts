@@ -117,7 +117,7 @@ describe('importCustomersFromRows', () => {
     await importCustomersFromRows({ rows: [row], supplierId: supplierA.id, timezone: TZ, now: NOW });
     await importCustomersFromRows({ rows: [row], supplierId: supplierB.id, timezone: TZ, now: NOW });
 
-    const customer = await db.customer.findUniqueOrThrow({ where: { phone: PHONE } });
+    const customer = await db.customer.findFirstOrThrow({ where: { phone: PHONE } });
     expect(await db.subscription.count({ where: { customerId: customer.id } })).toBe(2);
   });
 

@@ -83,4 +83,57 @@ describe('processInboundMessage', () => {
     const messages = await db.message.findMany({ where: { toPhone: '+5511999999999' } });
     expect(messages).toHaveLength(0);
   });
+
+  // `Customer.phone` não é mais `@@unique` (migration 00000000000020) — duas
+  // pessoas cobradas separadamente podem dividir um WhatsApp. T5 tem que valer
+  // pro número, não só pro primeiro Customer encontrado: quem manda "SAIR"
+  // não pode continuar recebendo cobrança pela porta dos fundos do outro
+  // cadastro que usa o mesmo telefone.
+  describe('telefone com mais de um Customer', () => {
+    it('"SAIR" opta os dois cadastros que dividem o telefone, não só um', async () => {
+      const channel = await seedChannel();
+      const a = await db.customer.create({ data: { name: 'Inbound Teste', phone: '+5511999990020' } });
+      const b = await db.customer.create({ data: { name: 'Inbound Teste', phone: '+5511999990020' } });
+
+      await processInboundMessage({ channelId: channel.id, fromPhone: '+5511999990020', text: 'SAIR', now: NOW });
+
+      const refreshedA = await db.customer.findUniqueOrThrow({ where: { id: a.id } });
+      const refreshedB = await db.customer.findUniqueOrThrow({ where: { id: b.id } });
+      expect(refreshedA.optedOut).toBe(true);
+      expect(refreshedB.optedOut).toBe(true);
+    });
+
+    it('mensagem sem palavra-chave grava uma Message por cadastro que divide o telefone', async () => {
+      const channel = await seedChannel();
+      const a = await db.customer.create({ data: { name: 'Inbound Teste', phone: '+5511999990021' } });
+      const b = await db.customer.create({ data: { name: 'Inbound Teste', phone: '+5511999990021' } });
+
+      await processInboundMessage({ channelId: channel.id, fromPhone: '+5511999990021', text: 'Oi', now: NOW });
+
+      const messagesA = await db.message.findMany({ where: { customerId: a.id } });
+      const messagesB = await db.message.findMany({ where: { customerId: b.id } });
+      expect(messagesA).toHaveLength(1);
+      expect(messagesB).toHaveLength(1);
+      const refreshedA = await db.customer.findUniqueOrThrow({ where: { id: a.id } });
+      const refreshedB = await db.customer.findUniqueOrThrow({ where: { id: b.id } });
+      expect(refreshedA.optedOut).toBe(false);
+      expect(refreshedB.optedOut).toBe(false);
+    });
+
+    it('um já opted-out e o outro não: "SAIR" só muda quem faltava, sem duplicar o que já tinha', async () => {
+      const channel = await seedChannel();
+      const already = await db.customer.create({
+        data: { name: 'Inbound Teste', phone: '+5511999990022', optedOut: true, optedOutReason: 'Palavra-chave: PARE' },
+      });
+      const pending = await db.customer.create({ data: { name: 'Inbound Teste', phone: '+5511999990022' } });
+
+      await processInboundMessage({ channelId: channel.id, fromPhone: '+5511999990022', text: 'SAIR', now: NOW });
+
+      const refreshedAlready = await db.customer.findUniqueOrThrow({ where: { id: already.id } });
+      const refreshedPending = await db.customer.findUniqueOrThrow({ where: { id: pending.id } });
+      expect(refreshedAlready.optedOutReason).toBe('Palavra-chave: PARE'); // não reescreve
+      expect(refreshedPending.optedOut).toBe(true);
+      expect(refreshedPending.optedOutReason).toContain('SAIR');
+    });
+  });
 });

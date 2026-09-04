@@ -34,8 +34,9 @@ Estas moram no banco porque `if` no código não sobrevive a duas execuções co
 | Um passo da régua por cobrança | `@@unique([chargeId, stepId])` |
 | Uma mensagem de cobrança por cliente por dia | índice único parcial em `messages (customer_id, scheduled_date)` |
 | Um canal padrão | índice único parcial em `channel_configs (is_default)` |
-| Telefone único por cliente | `@@unique([phone])` — sustenta opt-out e dedupe |
 | Dinheiro não-negativo | `CHECK (amount_cents > 0)` e afins |
+
+⚠️ `Customer.phone` **não** é único (migration 00000000000020) — decisão de produto, não descuido. Duas pessoas cobradas separadamente podem legitimamente dividir um WhatsApp. O cadastro avisa quando o telefone já existe e deixa o operador escolher — nova assinatura no cliente existente, ou um segundo cadastro mesmo assim. Opt-out (T5, `messaging/inbound.ts`) e a importação (`resolveImportedCustomer`) leem isso via `findFirst`/`findMany`, nunca `findUnique` — ao achar mais de um `Customer` com o mesmo telefone, aplicam a todos (opt-out) ou consolidam no mais antigo (importação), nunca ignoram os demais.
 
 ⚠️ Escrever a checagem só em TypeScript e não no banco é o jeito de descobrir, meses depois, que existem duas cobranças para o mesmo mês.
 

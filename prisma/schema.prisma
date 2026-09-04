@@ -159,7 +159,14 @@ model Customer {
   messages      Message[]
   leads         Lead[]
 
-  @@unique([phone])
+  /// Não é `@@unique` de propósito: duas pessoas diferentes cobradas
+  /// separadamente podem legitimamente dividir um WhatsApp (telefone de
+  /// casa). O cadastro avisa quando o telefone já existe e deixa o operador
+  /// escolher — nova assinatura no cliente existente, ou um segundo cadastro
+  /// mesmo assim. Opt-out (T5) e o webhook inbound (`messaging/inbound.ts`)
+  /// tratam isso: ao encontrar mais de um `Customer` com o mesmo telefone,
+  /// aplicam a todos, nunca só ao primeiro.
+  @@index([phone])
   @@index([name])
   @@index([anonymizedAt])
   @@index([deletedAt])
