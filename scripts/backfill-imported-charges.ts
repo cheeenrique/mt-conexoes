@@ -33,11 +33,11 @@ async function main() {
 
   console.log(apply ? 'Backfill aplicado.' : 'Prévia — nada foi gravado. Rode com --apply para gravar.');
   console.log(`Assinaturas ativas sem nenhuma cobrança: ${summary.candidates.length}`);
-  console.log(`Soma das cobranças: R$ ${formatCents(summary.totalCents)}`);
+  console.log(`Soma das cobranças: ${formatCents(summary.totalCents)}`);
   console.log('');
   for (const row of summary.candidates) {
     console.log(
-      `  - ${row.customerName} — vence ${formatDueAt(row.dueAt, settings.timezone)} — R$ ${formatCents(row.priceCents)}`,
+      `  - ${row.customerName} — vence ${formatDueAt(row.dueAt, settings.timezone)} — ${formatCents(row.priceCents)}`,
     );
   }
   if (apply) console.log(`\nCobranças criadas: ${summary.created}`);

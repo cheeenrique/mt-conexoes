@@ -26,7 +26,7 @@ function buildReportLines(supplierName: string, summary: ImportSummary): string[
     `Importadas: ${summary.imported.length}`,
     `Puladas (já existiam): ${summary.skipped.length}`,
     `Recusadas: ${summary.rejected.length}`,
-    `Soma importada: R$ ${formatCents(summary.importedTotalCents)}`,
+    `Soma importada: ${formatCents(summary.importedTotalCents)}`,
     '',
     'Recusadas:',
     ...summary.rejected.map((r: ImportRowResult) => `  - ${r.identifier}: ${r.reason}`),
