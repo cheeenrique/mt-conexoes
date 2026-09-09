@@ -62,6 +62,7 @@ async function importRow(
     accessUsername: data.username,
     accessPassword: data.password,
     screens: data.screens,
+    timezone,
   });
 
   return {

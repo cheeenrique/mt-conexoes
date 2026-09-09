@@ -39,6 +39,7 @@ const ROWS = [
 ];
 
 async function cleanup() {
+  await db.charge.deleteMany({ where: { supplier: { name: SUPPLIER_NAME } } });
   await db.subscription.deleteMany({ where: { supplier: { name: SUPPLIER_NAME } } });
   await db.customer.deleteMany({ where: { phone: '+5511988887777' } });
   await db.customer.deleteMany({ where: { name: 'Cliente Sem Telefone' } });

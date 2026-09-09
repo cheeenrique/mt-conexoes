@@ -13,14 +13,24 @@ const USER_EMAIL = `anonimizacao-teste-${randomUUID()}@exemplo.com`;
 
 let userId: string;
 
+// Anonimizar troca o nome por "Cliente anonimizado" — limpar por `startsWith`
+// no prefixo deixaria para trás exatamente o cliente que o teste anonimizou.
+// Guardar o id é o único recorte que continua valendo depois da anonimização.
+const createdCustomerIds: string[] = [];
+
 async function purge() {
-  await db.message.deleteMany({ where: { customer: { name: { startsWith: NAME_PREFIX } } } });
-  await db.lead.deleteMany({ where: { name: { startsWith: NAME_PREFIX } } });
-  await db.payment.deleteMany({ where: { charge: { customer: { name: { startsWith: NAME_PREFIX } } } } });
-  await db.charge.deleteMany({ where: { customer: { name: { startsWith: NAME_PREFIX } } } });
-  await db.subscription.deleteMany({ where: { customer: { name: { startsWith: NAME_PREFIX } } } });
-  await db.customer.deleteMany({ where: { name: { startsWith: NAME_PREFIX } } });
+  const customer = { OR: [{ name: { startsWith: NAME_PREFIX } }, { id: { in: createdCustomerIds } }] };
+  await db.message.deleteMany({ where: { customer } });
+  // O lead convertido também é anonimizado (vira "Lead anonimizado"), e
+  // `leads_converted_has_customer_check` recusa deixá-lo apontando pra nada —
+  // some junto com o cliente, pelo id.
+  await db.lead.deleteMany({ where: { OR: [{ name: { startsWith: NAME_PREFIX } }, { customerId: { in: createdCustomerIds } }] } });
+  await db.payment.deleteMany({ where: { charge: { customer } } });
+  await db.charge.deleteMany({ where: { customer } });
+  await db.subscription.deleteMany({ where: { customer } });
+  await db.customer.deleteMany({ where: customer });
   await db.user.deleteMany({ where: { email: USER_EMAIL } });
+  createdCustomerIds.length = 0;
 }
 
 beforeEach(async () => {
@@ -36,6 +46,7 @@ async function buildAnonymizableCustomer(suffix: string) {
   const customer = await db.customer.create({
     data: { name: `${NAME_PREFIX} ${suffix}`, phone: `+551198888000${suffix}`, email: 'titular@exemplo.com', notes: 'nota pessoal' },
   });
+  createdCustomerIds.push(customer.id);
 
   const subscription = await db.subscription.create({
     data: {

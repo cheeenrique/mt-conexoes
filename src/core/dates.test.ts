@@ -10,6 +10,7 @@ import {
   monthBoundsUtc,
   nextDueDate,
   nextQuietHourStart,
+  periodStartForDue,
   resolveDueDay,
 } from './dates';
 
@@ -274,5 +275,26 @@ describe('defaultDateRangeLocal', () => {
     const { from, to } = defaultDateRangeLocal(new Date('2026-08-22T12:00:00Z'), TZ, 7);
     expect(to).toBe('2026-08-22');
     expect(from).toBe('2026-08-16');
+  });
+});
+
+describe('periodStartForDue', () => {
+  const dueLocal = (year: number, month: number, day: number) => endOfLocalDay(year, month - 1, day, TZ);
+  const dayOf = (date: Date) => date.toISOString().slice(0, 10);
+
+  it('mensal volta um mês a partir do vencimento', () => {
+    expect(dayOf(periodStartForDue({ dueAt: dueLocal(2026, 8, 10), cycle: 'MONTHLY', timezone: TZ }))).toBe('2026-07-10');
+  });
+
+  it('trimestral volta três meses', () => {
+    expect(dayOf(periodStartForDue({ dueAt: dueLocal(2026, 8, 10), cycle: 'QUARTERLY', timezone: TZ }))).toBe('2026-05-10');
+  });
+
+  it('vencimento em 31/03 volta para o último dia de fevereiro, não estoura o mês', () => {
+    expect(dayOf(periodStartForDue({ dueAt: dueLocal(2026, 3, 31), cycle: 'MONTHLY', timezone: TZ }))).toBe('2026-02-28');
+  });
+
+  it('atravessa a virada de ano', () => {
+    expect(dayOf(periodStartForDue({ dueAt: dueLocal(2026, 1, 15), cycle: 'MONTHLY', timezone: TZ }))).toBe('2025-12-15');
   });
 });

@@ -4,6 +4,7 @@ import { decrypt } from '@/lib/crypto';
 import { buildFixtureWorkbook } from '@/features/customers/import/__fixtures__/generate-fixture';
 import { readWorkbookRows } from '@/features/customers/import/workbook';
 import { ImportSupplierNotFoundError } from '@/features/customers/import/errors';
+import { listCustomers } from '@/features/customers/queries';
 import {
   importCustomersFromRows,
   importCustomersFromUpload,
@@ -19,6 +20,7 @@ const TZ = 'America/Sao_Paulo';
 const NOW = new Date('2026-08-20T12:00:00Z');
 
 async function purge() {
+  await db.charge.deleteMany({ where: { supplier: { name: { in: [SUPPLIER_A, SUPPLIER_B] } } } });
   await db.subscription.deleteMany({ where: { supplier: { name: { in: [SUPPLIER_A, SUPPLIER_B] } } } });
   await db.customer.deleteMany({ where: { OR: [{ name: { in: CUSTOMER_NAMES } }, { phone: PHONE }] } });
   await db.supplier.deleteMany({ where: { name: { in: [SUPPLIER_A, SUPPLIER_B] } } });
@@ -248,5 +250,66 @@ describe('previewCustomersImportFromUpload → importCustomersFromUpload — pr�
     expect(summary.imported).toHaveLength(1);
     expect(summary.rejected).toHaveLength(1);
     expect(await db.customer.count({ where: { name: 'Maria Import Teste' } })).toBe(1);
+  });
+});
+
+/**
+ * A importação nasceu na Etapa 1c, quando `Charge` ainda não existia — o design
+ * daquela etapa lista "qualquer coisa que dependa de Charge/Payment" como fora
+ * do escopo. A Etapa 2 criou a cobrança e ninguém voltou aqui: a base
+ * importada ficava com assinatura ACTIVE e zero cobrança, invisível para
+ * /charges, para os chips "Vence hoje"/"Em atraso" e para a régua — e sem
+ * cobrança não há como registrar pagamento, então o cliente nunca saía desse
+ * estado.
+ */
+describe('importação abre a primeira cobrança', () => {
+  it('cobrança em aberto nasce no vencimento que veio da planilha', async () => {
+    const supplier = await createSupplier(SUPPLIER_A);
+
+    await importCustomersFromRows({
+      rows: [{ CODIGO: 'Maria Import Teste', VALIDADE: '10/08/2026', VALOR: '50,00', CUSTO: '20,00' }],
+      supplierId: supplier.id,
+      timezone: TZ,
+      now: NOW,
+    });
+
+    const subscription = await db.subscription.findFirstOrThrow({
+      where: { customer: { name: 'Maria Import Teste' } },
+    });
+    const charge = await db.charge.findFirstOrThrow({ where: { subscriptionId: subscription.id } });
+
+    expect(charge.status).toBe('OPEN');
+    expect(charge.dueAt.toISOString()).toBe(subscription.nextDueAt.toISOString());
+    expect(charge.principalCents.toString()).toBe('5000');
+    expect(charge.costCents.toString()).toBe('2000');
+    expect(charge.discountCents.toString()).toBe('0');
+    // Período coberto é o ciclo que termina no vencimento da planilha — não o
+    // intervalo entre a data de criação (que pode ser de anos atrás) e hoje.
+    expect(charge.periodStart.toISOString().slice(0, 10)).toBe('2026-07-10');
+    expect(charge.periodEnd.toISOString().slice(0, 10)).toBe('2026-08-10');
+  });
+
+  it('cliente importado com vencimento no passado aparece como "Em atraso", não "Ativo"', async () => {
+    const supplier = await createSupplier(SUPPLIER_A);
+
+    await importCustomersFromRows({
+      rows: [{ CODIGO: 'Maria Import Teste', VALIDADE: '10/08/2026', VALOR: '50,00' }],
+      supplierId: supplier.id,
+      timezone: TZ,
+      now: NOW,
+    });
+
+    const list = await listCustomers({ page: 1, perPage: 20, q: 'Maria Import Teste', now: NOW, timezone: TZ });
+    expect(list.rows[0]?.situation).toBe('OVERDUE');
+
+    const chip = await listCustomers({
+      page: 1,
+      perPage: 20,
+      q: 'Maria Import Teste',
+      situation: 'OVERDUE',
+      now: NOW,
+      timezone: TZ,
+    });
+    expect(chip.total).toBe(1);
   });
 });

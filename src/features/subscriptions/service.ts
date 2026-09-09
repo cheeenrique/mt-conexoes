@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { encrypt, decrypt } from '@/lib/crypto';
-import { firstDueDate, endOfLocalDay, localDateOnly } from '@/core/dates';
+import { firstDueDate, endOfLocalDay, localDateOnly, periodStartForDue, type BillingCycle } from '@/core/dates';
 import { applyPercent } from '@/core/money';
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
@@ -257,6 +257,9 @@ export async function revealCredential(subscriptionId: string, userId: string, i
   return decrypt(subscription.accessPasswordEnc, 'subscription.accessPassword');
 }
 
+/** A planilha de origem não tem coluna de ciclo — toda linha importada é mensal. */
+const IMPORTED_CYCLE = 'MONTHLY' as const;
+
 /**
  * Criação de assinatura pela importação da base — única exceção no app que
  * NÃO calcula `nextDueAt` via `firstDueDate`. A planilha de origem só tem o
@@ -282,15 +285,16 @@ export async function createImportedSubscription(
     accessUsername: string | null;
     accessPassword: string | null;
     screens: number;
+    timezone: string;
   },
 ): Promise<{ id: string }> {
-  return tx.subscription.create({
+  const subscription = await tx.subscription.create({
     data: {
       customerId: params.customerId,
       supplierId: params.supplierId,
       priceCents: params.priceCents,
       costCents: params.costCents,
-      cycle: 'MONTHLY',
+      cycle: IMPORTED_CYCLE,
       nextDueAt: params.nextDueAt,
       startedAt: params.startedAt,
       accessUsername: params.accessUsername,
@@ -299,6 +303,60 @@ export async function createImportedSubscription(
     },
     select: { id: true },
   });
+
+  await tx.charge.create({
+    data: buildImportedFirstCharge({
+      subscriptionId: subscription.id,
+      customerId: params.customerId,
+      supplierId: params.supplierId,
+      priceCents: params.priceCents,
+      costCents: params.costCents,
+      cycle: IMPORTED_CYCLE,
+      nextDueAt: params.nextDueAt,
+      timezone: params.timezone,
+    }),
+  });
+
+  return subscription;
+}
+
+/**
+ * A cobrança em aberto que a assinatura importada precisa ter. Sem ela o
+ * cliente fica com assinatura `ACTIVE` e nenhuma cobrança: some de /charges,
+ * nunca cai nos chips "Vence hoje"/"Em atraso" (que filtram por cobrança em
+ * aberto), a régua não o avalia — e como `registerPayment` exige um
+ * `chargeId`, não há como tirá-lo desse estado pela tela.
+ *
+ * Ficou de fora quando a importação foi escrita (Etapa 1c) porque `Charge`
+ * ainda não existia; a Etapa 2 criou a cobrança e não voltou aqui.
+ *
+ * Exportada porque o backfill da base já importada
+ * (`scripts/backfill-imported-charges.ts`) precisa emitir exatamente a mesma
+ * cobrança — duplicar esse cálculo entre importação e backfill é a divergência
+ * de valor que `.claude/rules/05-reuso.md` proíbe.
+ */
+export function buildImportedFirstCharge(params: {
+  subscriptionId: string;
+  customerId: string;
+  supplierId: string | null;
+  priceCents: bigint;
+  costCents: bigint;
+  cycle: BillingCycle;
+  nextDueAt: Date;
+  timezone: string;
+}): Prisma.ChargeUncheckedCreateInput {
+  return {
+    subscriptionId: params.subscriptionId,
+    customerId: params.customerId,
+    supplierId: params.supplierId,
+    principalCents: params.priceCents,
+    // A planilha não traz desconto: o preço importado já é o que o assinante paga.
+    discountCents: 0n,
+    costCents: params.costCents,
+    periodStart: periodStartForDue({ dueAt: params.nextDueAt, cycle: params.cycle, timezone: params.timezone }),
+    periodEnd: localDateOnly(params.nextDueAt, params.timezone),
+    dueAt: params.nextDueAt,
+  };
 }
 
 /**

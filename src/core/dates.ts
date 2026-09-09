@@ -68,6 +68,22 @@ export function firstDueDate(params: { startedAt: Date; cycle: BillingCycle; tim
 }
 
 /**
+ * Início do período coberto por uma cobrança que vence em `dueAt`: um ciclo
+ * para trás, em data local sem hora (`@db.Date`).
+ *
+ * Existe para a cobrança que nasce de um vencimento já conhecido, sem
+ * pagamento anterior de onde derivar o período — a importação da base, onde a
+ * planilha traz só o vencimento atual. Voltar do vencimento, e não partir de
+ * `startedAt`, é o que evita um `periodStart` de anos atrás (a coluna CRIAÇÃO
+ * da planilha é a data em que o assinante entrou, não o início do ciclo).
+ */
+export function periodStartForDue(params: { dueAt: Date; cycle: BillingCycle; timezone: string }): Date {
+  const local = new TZDate(params.dueAt, params.timezone);
+  const back = addMonths(local, -CYCLE_MONTHS[params.cycle]);
+  return localDateOnly(new Date(back.getTime()), params.timezone);
+}
+
+/**
  * Início (inclusive) e fim (exclusivo) do dia de `instant`, em UTC, no fuso do
  * negócio. É o recorte que o SQL usa para separar "em atraso" (`dueAt < from`)
  * de "vence hoje" (`from <= dueAt < to`) sem repetir a regra de fuso dentro da
