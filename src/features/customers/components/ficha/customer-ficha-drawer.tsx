@@ -8,7 +8,7 @@ import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerHeader } from '@
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { CUSTOMER_SITUATION_LABELS, CUSTOMER_SITUATION_TONES } from '@/lib/labels';
+import { CUSTOMER_SITUATION_TONES, customerSituationLabel } from '@/lib/labels';
 import { useCustomerParam } from '../../use-customer-param';
 import { CustomerFicha } from './customer-ficha';
 import { FichaForm } from './ficha-form';
@@ -87,7 +87,7 @@ export function CustomerFichaDrawer({
               {data && !editing && (
                 <>
                   <StatusBadge tone={CUSTOMER_SITUATION_TONES[data.situation]}>
-                    {CUSTOMER_SITUATION_LABELS[data.situation]}
+                    {customerSituationLabel(data.situation, data.daysFromDue)}
                   </StatusBadge>
                   <Button variant="outline" size="icon-lg" aria-label="Editar cliente" title="Editar cliente" onClick={() => setEditing(true)}>
                     <Pencil size={15} />

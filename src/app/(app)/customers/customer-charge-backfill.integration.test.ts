@@ -47,12 +47,12 @@ describe('backfillImportedCharges', () => {
     expect(await db.charge.count({ where: { customer: { name: 'Yanka Backfill Teste' } } })).toBe(0);
   });
 
-  it('cobrança aberta pelo backfill tira o cliente de "Ativo" e o põe em "Em atraso"', async () => {
+  it('cobrança aberta pelo backfill tira o cliente de "Sem cobrança" e o põe em "Em atraso"', async () => {
     const supplier = await db.supplier.create({ data: { name: SUPPLIER } });
     await createImportedLikeSubscription('Yanka Backfill Teste', supplier.id);
 
     const before = await listCustomers({ page: 1, perPage: 20, q: 'Yanka Backfill Teste', now: NOW, timezone: TZ });
-    expect(before.rows[0]?.situation).toBe('ACTIVE');
+    expect(before.rows[0]?.situation).toBe('NO_CHARGE');
 
     await backfillImportedCharges({ timezone: TZ, apply: true });
 
@@ -65,6 +65,7 @@ describe('backfillImportedCharges', () => {
 
     const after = await listCustomers({ page: 1, perPage: 20, q: 'Yanka Backfill Teste', now: NOW, timezone: TZ });
     expect(after.rows[0]?.situation).toBe('OVERDUE');
+    expect(after.rows[0]?.daysFromDue).toBe(2); // venceu 06/09, hoje é 08/09
   });
 
   it('rodar duas vezes não duplica cobrança', async () => {

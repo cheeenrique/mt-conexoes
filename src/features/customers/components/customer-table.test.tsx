@@ -24,7 +24,8 @@ const ROW: CustomerListRowDTO = {
   planName: 'Plano Mensal',
   supplierName: 'Fornecedor Teste',
   nextDueAt: null,
-  situation: 'ACTIVE',
+  situation: 'UP_TO_DATE',
+  daysFromDue: null,
 };
 
 function setup(overrides: Partial<Parameters<typeof CustomerTable>[0]> = {}) {

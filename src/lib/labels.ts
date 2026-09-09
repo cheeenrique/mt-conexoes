@@ -75,22 +75,43 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = Object.fromEntries(
 );
 
 export const CUSTOMER_SITUATION_LABELS: Record<CustomerSituation, string> = {
-  ACTIVE: 'Ativo',
+  UP_TO_DATE: 'Em dia',
+  DUE_SOON: 'Vence em breve',
   DUE_TODAY: 'Vence hoje',
   OVERDUE: 'Em atraso',
-  OPEN: 'Em aberto',
+  NO_CHARGE: 'Sem cobrança',
   SUSPENDED: 'Suspenso',
   NO_SUBSCRIPTION: 'Sem assinatura',
   ANONYMIZED: 'Anonimizado',
   DELETED: 'Removido',
 };
 
-/** Cores do handoff: verde ativo, âmbar vence hoje, laranja atraso, contorno o resto. */
-export const CUSTOMER_SITUATION_TONES: Record<CustomerSituation, 'success' | 'warning' | 'brand' | 'neutral'> = {
-  ACTIVE: 'success',
-  DUE_TODAY: 'warning',
-  OVERDUE: 'brand',
-  OPEN: 'neutral',
+/**
+ * Rótulo do badge com o contador de dias. É o que faz a linha mudar de leitura
+ * dia a dia sem mudar de estado: "Em atraso · 2d" e "Em atraso · 34d" pedem
+ * ações diferentes do operador, e a coluna de vencimento sozinha obriga a fazer
+ * a conta de cabeça.
+ *
+ * `daysFromDue` é o offset da cobrança em aberto mais antiga (positivo =
+ * atrasada, negativo = a vencer). Ausente ou irrelevante para o estado, cai no
+ * rótulo simples.
+ */
+export function customerSituationLabel(situation: CustomerSituation, daysFromDue: number | null): string {
+  const base = CUSTOMER_SITUATION_LABELS[situation];
+  if (daysFromDue === null) return base;
+  if (situation === 'DUE_SOON') return `Vence em ${-daysFromDue}d`;
+  if (situation === 'OVERDUE') return `${base} · ${daysFromDue}d`;
+  return base;
+}
+
+/** A escada escalando: verde em dia · âmbar vence em breve · laranja vence hoje · vermelho atraso.
+ *  O resto é contorno neutro — inclusive `NO_CHARGE`, que é anomalia e não pode competir com o vermelho. */
+export const CUSTOMER_SITUATION_TONES: Record<CustomerSituation, 'success' | 'warning' | 'brand' | 'danger' | 'neutral'> = {
+  UP_TO_DATE: 'success',
+  DUE_SOON: 'warning',
+  DUE_TODAY: 'brand',
+  OVERDUE: 'danger',
+  NO_CHARGE: 'neutral',
   SUSPENDED: 'neutral',
   NO_SUBSCRIPTION: 'neutral',
   ANONYMIZED: 'neutral',

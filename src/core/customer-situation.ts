@@ -1,31 +1,61 @@
-import { daysFromDue } from './dunning-rules';
+import { resolveDueDateBucket, type DueDateBucket } from './due-date-buckets';
 
 /**
- * Situação do cliente na lista (handoff `telas/03-clientes.md` §"Situações
- * possíveis"). Derivada, nunca persistida: depende de `now` e do fuso do
+ * Situação do cliente na lista (`docs/projeto/design/02-handoff-painel.md`
+ * §Clientes). Derivada, nunca persistida: depende de `now` e do fuso do
  * negócio, então uma coluna no banco estaria errada todo dia às 00:00 local.
  *
- * `NO_SUBSCRIPTION` não está no handoff. Entrou porque a base tem cliente sem
+ * Os quatro primeiros formam uma escada única, ancorada na cobrança em aberto
+ * **mais antiga** do cliente: `UP_TO_DATE → DUE_SOON → DUE_TODAY → OVERDUE`.
+ * O corte entre os dois primeiros é o mesmo balde `D-2` da linha de vencimento
+ * do Início (`DUE_SOON_DAYS`) — a tela de Clientes e o dashboard falam a
+ * mesma língua de propósito.
+ *
+ * `NO_CHARGE` é anomalia, não saúde: a corrente garante uma cobrança em aberto
+ * por assinatura ativa (o pagamento emite a próxima na mesma transação, e o
+ * índice parcial `subscriptions_single_open_charge` impede uma segunda), então
+ * chegar aqui significa cobrança cancelada à mão — ou uma assinatura que nasceu
+ * sem cobrança, o buraco que a importação tinha. Já se chamou `ACTIVE` e vinha
+ * em verde, o que fazia a base importada inteira parecer saudável enquanto
+ * ninguém a cobrava.
+ *
+ * `NO_SUBSCRIPTION` entrou porque a base tem cliente sem
  * assinatura viva (cadastrado e ainda não vendido, ou com assinatura
- * cancelada), e chamá-lo de "Ativo" seria inventar um estado que o dado não
+ * cancelada), e chamá-lo de "em dia" seria inventar um estado que o dado não
  * tem — o antipadrão de motivo inventado na tela de Mensagens.
  */
 export type CustomerSituation =
-  | 'ACTIVE'
+  | 'UP_TO_DATE'
+  | 'DUE_SOON'
   | 'DUE_TODAY'
   | 'OVERDUE'
-  | 'OPEN'
+  | 'NO_CHARGE'
   | 'SUSPENDED'
   | 'NO_SUBSCRIPTION'
   | 'ANONYMIZED'
   | 'DELETED';
 
-/** As cinco situações que viram chip de filtro na tela de Clientes. `ANONYMIZED`
- * e `DELETED` mudam o comportamento padrão da lista: escondidos a menos que o
- * operador clique no chip (ver `queries.ts`). `DELETED` é soft delete
- * ("Remover" na tabela) — diferente de `ANONYMIZED` (direito de eliminação,
- * LGPD): aqui o dado continua intacto, só sai da lista e da régua. */
-export const CUSTOMER_SITUATION_FILTERS = ['ACTIVE', 'DUE_TODAY', 'OVERDUE', 'ANONYMIZED', 'DELETED'] as const;
+/**
+ * As situações que viram chip de filtro na tela de Clientes: a escada de
+ * cobrança inteira, mais a anomalia e os dois estados escondidos.
+ *
+ * `ANONYMIZED` e `DELETED` mudam o comportamento padrão da lista: escondidos a
+ * menos que o operador clique no chip (ver `queries.ts`). `DELETED` é soft
+ * delete ("Remover" na tabela) — diferente de `ANONYMIZED` (direito de
+ * eliminação, LGPD): aqui o dado continua intacto, só sai da lista e da régua.
+ *
+ * `SUSPENDED` e `NO_SUBSCRIPTION` ficam de fora: não são recortes da escada de
+ * cobrança, e o operador chega neles pela busca.
+ */
+export const CUSTOMER_SITUATION_FILTERS = [
+  'UP_TO_DATE',
+  'DUE_SOON',
+  'DUE_TODAY',
+  'OVERDUE',
+  'NO_CHARGE',
+  'ANONYMIZED',
+  'DELETED',
+] as const;
 
 export type CustomerSituationFilter = (typeof CUSTOMER_SITUATION_FILTERS)[number];
 
@@ -34,13 +64,27 @@ export function isCustomerSituationFilter(value: string): value is CustomerSitua
 }
 
 /**
+ * Os três baldes de atraso viram um estado só: a granularidade do atraso é o
+ * contador de dias no rótulo ("Em atraso · 34d"), não um estado a mais — dois
+ * clientes atrasados fazem a mesma coisa na régua e na tela.
+ */
+const BUCKET_SITUATION: Record<DueDateBucket, CustomerSituation> = {
+  'D-5': 'UP_TO_DATE',
+  'D-2': 'DUE_SOON',
+  D0: 'DUE_TODAY',
+  'D+1': 'OVERDUE',
+  'D+3': 'OVERDUE',
+  'D+5': 'OVERDUE',
+};
+
+/**
  * `subscriptionStatus` é o da assinatura mais relevante do cliente (ACTIVE
  * ganha de SUSPENDED, que ganha de CANCELLED). `openChargeDueAt` é o
- * vencimento da cobrança em aberto **mais antiga** — é ela que decide entre
- * atraso e vencimento de hoje quando o cliente deve mais de um ciclo.
+ * vencimento da cobrança em aberto **mais antiga** — é ela que decide o degrau
+ * da escada quando o cliente deve mais de um ciclo.
  *
- * "Vence hoje" e "em atraso" são conceitos locais: a comparação sai de
- * `daysFromDue`, que trunca as duas pontas no fuso do negócio.
+ * A escada inteira é conceito local: a comparação sai de `resolveDueDateBucket`
+ * → `daysFromDue`, que trunca as duas pontas no fuso do negócio.
  */
 export function resolveCustomerSituation(params: {
   subscriptionStatus: 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | null;
@@ -62,10 +106,7 @@ export function resolveCustomerSituation(params: {
     return 'NO_SUBSCRIPTION';
   }
   if (params.subscriptionStatus === 'SUSPENDED') return 'SUSPENDED';
-  if (params.openChargeDueAt === null) return 'ACTIVE';
+  if (params.openChargeDueAt === null) return 'NO_CHARGE';
 
-  const offset = daysFromDue(params.openChargeDueAt, params.now, params.timezone);
-  if (offset > 0) return 'OVERDUE';
-  if (offset === 0) return 'DUE_TODAY';
-  return 'OPEN';
+  return BUCKET_SITUATION[resolveDueDateBucket(params.openChargeDueAt, params.now, params.timezone)];
 }

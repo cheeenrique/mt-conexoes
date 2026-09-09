@@ -74,6 +74,7 @@ export async function loadCustomerFichaAction(
       document: head.document,
       notes: head.notes,
       situation: head.situation,
+    daysFromDue: head.daysFromDue,
       supplierName: head.supplierName,
       sinceAt: head.sinceAt,
       timezone: settings.timezone,

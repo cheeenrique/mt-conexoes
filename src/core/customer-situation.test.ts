@@ -46,7 +46,7 @@ describe('resolveCustomerSituation', () => {
     ).toBe('ANONYMIZED');
   });
 
-  it('cliente sem assinatura nenhuma não é "Ativo"', () => {
+  it('cliente sem assinatura nenhuma não entra na escada de cobrança', () => {
     expect(
       resolveCustomerSituation({
         subscriptionStatus: null,
@@ -57,7 +57,7 @@ describe('resolveCustomerSituation', () => {
     ).toBe('NO_SUBSCRIPTION');
   });
 
-  it('assinatura cancelada não é "Ativo"', () => {
+  it('assinatura cancelada não entra na escada de cobrança', () => {
     expect(
       resolveCustomerSituation({
         subscriptionStatus: 'CANCELLED',
@@ -79,7 +79,12 @@ describe('resolveCustomerSituation', () => {
     ).toBe('SUSPENDED');
   });
 
-  it('ativa sem cobrança em aberto é "Ativo"', () => {
+  // Estado de anomalia, não de saúde: a corrente garante uma cobrança em aberto
+  // por assinatura ativa (pagamento emite a próxima na mesma transação), então
+  // chegar aqui significa que alguém cancelou a cobrança à mão. Antes chamava-se
+  // "Ativo" e vinha em verde — a base importada inteira caía nele e parecia
+  // saudável enquanto ninguém a cobrava.
+  it('ativa sem cobrança em aberto é "Sem cobrança", não "Em dia"', () => {
     expect(
       resolveCustomerSituation({
         subscriptionStatus: 'ACTIVE',
@@ -87,7 +92,7 @@ describe('resolveCustomerSituation', () => {
         now: new Date('2026-08-22T12:00:00Z'),
         timezone: TZ,
       }),
-    ).toBe('ACTIVE');
+    ).toBe('NO_CHARGE');
   });
 
   it('cobrança vencendo hoje é "Vence hoje"', () => {
@@ -112,7 +117,7 @@ describe('resolveCustomerSituation', () => {
     ).toBe('OVERDUE');
   });
 
-  it('cobrança futura é "Em aberto"', () => {
+  it('cobrança daqui a 8 dias é "Em dia"', () => {
     expect(
       resolveCustomerSituation({
         subscriptionStatus: 'ACTIVE',
@@ -120,7 +125,36 @@ describe('resolveCustomerSituation', () => {
         now: new Date('2026-08-22T12:00:00Z'),
         timezone: TZ,
       }),
-    ).toBe('OPEN');
+    ).toBe('UP_TO_DATE');
+  });
+
+  // A janela de "vence em breve" é a do balde D-2 da linha de vencimento do
+  // Início (DUE_SOON_DAYS): um vocabulário só entre as duas telas.
+  it.each([
+    ['2026-08-23', 'DUE_SOON'],
+    ['2026-08-24', 'DUE_SOON'],
+    ['2026-08-25', 'DUE_SOON'],
+    ['2026-08-26', 'UP_TO_DATE'],
+  ])('vencimento em %s visto em 22/08 é %s', (due, expected) => {
+    expect(
+      resolveCustomerSituation({
+        subscriptionStatus: 'ACTIVE',
+        openChargeDueAt: dueAtLocalEndOfDay(due),
+        now: new Date('2026-08-22T12:00:00Z'),
+        timezone: TZ,
+      }),
+    ).toBe(expected);
+  });
+
+  it('atraso de 40 dias continua "Em atraso" — a granularidade é o contador, não outro estado', () => {
+    expect(
+      resolveCustomerSituation({
+        subscriptionStatus: 'ACTIVE',
+        openChargeDueAt: dueAtLocalEndOfDay('2026-07-13'),
+        now: new Date('2026-08-22T12:00:00Z'),
+        timezone: TZ,
+      }),
+    ).toBe('OVERDUE');
   });
 
   // O bug que a derivação em UTC produziria: 23:00 local de 21/08 já é 22/08 em
@@ -160,17 +194,22 @@ describe('resolveCustomerSituation', () => {
 });
 
 describe('isCustomerSituationFilter', () => {
-  it('aceita as cinco situações que viram chip', () => {
-    expect(isCustomerSituationFilter('ACTIVE')).toBe(true);
-    expect(isCustomerSituationFilter('DUE_TODAY')).toBe(true);
-    expect(isCustomerSituationFilter('OVERDUE')).toBe(true);
-    expect(isCustomerSituationFilter('ANONYMIZED')).toBe(true);
-    expect(isCustomerSituationFilter('DELETED')).toBe(true);
+  it('aceita as situações que viram chip', () => {
+    for (const value of ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE', 'NO_CHARGE', 'ANONYMIZED', 'DELETED']) {
+      expect(isCustomerSituationFilter(value)).toBe(true);
+    }
   });
 
   it('recusa situação derivada que não tem chip, e lixo vindo da URL', () => {
     expect(isCustomerSituationFilter('SUSPENDED')).toBe(false);
-    expect(isCustomerSituationFilter('OPEN')).toBe(false);
+    expect(isCustomerSituationFilter('NO_SUBSCRIPTION')).toBe(false);
     expect(isCustomerSituationFilter('; DROP TABLE customers')).toBe(false);
+  });
+
+  // Link antigo do operador (?situacao=ACTIVE) não pode virar erro nem filtro
+  // silencioso errado — cai fora e a tela mostra todos.
+  it('recusa os nomes antigos, que saíram do modelo', () => {
+    expect(isCustomerSituationFilter('ACTIVE')).toBe(false);
+    expect(isCustomerSituationFilter('OPEN')).toBe(false);
   });
 });

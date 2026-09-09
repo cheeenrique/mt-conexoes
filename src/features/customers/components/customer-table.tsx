@@ -11,7 +11,7 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { formatLocalDate, formatPhoneBR, whatsAppUrl } from '@/lib/format';
-import { CUSTOMER_SITUATION_LABELS, CUSTOMER_SITUATION_TONES } from '@/lib/labels';
+import { CUSTOMER_SITUATION_TONES, customerSituationLabel } from '@/lib/labels';
 import { toastError, toastSuccess } from '@/lib/toast';
 import { useCustomerParam } from '../use-customer-param';
 import { NewCustomerButton } from './new-customer-button';
@@ -145,7 +145,7 @@ export function CustomerTable({
       header: 'Situação',
       cell: (row) => (
         <StatusBadge tone={CUSTOMER_SITUATION_TONES[row.situation]}>
-          {CUSTOMER_SITUATION_LABELS[row.situation]}
+          {customerSituationLabel(row.situation, row.daysFromDue)}
         </StatusBadge>
       ),
     },

@@ -227,6 +227,25 @@ Alerta de margem negativa aparece como faixa acima da lista, borda esquerda `--b
 
 Tabela: nome · telefone · plano · fornecedor · próximo vencimento · situação. Busca por nome, telefone **e usuário de acesso**. Filtro por situação e fornecedor em `searchParams`.
 
+Situação é **derivada, nunca gravada** — depende de hoje e do fuso do negócio, então uma coluna no banco estaria errada todo dia às 00:00 local. Sai da cobrança em aberto **mais antiga** do cliente, e vira sozinha à meia-noite.
+
+Os quatro primeiros são uma escada só, e o corte de "vence em breve" é o mesmo balde `D-2` da linha de vencimento do Início (`DUE_SOON_DAYS`, hoje 3 dias) — as duas telas falam a mesma língua de propósito:
+
+| Situação | Quando | Badge | Cor |
+|---|---|---|---|
+| Em dia | vence em 4 dias ou mais | `Em dia` | `--ok` |
+| Vence em breve | vence em 1 a 3 dias | `Vence em 2d` | `--warn` |
+| Vence hoje | vence hoje | `Vence hoje` | `--flame` |
+| Em atraso | venceu | `Em atraso · 34d` | `--bad` |
+| Sem cobrança | assinatura ativa e nenhuma cobrança em aberto | `Sem cobrança` | `--paper-dim` |
+| Suspenso · Sem assinatura · Anonimizado · Removido | fora do fluxo de cobrança | rótulo | `--paper-dim` |
+
+O contador de dias no badge é o que separa 2 dias de 34 sem obrigar a conta de cabeça — dois clientes atrasados fazem a mesma coisa na régua, mas não no telefone do operador.
+
+⚠️ **"Sem cobrança" é anomalia, não saúde.** A corrente garante uma cobrança em aberto por assinatura ativa (o pagamento emite a próxima na mesma transação, e o índice parcial impede uma segunda), então chegar nesse estado significa cobrança cancelada à mão — ou assinatura que nasceu sem cobrança, o buraco que a importação tinha. Já se chamou "Ativo" e vinha em verde: a base importada inteira caía nele e parecia saudável enquanto ninguém a cobrava.
+
+Chips: `Todos · Em dia · Vence em breve · Vence hoje · Em atraso · Sem cobrança · Anonimizado · Removido`. O predicado SQL de cada chip espelha a escada degrau a degrau, com um `none` do degrau anterior — quem deve agosto e vence de novo em setembro aparece só em "Em atraso".
+
 ### Ficha do cliente
 
 Painel de lucro no topo — é o que ele mais gosta de ver:

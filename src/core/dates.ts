@@ -90,10 +90,20 @@ export function periodStartForDue(params: { dueAt: Date; cycle: BillingCycle; ti
  * query — o mesmo corte que `daysFromDue` faz em memória.
  */
 export function localDayBoundsUtc(instant: Date, timezone: string): { from: Date; to: Date } {
+  return { from: localDayStartUtc(instant, timezone), to: localDayStartUtc(instant, timezone, 1) };
+}
+
+/**
+ * 00:00 local do dia de `instant` deslocado em `days` dias, convertido para UTC.
+ * `days` 0 = hoje, 1 = amanhã, 4 = daqui a quatro dias.
+ *
+ * Anda no calendário local (`getDate() + days`), não somando 24h ao instante:
+ * num fuso com horário de verão o dia tem 23 ou 25 horas, e a soma em
+ * milissegundos cairia no dia errado justamente na virada.
+ */
+export function localDayStartUtc(instant: Date, timezone: string, days = 0): Date {
   const local = new TZDate(instant, timezone);
-  const from = startOfLocalDay(local.getFullYear(), local.getMonth(), local.getDate(), timezone);
-  const to = startOfLocalDay(local.getFullYear(), local.getMonth(), local.getDate() + 1, timezone);
-  return { from, to };
+  return startOfLocalDay(local.getFullYear(), local.getMonth(), local.getDate() + days, timezone);
 }
 
 /** Início (inclusive) e fim (exclusivo) do mês, em UTC, no fuso do negócio. */

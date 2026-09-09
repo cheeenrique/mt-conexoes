@@ -66,7 +66,7 @@ async function seedCustomer(params: {
 
 beforeAll(async () => {
   await purge();
-  await seedCustomer({ suffix: 'Ativo', phone: '+5562990000001', subscriptionStatus: 'ACTIVE' });
+  await seedCustomer({ suffix: 'SemCobranca', phone: '+5562990000001', subscriptionStatus: 'ACTIVE' });
   await seedCustomer({
     suffix: 'VenceHoje',
     phone: '+5562990000002',
@@ -86,10 +86,24 @@ beforeAll(async () => {
     chargeDueDay: '2026-08-18',
   });
   await seedCustomer({
-    suffix: 'EmAberto',
+    suffix: 'EmDia',
     phone: '+5562990000005',
     subscriptionStatus: 'ACTIVE',
     chargeDueDay: '2026-08-30',
+  });
+  // 24/08 visto em 22/08 é offset -2: dentro da janela DUE_SOON_DAYS.
+  await seedCustomer({
+    suffix: 'VenceBreve',
+    phone: '+5562990000009',
+    subscriptionStatus: 'ACTIVE',
+    chargeDueDay: '2026-08-24',
+  });
+  // 26/08 é offset -4, o primeiro dia fora da janela — a fronteira exata.
+  await seedCustomer({
+    suffix: 'EmDiaLimite',
+    phone: '+5562990000010',
+    subscriptionStatus: 'ACTIVE',
+    chargeDueDay: '2026-08-26',
   });
   await seedCustomer({
     suffix: 'Suspenso',
@@ -134,22 +148,39 @@ beforeAll(async () => {
 afterAll(purge);
 
 /** Busca pelo prefixo da fixture isola o recorte — nada de total absoluto global. */
-function listFixture(params: { q?: string; situation?: 'ACTIVE' | 'DUE_TODAY' | 'OVERDUE' } = {}) {
+type ChipSituation = 'UP_TO_DATE' | 'DUE_SOON' | 'DUE_TODAY' | 'OVERDUE' | 'NO_CHARGE';
+
+function listFixture(params: { q?: string; situation?: ChipSituation } = {}) {
   return listCustomers({ page: 1, perPage: 20, q: params.q ?? TAG, situation: params.situation, now: NOW, timezone: TZ });
 }
 
 describe('listCustomers — situação derivada', () => {
-  it('deriva as cinco situações do handoff mais o cliente sem assinatura', async () => {
+  it('deriva a escada inteira, a anomalia e os dois estados fora dela', async () => {
     const { rows } = await listFixture();
     const bySuffix = Object.fromEntries(rows.map((row) => [row.name.replace(`${TAG} `, ''), row.situation]));
 
     expect(bySuffix).toMatchObject({
-      Ativo: 'ACTIVE',
+      EmDia: 'UP_TO_DATE',
+      EmDiaLimite: 'UP_TO_DATE',
+      VenceBreve: 'DUE_SOON',
       VenceHoje: 'DUE_TODAY',
       Atraso: 'OVERDUE',
-      EmAberto: 'OPEN',
+      SemCobranca: 'NO_CHARGE',
       Suspenso: 'SUSPENDED',
       SemAssinatura: 'NO_SUBSCRIPTION',
+    });
+  });
+
+  it('leva o contador de dias da cobrança em aberto mais antiga, para o badge', async () => {
+    const { rows } = await listFixture();
+    const bySuffix = Object.fromEntries(rows.map((row) => [row.name.replace(`${TAG} `, ''), row.daysFromDue]));
+
+    expect(bySuffix).toMatchObject({
+      Atraso: 3, // venceu 19/08, hoje é 22/08
+      VenceHoje: 0,
+      VenceBreve: -2,
+      EmDia: -8,
+      SemCobranca: null,
     });
   });
 
@@ -160,10 +191,20 @@ describe('listCustomers — situação derivada', () => {
 });
 
 describe('listCustomers — chips de situação', () => {
-  it('o chip "Ativo" traz só quem não tem cobrança em aberto', async () => {
-    const { rows, total } = await listFixture({ situation: 'ACTIVE' });
-    expect(rows.map((r) => r.name).sort()).toEqual([`${TAG} Ativo`, `${TAG} ComLogin`]);
+  it('o chip "Sem cobrança" traz só quem não tem cobrança em aberto', async () => {
+    const { rows, total } = await listFixture({ situation: 'NO_CHARGE' });
+    expect(rows.map((r) => r.name).sort()).toEqual([`${TAG} ComLogin`, `${TAG} SemCobranca`]);
     expect(total).toBe(2);
+  });
+
+  it('o chip "Em dia" traz quem vence fora da janela, e não quem vence em breve', async () => {
+    const { rows } = await listFixture({ situation: 'UP_TO_DATE' });
+    expect(rows.map((r) => r.name).sort()).toEqual([`${TAG} EmDia`, `${TAG} EmDiaLimite`]);
+  });
+
+  it('o chip "Vence em breve" pega a janela de 3 dias, sem invadir hoje nem o dia seguinte à janela', async () => {
+    const { rows } = await listFixture({ situation: 'DUE_SOON' });
+    expect(rows.map((r) => r.name)).toEqual([`${TAG} VenceBreve`]);
   });
 
   it('o chip "Vence hoje" não traz quem já está em atraso', async () => {
@@ -178,7 +219,9 @@ describe('listCustomers — chips de situação', () => {
 
   it('nenhum chip traz o suspenso — mas ele continua na lista sem filtro', async () => {
     const filtered = await Promise.all(
-      (['ACTIVE', 'DUE_TODAY', 'OVERDUE'] as const).map((situation) => listFixture({ situation })),
+      (['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE', 'NO_CHARGE'] as const).map((situation) =>
+        listFixture({ situation }),
+      ),
     );
     const names = filtered.flatMap((result) => result.rows.map((row) => row.name));
     expect(names).not.toContain(`${TAG} Suspenso`);
@@ -190,7 +233,7 @@ describe('listCustomers — chips de situação', () => {
   // O predicado do chip e `resolveCustomerSituation` são dois códigos diferentes
   // sobre o mesmo conceito. Este teste é o que impede um divergir do outro.
   it('toda linha que o chip devolve carrega a situação daquele chip', async () => {
-    for (const situation of ['ACTIVE', 'DUE_TODAY', 'OVERDUE'] as const) {
+    for (const situation of ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE', 'NO_CHARGE'] as const) {
       const { rows } = await listFixture({ situation });
       expect(rows.length).toBeGreaterThan(0);
       expect(rows.every((row) => row.situation === situation)).toBe(true);

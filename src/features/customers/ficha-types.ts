@@ -61,6 +61,8 @@ export interface CustomerFichaData {
   document: string | null;
   notes: string | null;
   situation: CustomerSituation;
+  /** Offset em dias da cobrança em aberto mais antiga, para o contador do badge. */
+  daysFromDue: number | null;
   supplierName: string | null;
   sinceAt: string | null;
   timezone: string;

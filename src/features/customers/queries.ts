@@ -1,5 +1,7 @@
 import { db } from '@/lib/db';
-import { localDayBoundsUtc } from '@/core/dates';
+import { localDayStartUtc } from '@/core/dates';
+import { daysFromDue } from '@/core/dunning-rules';
+import { DUE_SOON_DAYS } from '@/core/due-date-buckets';
 import { phoneSearchDigits } from '@/core/phone';
 import {
   resolveCustomerSituation,
@@ -27,6 +29,9 @@ export interface CustomerListRowDTO extends CustomerDTO {
   /** Vencimento da cobrança em aberto mais antiga; sem cobrança em aberto, o da assinatura. */
   nextDueAt: string | null;
   situation: CustomerSituation;
+  /** Offset em dias da cobrança em aberto mais antiga: positivo atrasada, negativo a vencer.
+   *  Alimenta o contador do badge ("Em atraso · 34d"); nulo sem cobrança em aberto. */
+  daysFromDue: number | null;
 }
 
 function toDTO(row: {
@@ -64,17 +69,23 @@ function searchWhere(q: string): Prisma.CustomerWhereInput {
 
 /**
  * Recorte de cada chip, escrito como predicado de banco. Espelha
- * `resolveCustomerSituation`: as fronteiras de dia saem de `localDayBoundsUtc`,
- * não de comparação em UTC, e o `none` de atraso em `DUE_TODAY` reproduz a
- * precedência de "cobrança em aberto mais antiga manda" — sem ele, quem deve
- * agosto e setembro apareceria no chip errado.
+ * `resolveCustomerSituation` degrau a degrau: as fronteiras de dia saem de
+ * `localDayStartUtc`, não de comparação em UTC, e o corte de "vence em breve"
+ * é o mesmo `DUE_SOON_DAYS` que a situação usa — um número só entre a tela e
+ * o filtro.
+ *
+ * Cada degrau leva um `none` do degrau anterior porque quem manda é a cobrança
+ * em aberto **mais antiga**: sem isso, quem deve agosto e vence de novo em
+ * setembro apareceria em dois chips ao mesmo tempo.
  */
 function situationWhere(
   situation: CustomerSituationFilter,
   now: Date,
   timezone: string,
 ): Prisma.CustomerWhereInput {
-  const { from, to } = localDayBoundsUtc(now, timezone);
+  const todayStart = localDayStartUtc(now, timezone);
+  const tomorrowStart = localDayStartUtc(now, timezone, 1);
+  const soonEnd = localDayStartUtc(now, timezone, DUE_SOON_DAYS + 1);
   const status = { in: [...OPEN_CHARGE_STATUSES] };
   const activeSubscription: Prisma.CustomerWhereInput = {
     subscriptions: { some: { status: 'ACTIVE' } },
@@ -82,15 +93,33 @@ function situationWhere(
 
   // ANONYMIZED e DELETED não caem aqui — `listCustomers` já resolve os dois
   // antes de chamar esta função (ver o comentário lá).
-  if (situation === 'ACTIVE') {
+  if (situation === 'NO_CHARGE') {
     return { ...activeSubscription, charges: { none: { status } } };
   }
   if (situation === 'OVERDUE') {
-    return { ...activeSubscription, charges: { some: { status, dueAt: { lt: from } } } };
+    return { ...activeSubscription, charges: { some: { status, dueAt: { lt: todayStart } } } };
+  }
+  if (situation === 'DUE_TODAY') {
+    return {
+      ...activeSubscription,
+      charges: {
+        some: { status, dueAt: { gte: todayStart, lt: tomorrowStart } },
+        none: { status, dueAt: { lt: todayStart } },
+      },
+    };
+  }
+  if (situation === 'DUE_SOON') {
+    return {
+      ...activeSubscription,
+      charges: {
+        some: { status, dueAt: { gte: tomorrowStart, lt: soonEnd } },
+        none: { status, dueAt: { lt: tomorrowStart } },
+      },
+    };
   }
   return {
     ...activeSubscription,
-    charges: { some: { status, dueAt: { gte: from, lt: to } }, none: { status, dueAt: { lt: from } } },
+    charges: { some: { status, dueAt: { gte: soonEnd } }, none: { status, dueAt: { lt: soonEnd } } },
   };
 }
 
@@ -175,6 +204,7 @@ export async function listCustomers(params: {
         planName: sub?.plan?.name ?? null,
         supplierName: sub?.supplier?.name ?? null,
         nextDueAt: (openChargeDueAt ?? sub?.nextDueAt)?.toISOString() ?? null,
+        daysFromDue: openChargeDueAt ? daysFromDue(openChargeDueAt, params.now, params.timezone) : null,
         situation: resolveCustomerSituation({
           subscriptionStatus: (sub?.status as SubscriptionStatus | undefined) ?? null,
           openChargeDueAt,
@@ -191,6 +221,8 @@ export async function listCustomers(params: {
 
 export interface CustomerHeadDTO extends CustomerDTO {
   situation: CustomerSituation;
+  /** Mesmo offset da lista, para o badge da ficha mostrar o contador de dias. */
+  daysFromDue: number | null;
   supplierName: string | null;
   /** Mês/ano do início da assinatura mais antiga, para "cliente desde". */
   sinceAt: string | null;
@@ -206,6 +238,7 @@ export async function getCustomerHead(
   if (!row) return null;
 
   const sub = row.subscriptions[0];
+  const openChargeDueAt = row.charges[0]?.dueAt ?? null;
   const oldest = await db.subscription.findFirst({
     where: { customerId: id },
     orderBy: { startedAt: 'asc' },
@@ -216,9 +249,10 @@ export async function getCustomerHead(
     ...toDTO(row),
     supplierName: sub?.supplier?.name ?? null,
     sinceAt: oldest?.startedAt.toISOString() ?? null,
+    daysFromDue: openChargeDueAt ? daysFromDue(openChargeDueAt, now, timezone) : null,
     situation: resolveCustomerSituation({
       subscriptionStatus: (sub?.status as SubscriptionStatus | undefined) ?? null,
-      openChargeDueAt: row.charges[0]?.dueAt ?? null,
+      openChargeDueAt,
       now,
       timezone,
       anonymizedAt: row.anonymizedAt,
