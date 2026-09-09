@@ -2,11 +2,10 @@ import Link from 'next/link';
 import { Upload, Users } from 'lucide-react';
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
-import { listCustomers } from '@/features/customers/queries';
+import { countCustomerSituations, listCustomers } from '@/features/customers/queries';
 import { listActivePlansForSelect } from '@/features/plans/queries';
 import { listActiveSuppliersForSelect } from '@/features/suppliers/queries';
 import { getSettings } from '@/lib/settings';
-import { isCustomerSituationFilter } from '@/core/customer-situation';
 import { CustomerFilters } from '@/features/customers/components/customer-filters';
 import { CustomerTable } from '@/features/customers/components/customer-table';
 import { CustomerFichaDrawer } from '@/features/customers/components/ficha/customer-ficha-drawer';
@@ -19,34 +18,26 @@ import {
   softDeleteCustomerAction,
 } from './customer-actions';
 import { changePlanAction } from '@/features/subscriptions/actions';
-import { resolvePerPage } from '@/components/ui/data-table-paging';
+import { parseCustomersSearchParams, type CustomersSearchParams } from './search-params';
 
-export default async function CustomersPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ page?: string; perPage?: string; q?: string; situacao?: string; plano?: string; fornecedor?: string }>;
-}) {
-  const params = await searchParams;
-  const page = Math.max(1, Number(params.page) || 1);
-  const perPage = resolvePerPage(params.perPage);
-  const q = params.q ?? '';
-  const situacao = params.situacao ?? '';
-  const situation = isCustomerSituationFilter(situacao) ? situacao : undefined;
-  const planId = params.plano ?? '';
-  const supplierId = params.fornecedor ?? '';
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<CustomersSearchParams> }) {
+  const { page, perPage, q, situation, planId, supplierId } = parseCustomersSearchParams(await searchParams);
 
   const settings = await getSettings();
-  const [{ rows, total }, plans, suppliers] = await Promise.all([
-    listCustomers({
-      page,
-      perPage,
-      q: q || undefined,
-      situation,
-      planId: planId || undefined,
-      supplierId: supplierId || undefined,
-      now: new Date(),
-      timezone: settings.timezone,
-    }),
+  // `now` é um instante só para a lista e para os contadores: dois `new Date()`
+  // podem cair em dias diferentes na virada da meia-noite, e a barra passaria a
+  // prometer um número que a lista não entrega.
+  const filters = {
+    q: q || undefined,
+    situation,
+    planId: planId || undefined,
+    supplierId: supplierId || undefined,
+    now: new Date(),
+    timezone: settings.timezone,
+  };
+  const [{ rows, total }, counts, plans, suppliers] = await Promise.all([
+    listCustomers({ ...filters, page, perPage }),
+    countCustomerSituations(filters),
     listActivePlansForSelect(),
     listActiveSuppliersForSelect(),
   ]);
@@ -65,7 +56,15 @@ export default async function CustomersPage({
         </div>
       }
     >
-      <CustomerFilters q={q} situation={situation ?? ''} planId={planId} supplierId={supplierId} plans={plans} suppliers={suppliers} />
+      <CustomerFilters
+        q={q}
+        situation={situation ?? ''}
+        planId={planId}
+        supplierId={supplierId}
+        plans={plans}
+        suppliers={suppliers}
+        counts={counts}
+      />
       <CustomerTable
         rows={rows}
         total={total}

@@ -1,13 +1,12 @@
 import { db } from '@/lib/db';
-import { localDayStartUtc } from '@/core/dates';
 import { daysFromDue } from '@/core/dunning-rules';
-import { DUE_SOON_DAYS } from '@/core/due-date-buckets';
-import { phoneSearchDigits } from '@/core/phone';
 import {
+  CUSTOMER_TRIAGE_SITUATIONS,
   resolveCustomerSituation,
   type CustomerSituation,
-  type CustomerSituationFilter,
+  type CustomerTriageSituation,
 } from '@/core/customer-situation';
+import { listWhere, OPEN_CHARGE_STATUSES, type CustomerListFilters } from './list-filters';
 import type { Prisma, SubscriptionStatus } from '@prisma/client';
 import type { PerPage } from '@/components/ui/data-table-paging';
 
@@ -52,77 +51,6 @@ function toDTO(row: {
   };
 }
 
-/** Cobrança que ainda pesa no cliente. `PAID`/`CANCELLED` não entram. */
-const OPEN_CHARGE_STATUSES = ['OPEN', 'OVERDUE', 'PARTIALLY_PAID'] as const;
-
-function searchWhere(q: string): Prisma.CustomerWhereInput {
-  const digits = phoneSearchDigits(q);
-  const or: Prisma.CustomerWhereInput[] = [
-    { name: { contains: q, mode: 'insensitive' } },
-    { subscriptions: { some: { accessUsername: { contains: q, mode: 'insensitive' } } } },
-  ];
-  // O telefone é guardado em E.164 (`+5562998133401`); comparar `(62) 99813`
-  // cru contra ele nunca casa. Normaliza para dígitos antes de procurar.
-  if (digits) or.push({ phone: { contains: digits } });
-  return { OR: or };
-}
-
-/**
- * Recorte de cada chip, escrito como predicado de banco. Espelha
- * `resolveCustomerSituation` degrau a degrau: as fronteiras de dia saem de
- * `localDayStartUtc`, não de comparação em UTC, e o corte de "vence em breve"
- * é o mesmo `DUE_SOON_DAYS` que a situação usa — um número só entre a tela e
- * o filtro.
- *
- * Cada degrau leva um `none` do degrau anterior porque quem manda é a cobrança
- * em aberto **mais antiga**: sem isso, quem deve agosto e vence de novo em
- * setembro apareceria em dois chips ao mesmo tempo.
- */
-function situationWhere(
-  situation: CustomerSituationFilter,
-  now: Date,
-  timezone: string,
-): Prisma.CustomerWhereInput {
-  const todayStart = localDayStartUtc(now, timezone);
-  const tomorrowStart = localDayStartUtc(now, timezone, 1);
-  const soonEnd = localDayStartUtc(now, timezone, DUE_SOON_DAYS + 1);
-  const status = { in: [...OPEN_CHARGE_STATUSES] };
-  const activeSubscription: Prisma.CustomerWhereInput = {
-    subscriptions: { some: { status: 'ACTIVE' } },
-  };
-
-  // ANONYMIZED e DELETED não caem aqui — `listCustomers` já resolve os dois
-  // antes de chamar esta função (ver o comentário lá).
-  if (situation === 'NO_CHARGE') {
-    return { ...activeSubscription, charges: { none: { status } } };
-  }
-  if (situation === 'OVERDUE') {
-    return { ...activeSubscription, charges: { some: { status, dueAt: { lt: todayStart } } } };
-  }
-  if (situation === 'DUE_TODAY') {
-    return {
-      ...activeSubscription,
-      charges: {
-        some: { status, dueAt: { gte: todayStart, lt: tomorrowStart } },
-        none: { status, dueAt: { lt: todayStart } },
-      },
-    };
-  }
-  if (situation === 'DUE_SOON') {
-    return {
-      ...activeSubscription,
-      charges: {
-        some: { status, dueAt: { gte: tomorrowStart, lt: soonEnd } },
-        none: { status, dueAt: { lt: tomorrowStart } },
-      },
-    };
-  }
-  return {
-    ...activeSubscription,
-    charges: { some: { status, dueAt: { gte: soonEnd } }, none: { status, dueAt: { lt: soonEnd } } },
-  };
-}
-
 // `orderBy: { status: 'asc' }` usa a ordem de declaração do enum no Postgres
 // (ACTIVE, SUSPENDED, CANCELLED): a assinatura que decide a linha é a ativa; na
 // falta dela, a suspensa. `take: 1` em relação vira window function no SQL do
@@ -148,39 +76,10 @@ const LIST_INCLUDE = {
   },
 } satisfies Prisma.CustomerInclude;
 
-export async function listCustomers(params: {
-  page: number;
-  perPage: PerPage;
-  q?: string;
-  situation?: CustomerSituationFilter;
-  planId?: string;
-  supplierId?: string;
-  now: Date;
-  timezone: string;
-}): Promise<{ rows: CustomerListRowDTO[]; total: number }> {
-  const and: Prisma.CustomerWhereInput[] = [];
-  if (params.q) and.push(searchWhere(params.q));
-  if (params.planId) and.push({ subscriptions: { some: { planId: params.planId } } });
-  if (params.supplierId) and.push({ subscriptions: { some: { supplierId: params.supplierId } } });
-
-  // ANONYMIZED e DELETED não passam por `situationWhere`: aquela função
-  // pressupõe assinatura ativa em todo branch, e nenhum dos dois estados tem
-  // uma (anonimizar exige cancelar antes; remover não mexe na assinatura, mas
-  // não faz sentido cruzar com "vence hoje"/"em atraso" — o cliente já saiu do
-  // fluxo de cobrança do dia a dia). Os dois somem da lista por padrão; o chip
-  // exato é o único jeito de trazer de volta.
-  if (params.situation === 'ANONYMIZED') {
-    and.push({ anonymizedAt: { not: null } });
-  } else if (params.situation === 'DELETED') {
-    // Sem `anonymizedAt: null` aqui, um cliente removido e depois anonimizado
-    // apareceria nos dois chips — ANONYMIZED já ganha a exibição (ver
-    // `resolveCustomerSituation`), então some daqui pra não duplicar.
-    and.push({ deletedAt: { not: null }, anonymizedAt: null });
-  } else {
-    and.push({ anonymizedAt: null, deletedAt: null });
-    if (params.situation) and.push(situationWhere(params.situation, params.now, params.timezone));
-  }
-  const where: Prisma.CustomerWhereInput = and.length > 0 ? { AND: and } : {};
+export async function listCustomers(
+  params: CustomerListFilters & { page: number; perPage: PerPage },
+): Promise<{ rows: CustomerListRowDTO[]; total: number }> {
+  const where = listWhere(params);
 
   const [rows, total] = await Promise.all([
     db.customer.findMany({
@@ -217,6 +116,36 @@ export async function listCustomers(params: {
     }),
     total,
   };
+}
+
+export type CustomerSituationCounts = Record<CustomerTriageSituation | 'ALL', number>;
+
+/**
+ * Quantos clientes em cada degrau, para a barra de triagem. É o número que
+ * responde "tem alguém atrasado?" sem obrigar o operador a clicar chip por
+ * chip — a pergunta que ele faz toda vez que abre a tela.
+ *
+ * Conta com os mesmos filtros da lista (busca, plano, fornecedor), só variando
+ * a situação: contador que ignora o filtro em vigor mente. `ALL` é o total da
+ * lista sem chip de situação, não a soma dos degraus — cliente suspenso ou sem
+ * assinatura aparece na lista e em degrau nenhum.
+ *
+ * Cinco `count` em paralelo, todos cobertos pelo índice `(status, dueAt)` de
+ * `charges`. Na escala do projeto (até 1.000 assinantes) é mais barato que
+ * carregar as linhas para contar em memória.
+ */
+export async function countCustomerSituations(params: CustomerListFilters): Promise<CustomerSituationCounts> {
+  const [all, ...ladder] = await Promise.all([
+    db.customer.count({ where: listWhere({ ...params, situation: undefined }) }),
+    ...CUSTOMER_TRIAGE_SITUATIONS.map((situation) =>
+      db.customer.count({ where: listWhere({ ...params, situation }) }),
+    ),
+  ]);
+
+  return CUSTOMER_TRIAGE_SITUATIONS.reduce(
+    (acc, situation, index) => ({ ...acc, [situation]: ladder[index] }),
+    { ALL: all } as CustomerSituationCounts,
+  );
 }
 
 export interface CustomerHeadDTO extends CustomerDTO {

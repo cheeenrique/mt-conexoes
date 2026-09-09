@@ -59,6 +59,19 @@ export const CUSTOMER_SITUATION_FILTERS = [
 
 export type CustomerSituationFilter = (typeof CUSTOMER_SITUATION_FILTERS)[number];
 
+/**
+ * A escada, na ordem em que a barra de triagem a mostra. Separada dos demais
+ * chips porque é o recorte que o operador olha todo dia — "quem preciso cobrar
+ * hoje" — enquanto `NO_CHARGE`, `ANONYMIZED` e `DELETED` são administrativos e
+ * moram no select "Outros".
+ */
+export const CUSTOMER_TRIAGE_SITUATIONS = ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE'] as const;
+
+export type CustomerTriageSituation = (typeof CUSTOMER_TRIAGE_SITUATIONS)[number];
+
+/** Os chips que sobram: fora da triagem diária, escondidos atrás de um select. */
+export const CUSTOMER_OTHER_FILTERS = ['NO_CHARGE', 'ANONYMIZED', 'DELETED'] as const;
+
 export function isCustomerSituationFilter(value: string): value is CustomerSituationFilter {
   return (CUSTOMER_SITUATION_FILTERS as readonly string[]).includes(value);
 }

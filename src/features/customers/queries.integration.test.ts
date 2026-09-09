@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
-import { listCustomers } from './queries';
+import { countCustomerSituations, listCustomers } from './queries';
 
 const TZ = 'America/Sao_Paulo';
 const NOW = new Date('2026-08-22T15:00:00Z'); // 12:00 de 22/08 em São Paulo
@@ -293,5 +293,35 @@ describe('listCustomers — filtro por plano e fornecedor', () => {
     await db.customer.deleteMany({ where: { id: { in: [comPlano.id, semPlano.id] } } });
     await db.plan.delete({ where: { id: plan.id } });
     await db.supplier.delete({ where: { id: supplier.id } });
+  });
+});
+
+describe('countCustomerSituations — números da barra de triagem', () => {
+  it('conta cada degrau, e `ALL` é o total da lista, não a soma dos degraus', async () => {
+    const counts = await countCustomerSituations({ q: TAG, now: NOW, timezone: TZ });
+
+    expect(counts).toMatchObject({ UP_TO_DATE: 2, DUE_SOON: 1, DUE_TODAY: 1, OVERDUE: 2 });
+    // Os degraus somam 6; o suspenso, o sem assinatura e os dois sem cobrança
+    // entram no total e em degrau nenhum. `ALL` é o que a lista mostra sem chip.
+    expect(counts.ALL).toBe(10);
+  });
+
+  it('cada contador bate com o total da lista naquele chip — os dois caminhos não podem divergir', async () => {
+    const counts = await countCustomerSituations({ q: TAG, now: NOW, timezone: TZ });
+
+    for (const situation of ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE'] as const) {
+      const { total } = await listFixture({ situation });
+      expect(total, situation).toBe(counts[situation]);
+    }
+    expect((await listFixture()).total).toBe(counts.ALL);
+  });
+
+  // Contador que ignora o filtro em vigor promete 2 em atraso e a lista mostra 1.
+  it('respeita os outros filtros: com a busca estreitada, os números encolhem junto', async () => {
+    const counts = await countCustomerSituations({ q: `${TAG} Atraso`, now: NOW, timezone: TZ });
+
+    expect(counts.OVERDUE).toBe(2); // Atraso e AtrasoEHoje
+    expect(counts.UP_TO_DATE).toBe(0);
+    expect(counts.ALL).toBe(2);
   });
 });
