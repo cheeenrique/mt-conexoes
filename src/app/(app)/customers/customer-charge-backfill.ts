@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { buildImportedFirstCharge } from '@/features/subscriptions/service';
+import { buildImportedFirstCharge } from '@/features/subscriptions/imported-charge';
 
 /**
  * Abre a primeira cobrança das assinaturas importadas antes da correção — as
