@@ -26,6 +26,7 @@ const charge: ChargeDTO = {
   issuedAt: '2026-08-01T03:00:00.000Z',
   subscriptionPriceCents: '10000',
   subscriptionCostCents: '3000',
+  subscriptionCycle: 'MONTHLY',
   payments: [],
 };
 
@@ -65,6 +66,28 @@ describe('RegisterPaymentDialog', () => {
 
     expect(await screen.findByText('A data do pagamento não pode ser no futuro.')).toBeInTheDocument();
     expect(registerPaymentAction).not.toHaveBeenCalled();
+  });
+
+  /**
+   * O relato de 11/09/2026: "renovei ele e está dando que está em atraso · 1d".
+   * O operador registrou hoje um pagamento feito semanas atrás; o ciclo conta do
+   * dia do pagamento e o próximo vencimento nasceu no passado. A regra está
+   * certa — o que faltava era ele ver isso antes de confirmar.
+   */
+  it('avisa, antes de confirmar, quando o ciclo já nasce vencido', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+
+    await user.clear(dateField());
+    await user.type(dateField(), '10082020');
+
+    expect(await screen.findByText(/já vencido há/)).toBeInTheDocument();
+  });
+
+  it('data de hoje mostra o próximo vencimento sem alarme', async () => {
+    renderDialog();
+
+    expect(screen.getByText(/^Próximo vencimento: \d{2}\/\d{2}\/\d{4}\.$/)).toBeInTheDocument();
   });
 
   it('data que não existe no calendário é recusada antes do envio', async () => {

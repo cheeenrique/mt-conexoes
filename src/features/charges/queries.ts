@@ -29,6 +29,8 @@ export interface ChargeDTO {
    *  ficou com o valor velho", que a tela oferece corrigir. */
   subscriptionPriceCents: string;
   subscriptionCostCents: string;
+  /** Ciclo da assinatura — a prévia do próximo vencimento no diálogo de pagamento. */
+  subscriptionCycle: string;
   payments: PaymentDTO[];
 }
 
@@ -36,7 +38,7 @@ function toChargeDTO(row: {
   id: string; customerId: string; principalCents: bigint; discountCents: bigint; costCents: bigint;
   status: string; dueAt: Date; issuedAt: Date;
   customer: { name: string; phone: string | null }; supplier: { name: string } | null;
-  subscription: { priceCents: bigint; costCents: bigint };
+  subscription: { priceCents: bigint; costCents: bigint; cycle: string };
   payments: { id: string; amountCents: bigint; method: string; paidAt: Date; note: string | null }[];
 }): ChargeDTO {
   const netCents = row.principalCents - row.discountCents;
@@ -56,6 +58,7 @@ function toChargeDTO(row: {
     issuedAt: row.issuedAt.toISOString(),
     subscriptionPriceCents: row.subscription.priceCents.toString(),
     subscriptionCostCents: row.subscription.costCents.toString(),
+    subscriptionCycle: row.subscription.cycle,
     payments: row.payments.map((p) => ({
       id: p.id,
       amountCents: p.amountCents.toString(),
@@ -69,7 +72,7 @@ function toChargeDTO(row: {
 const CHARGE_INCLUDE = {
   customer: { select: { name: true, phone: true } },
   supplier: { select: { name: true } },
-  subscription: { select: { priceCents: true, costCents: true } },
+  subscription: { select: { priceCents: true, costCents: true, cycle: true } },
   payments: { select: { id: true, amountCents: true, method: true, paidAt: true, note: true } },
 } as const;
 

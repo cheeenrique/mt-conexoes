@@ -12,6 +12,7 @@ import { CurrencyInput } from '@/components/ui/currency-input';
 import { DateInput } from '@/components/ui/date-input';
 import { Select } from '@/components/ui/select';
 import { localDateOnly } from '@/core/dates';
+import { NextDueHint } from './next-due-hint';
 import { formatLocalDate } from '@/lib/format';
 import { toastError } from '@/lib/toast';
 import { registerPaymentSchema } from '../schema';
@@ -46,11 +47,14 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(registerPaymentSchema),
     defaultValues: { amountCents: remainingCents, method: 'PIX', paidAt: todayIso, note: '', idempotencyKey },
   });
+
+  const paidAt = watch('paidAt') ?? '';
 
   async function onSubmit(values: FormValues) {
     // Teto de hoje: comparação de ISO é lexicográfica e basta. O servidor
@@ -99,7 +103,7 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
           {errors.paidAt ? (
             <p className="mt-1 text-sm text-danger">{errors.paidAt.message}</p>
           ) : (
-            <p className="text-xs text-foreground-muted">Dia em que o cliente pagou. O próximo vencimento conta a partir dele.</p>
+            <NextDueHint paidAt={paidAt} cycle={charge.subscriptionCycle} timezone={timezone} />
           )}
         </div>
         <div className="space-y-1.5">

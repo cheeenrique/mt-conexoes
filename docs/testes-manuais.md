@@ -89,6 +89,8 @@ Legenda: **P** pré-condição · **A** ação · **E** esperado.
 | B15 | Atualizar valor pelo plano | P: trocar o plano de um cliente com cobrança em aberto sem pagamento → E: botão aparece **só** enquanto os valores divergem; confirmação mostra "de X para Y"; depois de aplicado o botão some |
 | B16 | Atualizar valor com pagamento registrado | E: o botão não aparece — reescrever documento com dinheiro é proibido |
 | B17 | Cancelar exige motivo | A: cancelar cobrança → E: confirmar fica desabilitado até digitar o motivo; o motivo grava em `charges.cancelReason` |
+| B18 | Prévia do próximo vencimento | A: abrir "Registrar pagamento" → E: rodapé do campo Data mostra o vencimento que o pagamento vai abrir, recalculado a cada tecla |
+| B19 | Aviso de ciclo que nasce vencido | A: pôr uma data de semanas atrás → E: aviso em âmbar "já vencido há N dias, porque o ciclo conta do dia do pagamento" **antes** de confirmar |
 
 ## 6. Régua (`/dunning`)
 
@@ -560,6 +562,27 @@ tem nenhum dos três estados. Sessão por `GET /api/dev-login` (ver `src/lib/dev
 | **B15** | Cobrança R$ 35,00 com plano em R$ 19,90 → botão apareceu, confirmação disse "de R$ 35,00 para R$ 19,90", aplicou e o botão sumiu |
 | **B17** | Confirmar desabilitado até digitar o motivo; cancelou e a linha virou `Cancelada` |
 | **—** | Coluna Vencimento renderizou `18/06/2026` — DD/MM/AAAA. O relato de `06/18/2026` não se reproduz neste código (travado por teste em `lib/format.test.ts` e `customer-table.test.tsx`, ambos com dia > 12, que é o único que denuncia a inversão) |
+
+## Segunda passada — 11/09/2026, os quatro relatos do WhatsApp ponta a ponta
+
+Base semeada com os quatro clientes exatamente como o operador descreveu
+(`ZRelato Noventa/Yanka/Cicero/PH`), cada um renovado pela tela:
+
+| Cliente | Relato | Antes | Depois de renovar |
+|---|---|---|---|
+| Noventa | "tava em 90, pagou só 30, aparece devendo 60 e vencido, mas ativou só o mensal" | `Em atraso · 32d`, trimestral R$ 90 com R$ 30 pago | trocar plano → mensal; baixa do restante → cobrança `R$ 30,00 / Paga` e **próximo ciclo em R$ 30,00**, venc. 05/10 |
+| Yanka | "renovado, mas está com o status suspensa" | `Suspenso · 34d`, venc. 08/08 | `Em dia`, venc. 11/10 |
+| Cicero | "renovei e está com a situação suspensa" | `Suspenso · 85d`, venc. 18/06 | `Em dia`, venc. 11/10 |
+| PH | "renovei ele e está dando que está em atraso · 1d" | `Em atraso · 32d`, venc. 10/08 | `Em atraso · 1d`, venc. 10/09 — **não é bug** |
+
+Contadores da triagem: `Suspenso` 2 → 0, `Em atraso` 2 → 1 (só o PH), `Em dia` 0 → 3.
+
+⚠️ **O caso do PH é a regra funcionando.** O pagamento foi registrado com a data real
+(10/08); o ciclo mensal a partir dali vence 10/09, que foi ontem. O que faltava era o
+operador ver isso **antes** de confirmar — daí B18/B19, verificados na tela na mesma
+passada: com a data de hoje o rodapé diz "Próximo vencimento: 11/10/2026."; com 10/08
+vira, em âmbar, "Próximo vencimento: 10/09/2026 — já vencido há 1 dia, porque o ciclo
+conta do dia do pagamento."
 
 ## Não rodado nesta passada
 
