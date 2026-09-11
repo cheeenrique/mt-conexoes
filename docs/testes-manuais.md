@@ -49,6 +49,12 @@ Legenda: **P** pré-condição · **A** ação · **E** esperado.
 | C8 | Cliente sem telefone | E: ficha sinaliza que não recebe mensagem; não quebra |
 | C9 | Opt-out | E: ficha mostra opt-out; cliente não entra em envio nenhum (ver M4) |
 | C10 | Voltar da ficha | A: fechar gaveta → E: volta pra lista mantendo filtro |
+| C11 | Desfazer opt-out | P: cliente com `optedOut` → E: ficha mostra desde quando e o motivo; "Voltar a receber" pede confirmação e o aviso some |
+| C12 | Restaurar cliente removido | P: cliente removido → A: chip "Removido" → botão restaurar → E: volta pra lista, contador "Todos" sobe |
+| C13 | Suspenso é degrau da escada | P: assinatura `SUSPENDED` com cobrança vencida → E: chip "Suspenso" com contador próprio; badge `Suspenso · Nd`; não aparece em nenhum outro degrau |
+| C14 | Renovar religa o cliente | P: C13 → A: registrar pagamento total → E: badge vira `Em dia`, vencimento = pagamento + ciclo, contador "Suspenso" cai |
+| C15 | Vencimento editado move a cobrança | A: ficha → mudar "Próximo vencimento" → salvar → E: a coluna Vencimento da **lista** muda junto, badge recalcula, mensagem `PENDING` da cobrança vira `CANCELLED` com motivo `vencimento alterado na ficha` |
+| C16 | Vencimento editado com pagamento registrado | P: cobrança com pagamento parcial → A: mudar vencimento → E: a cobrança **não** se move (documento com dinheiro é imutável) |
 
 ## 4. Assinaturas (dentro de `/customers/[id]`)
 
@@ -78,6 +84,11 @@ Legenda: **P** pré-condição · **A** ação · **E** esperado.
 | B10 | Valor 1 centavo e valor com dízima | E: soma bate; sem `float` aparecendo como `12.340000000001` |
 | B11 | Cobrança vencida | P: rodar cron `charges-mark-overdue` → E: `OPEN` vencida vira `OVERDUE` |
 | B12 | Rodar o cron duas vezes | E: mesmo resultado, sem duplicata (idempotência) |
+| B13 | Dar baixa no restante | P: cobrança paga em parte → A: botão `%` → E: confirmação mostra o valor que vira desconto; cobrança fecha `PAGA` pelo valor recebido e o ciclo seguinte abre contado do **último** pagamento |
+| B14 | Baixa só onde o caso existe | E: o botão some em cobrança sem pagamento (ali o caminho é cancelar) e em cobrança já paga |
+| B15 | Atualizar valor pelo plano | P: trocar o plano de um cliente com cobrança em aberto sem pagamento → E: botão aparece **só** enquanto os valores divergem; confirmação mostra "de X para Y"; depois de aplicado o botão some |
+| B16 | Atualizar valor com pagamento registrado | E: o botão não aparece — reescrever documento com dinheiro é proibido |
+| B17 | Cancelar exige motivo | A: cancelar cobrança → E: confirmar fica desabilitado até digitar o motivo; o motivo grava em `charges.cancelReason` |
 
 ## 6. Régua (`/dunning`)
 
@@ -505,8 +516,12 @@ valendo mesmo com o canal caído") e tem teste de integração dedicado
 ## Ainda sem cobertura
 
 M13 (ação em massa > 100), N3–N6 (canais, incluindo pareamento por QR real), R13
-(ativar sem descartar revisão, com retroativos de verdade), C1/C2/C4/C7/C8/C9, S4–S7,
-B7–B10, T2 na virada de ano, e a anonimização — que não existe.
+(ativar sem descartar revisão, com retroativos de verdade), C1/C2/C4/C7/C8, S4–S7,
+B7, B9, B10, T2 na virada de ano, e a anonimização — que não existe.
+
+C9 (opt-out na ficha) e B8 (cancelar cobrança) saíram desta lista em 11/09/2026: os dois
+nunca tinham passado porque a **tela não tinha a ação** — o opt-out não aparecia em lugar
+nenhum e `cancelChargeAction` era código sem botão. Ver a passada de 11/09 no fim do arquivo.
 
 ## Sujeira e restauração
 
@@ -517,3 +532,43 @@ Deixado: `Ana Beatriz Nogueira Ramalho`, fornecedor `Star Play Servidor`, plano
 Restaurado: régua `Cobrança suave (teste)` e seus passos **apagados**; `Régua padrão` de
 volta a padrão; `optedOut` de `Demo · Vence Hoje` desfeito; limite de margem em 30%; senha
 do painel em `devlocal123`.
+
+---
+
+# Resultado da passada de 11/09/2026 — **parcial e dirigida**
+
+⚠️ **Não foi a bateria.** Dos 123 casos do roteiro, esta passada exercitou **10**, escolhidos
+pelos três bugs que o operador relatou por WhatsApp e pelas ações novas que a correção trouxe.
+Tudo o mais do roteiro continua com o status da 1ª passada (24/08) — ver a seção acima antes
+de afirmar que o painel foi verificado por olho.
+
+Ambiente: `localhost:3000`, base de dev (5442), com três clientes semeados à mão imitando os
+casos relatados (`ZTeste Yanka`, `ZTeste Cicero`, `ZTeste Noventa`) — não `seed:demo`, que não
+tem nenhum dos três estados. Sessão por `GET /api/dev-login` (ver `src/lib/dev-login.ts`).
+
+## Passou
+
+| # | O que foi observado na tela |
+|---|---|
+| **C14** | `Suspenso · 85d`, venc. 18/06 → registrar pagamento → `Em dia`, venc. 11/10; contador "Suspenso" 1 → 0 |
+| **C15** | Vencimento 18/06 → 18/12 na ficha: a **lista** passou a mostrar 18/12/2026, badge `Em atraso · 85d` → `Em dia`, contador "Em atraso" 2 → 1, e a mensagem pendente virou `Cancelada: vencimento alterado na ficha` |
+| **C13** | Degrau "Suspenso" na barra de triagem com contador próprio; badge `Suspenso · 85d` |
+| **C11** | Ficha mostrou "NÃO RECEBE COBRANÇA" com data (02/09/2026) e motivo (`Palavra-chave: sair`); "Voltar a receber" confirmou e o aviso sumiu |
+| **C12** | Chip "Removido" trouxe o cliente com botão de restaurar no lugar da lixeira; restaurado, "Todos" 2 → 3 |
+| **B13** | R$ 90,00 com R$ 30,00 pago → baixa → cobrança `R$ 30,00 / Paga` + próxima aberta em 05/10 |
+| **B14** | Botão `%` presente só na linha com pagamento parcial, em toda a lista de Cobranças |
+| **B15** | Cobrança R$ 35,00 com plano em R$ 19,90 → botão apareceu, confirmação disse "de R$ 35,00 para R$ 19,90", aplicou e o botão sumiu |
+| **B17** | Confirmar desabilitado até digitar o motivo; cancelou e a linha virou `Cancelada` |
+| **—** | Coluna Vencimento renderizou `18/06/2026` — DD/MM/AAAA. O relato de `06/18/2026` não se reproduz neste código (travado por teste em `lib/format.test.ts` e `customer-table.test.tsx`, ambos com dia > 12, que é o único que denuncia a inversão) |
+
+## Não rodado nesta passada
+
+Todo o resto do roteiro: Auth, Dashboard, Assinaturas, Régua, Mensagens, Canais, Leads,
+Planos, Fornecedores, Relatórios, Ajustes e Transversais. Dos casos novos, **B16 e C16** —
+as duas guardas de "cobrança com pagamento não se mexe" — têm teste de integração dedicado
+mas **não** foram observadas na tela.
+
+## Sujeira
+
+Nenhuma: os três clientes semeados, o fornecedor `ZTeste Fornecedor` e tudo o que penduraram
+foram apagados no fim da passada.
