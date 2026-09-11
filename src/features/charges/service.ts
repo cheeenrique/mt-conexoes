@@ -1,8 +1,7 @@
-import { TZDate } from '@date-fns/tz';
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { deriveChargeStatus } from '@/core/billing';
-import { nextDueDate, localDateOnly } from '@/core/dates';
+import { nextDueDate, localDateOnly, localDayStartFromIso } from '@/core/dates';
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
 import type { registerPaymentSchema } from './schema';
@@ -21,26 +20,22 @@ export class PaymentExceedsBalanceError extends DomainError {
 export class ChargeHasPaymentError extends DomainError {
   constructor(cause?: unknown) { super('Cobrança com pagamento registrado não pode ser cancelada.', 'CHARGE_HAS_PAYMENT', { cause }); }
 }
-
-// 'YYYY-MM-DD' vira meia-noite local convertida para UTC — não passar pelo
-// meio-dia UTC seguido de localDateOnly: nesse caminho, meia-noite UTC do
-// dia informado já cai no dia anterior em fusos negativos (America/Sao_Paulo,
-// UTC-3), e localDateOnly reconfirma esse dia errado. O resultado é o dia do
-// mês usado por nextDueDate saindo um dia adiantado do que o operador digitou
-// — exatamente o tipo de desvio que o clamp de fim de mês do CLAUDE.md cobre.
-function paidAtLocal(dateStr: string, timezone: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  if (!year || !month || !day || Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
-    throw new Error('Data do pagamento em formato inválido.');
-  }
-  const local = new TZDate(year, month - 1, day, 0, 0, 0, 0, timezone);
-  return new Date(local.getTime());
+export class PaymentDateInFutureError extends DomainError {
+  constructor(cause?: unknown) { super('A data do pagamento não pode ser no futuro.', 'PAYMENT_DATE_IN_FUTURE', { cause }); }
 }
 
 export async function registerPayment(chargeId: string, input: RegisterPaymentInput) {
   const settings = await getSettings();
   const amountCents = BigInt(input.amountCents);
-  const paidAt = paidAtLocal(input.paidAt, settings.timezone);
+  const now = new Date();
+  const paidAt = localDayStartFromIso(input.paidAt, settings.timezone);
+
+  // O operador registra pagamento com atraso o tempo todo — a data é dele. O
+  // que não existe é dinheiro que ainda não entrou: data à frente de hoje no
+  // fuso do negócio adiantaria o vencimento do ciclo seguinte.
+  if (localDateOnly(paidAt, settings.timezone).getTime() > localDateOnly(now, settings.timezone).getTime()) {
+    throw new PaymentDateInFutureError();
+  }
 
   return db.$transaction(async (tx) => {
     const charge = await tx.charge.findUnique({ where: { id: chargeId }, include: { payments: true, subscription: true } });
@@ -66,7 +61,7 @@ export async function registerPayment(chargeId: string, input: RegisterPaymentIn
     }
 
     const newPaidCents = paidSoFar + amountCents;
-    const newStatus = deriveChargeStatus({ netCents, paidCents: newPaidCents, dueAt: charge.dueAt, now: new Date() });
+    const newStatus = deriveChargeStatus({ netCents, paidCents: newPaidCents, dueAt: charge.dueAt, now });
 
     await tx.charge.update({ where: { id: chargeId }, data: { status: newStatus, paidAt: newStatus === 'PAID' ? paidAt : charge.paidAt } });
 

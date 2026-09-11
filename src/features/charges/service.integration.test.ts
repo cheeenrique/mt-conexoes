@@ -7,6 +7,7 @@ import {
   ChargeAlreadyPaidError,
   ChargeHasPaymentError,
   ChargeNotFoundError,
+  PaymentDateInFutureError,
   PaymentExceedsBalanceError,
 } from './service';
 import type { z } from 'zod';
@@ -81,6 +82,13 @@ describe('registerPaymentSchema', () => {
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.message).toBe('Valor deve ser maior que zero.');
   });
+
+  it('recusa data que o formato aceita mas o calendário não tem', () => {
+    const result = registerPaymentSchema.safeParse(paymentInput({ paidAt: '2026-02-31' }));
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe('Data do pagamento inválida.');
+  });
 });
 
 describe('registerPayment', () => {
@@ -104,6 +112,32 @@ describe('registerPayment', () => {
 
     const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
     expect(subscription.nextDueAt.toISOString()).toBe('2026-10-01T02:59:59.999Z');
+  });
+
+  it('pagamento registrado com atraso conta o ciclo a partir do dia em que o cliente pagou', async () => {
+    // O cliente pagou 01/09 e o operador só registrou dias depois: o próximo
+    // vencimento é 01/10, contado do dia do pagamento, nunca do dia do registro.
+    const result = await registerPayment(chargeId, paymentInput({ amountCents: '10000', paidAt: '2026-09-01' }));
+
+    expect(result.status).toBe('PAID');
+
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: chargeId } });
+    expect(charge.paidAt?.toISOString()).toBe('2026-09-01T03:00:00.000Z');
+
+    const nextCharge = await db.charge.findFirstOrThrow({ where: { subscriptionId, id: { not: chargeId } } });
+    expect(nextCharge.dueAt.toISOString()).toBe('2026-10-02T02:59:59.999Z');
+
+    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+    expect(subscription.nextDueAt.toISOString()).toBe('2026-10-02T02:59:59.999Z');
+  });
+
+  it('data de pagamento no futuro é recusada e não grava Payment', async () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    await expect(registerPayment(chargeId, paymentInput({ paidAt: tomorrow }))).rejects.toThrow(PaymentDateInFutureError);
+
+    const payments = await db.payment.findMany({ where: { chargeId } });
+    expect(payments).toHaveLength(0);
   });
 
   it('pagamento parcial marca PARTIALLY_PAID e não emite próxima Charge', async () => {

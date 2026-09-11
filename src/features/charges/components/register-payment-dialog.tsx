@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { CurrencyInput } from '@/components/ui/currency-input';
+import { DateInput } from '@/components/ui/date-input';
 import { Select } from '@/components/ui/select';
 import { localDateOnly } from '@/core/dates';
 import { formatLocalDate } from '@/lib/format';
@@ -24,7 +25,7 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-/** Data local de hoje, no fuso do negócio — trava do campo "Data" do diálogo. */
+/** Data local de hoje, no fuso do negócio — valor inicial e teto do campo "Data". */
 function todayLocalIso(timezone: string): string {
   const local = localDateOnly(new Date(), timezone);
   return `${local.getUTCFullYear()}-${pad(local.getUTCMonth() + 1)}-${pad(local.getUTCDate())}`;
@@ -44,6 +45,7 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
     control,
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(registerPaymentSchema),
@@ -51,6 +53,14 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
   });
 
   async function onSubmit(values: FormValues) {
+    // Teto de hoje: comparação de ISO é lexicográfica e basta. O servidor
+    // repete a checagem no fuso do negócio — aqui é só para o erro aparecer
+    // no campo, não num toast.
+    if (values.paidAt > todayIso) {
+      setError('paidAt', { message: 'A data do pagamento não pode ser no futuro.' });
+      return;
+    }
+
     const result = await registerPaymentAction(charge.id, charge.customerId, values);
     if ('error' in result) {
       toastError(result.error);
@@ -69,7 +79,6 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
         </p>
       </DialogHeader>
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-        <input type="hidden" {...register('paidAt')} />
         <input type="hidden" {...register('idempotencyKey')} />
         <div className="space-y-1.5">
           <Label htmlFor="amountCents">Valor</Label>
@@ -81,13 +90,17 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
           {errors.amountCents && <p className="mt-1 text-sm text-danger">{errors.amountCents.message}</p>}
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="paidAtDisplay">Data</Label>
-          <p
-            id="paidAtDisplay"
-            className="flex h-11 items-center rounded-sm border border-border bg-surface-elevated px-3 font-mono text-sm tabular-mono text-foreground-muted"
-          >
-            {todayIso.split('-').reverse().join('/')}
-          </p>
+          <Label htmlFor="paidAt">Data</Label>
+          <Controller
+            control={control}
+            name="paidAt"
+            render={({ field }) => <DateInput id="paidAt" value={field.value ?? ''} onValueChange={field.onChange} />}
+          />
+          {errors.paidAt ? (
+            <p className="mt-1 text-sm text-danger">{errors.paidAt.message}</p>
+          ) : (
+            <p className="text-xs text-foreground-muted">Dia em que o cliente pagou. O próximo vencimento conta a partir dele.</p>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="method">Forma</Label>

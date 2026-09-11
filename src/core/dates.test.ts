@@ -4,8 +4,10 @@ import {
   defaultDateRangeLocal,
   endOfLocalDay,
   firstDueDate,
+  isValidCalendarDate,
   isWithinLocalHourRange,
   localDateOnly,
+  localDayStartFromIso,
   localDayBoundsUtc,
   monthBoundsUtc,
   nextDueDate,
@@ -296,5 +298,41 @@ describe('periodStartForDue', () => {
 
   it('atravessa a virada de ano', () => {
     expect(dayOf(periodStartForDue({ dueAt: dueLocal(2026, 1, 15), cycle: 'MONTHLY', timezone: TZ }))).toBe('2025-12-15');
+  });
+});
+
+describe('isValidCalendarDate', () => {
+  it('aceita data que existe', () => {
+    expect(isValidCalendarDate('2026-09-10')).toBe(true);
+  });
+
+  it('recusa 31 de fevereiro, que a regex de formato deixa passar', () => {
+    expect(isValidCalendarDate('2026-02-31')).toBe(false);
+  });
+
+  it('aceita 29/02 em ano bissexto e recusa em ano comum', () => {
+    expect(isValidCalendarDate('2028-02-29')).toBe(true);
+    expect(isValidCalendarDate('2026-02-29')).toBe(false);
+  });
+
+  it('recusa mês 13, dia 0 e formato fora do padrão', () => {
+    expect(isValidCalendarDate('2026-13-01')).toBe(false);
+    expect(isValidCalendarDate('2026-09-00')).toBe(false);
+    expect(isValidCalendarDate('10/09/2026')).toBe(false);
+  });
+});
+
+describe('localDayStartFromIso', () => {
+  it('vira 00:00 local do dia digitado, não meia-noite UTC', () => {
+    expect(localDayStartFromIso('2026-09-10', TZ).toISOString()).toBe('2026-09-10T03:00:00.000Z');
+  });
+
+  it('o dia do mês sobrevive à ida e volta pelo fuso', () => {
+    const paidAt = localDayStartFromIso('2026-09-10', TZ);
+    expect(localDateOnly(paidAt, TZ).toISOString()).toBe('2026-09-10T00:00:00.000Z');
+  });
+
+  it('data inexistente no calendário estoura em vez de rolar para o mês seguinte', () => {
+    expect(() => localDayStartFromIso('2026-02-31', TZ)).toThrow(RangeError);
   });
 });

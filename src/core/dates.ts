@@ -144,3 +144,34 @@ export function defaultDateRangeLocal(now: Date, timezone: string, days = 30): {
     to: isoDateString(today.getFullYear(), today.getMonth(), today.getDate()),
   };
 }
+
+/**
+ * `YYYY-MM-DD` que existe no calendário. A regex sozinha aceita `2026-02-31`,
+ * e `TZDate` com dia 31 em fevereiro rola silenciosamente para março — o
+ * pagamento entraria com data três dias adiante da digitada, e o vencimento
+ * do ciclo seguinte junto.
+ */
+export function isValidCalendarDate(dateStr: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+  return day <= daysInMonth(year, month - 1);
+}
+
+/**
+ * `YYYY-MM-DD` local vira o instante de 00:00 daquele dia no fuso do negócio.
+ *
+ * Não passar pelo meio-dia UTC seguido de `localDateOnly`: nesse caminho,
+ * meia-noite UTC do dia informado já cai no dia anterior em fusos negativos
+ * (America/Sao_Paulo, UTC-3), e `localDateOnly` reconfirma o dia errado. O
+ * resultado seria o dia do mês usado por `nextDueDate` saindo um dia adiantado
+ * do que o operador digitou.
+ */
+export function localDayStartFromIso(dateStr: string, timezone: string): Date {
+  if (!isValidCalendarDate(dateStr)) throw new RangeError(`Data local inválida: ${dateStr}`);
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return startOfLocalDay(year, month - 1, day, timezone);
+}
