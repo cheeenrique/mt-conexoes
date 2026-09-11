@@ -288,6 +288,10 @@ describe('evaluateDunningRule', () => {
 
     const refreshedSub = await db.subscription.findUniqueOrThrow({ where: { id: subscription.id } });
     expect(refreshedSub.status).toBe('SUSPENDED');
+    // `suspendedAt` é o "desde quando" do relatório de suspensas e da reativação.
+    // A suspensão manual (`statusPatch`) sempre datou; a da régua não datava,
+    // então o relatório mostrava suspensa sem data de corte.
+    expect(refreshedSub.suspendedAt?.toISOString()).toBe('2026-08-10T15:00:00.000Z');
     const messages = await db.message.findMany({ where: { customerId: customer.id } });
     expect(messages).toHaveLength(0);
   });

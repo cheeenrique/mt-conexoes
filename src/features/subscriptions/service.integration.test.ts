@@ -6,6 +6,7 @@ import {
   createSubscription,
   revealCredential,
   changeSubscriptionPlan,
+  updateSubscription,
   SubscriptionNotFoundError,
   SubscriptionCancelledError,
   PlanNotFoundError,
@@ -276,5 +277,122 @@ describe('changeSubscriptionPlan — troca rápida de plano na tabela de Cliente
     await db.subscription.delete({ where: { id: subscription.id } });
     await db.plan.delete({ where: { id: plan.id } });
     await db.customer.delete({ where: { id: customer.id } });
+  });
+});
+
+/**
+ * Relatado em 11/09/2026: o operador "renova" o cliente mudando o Vencimento na
+ * ficha, salva, e a lista de Clientes segue mostrando a data velha e o badge
+ * `Em atraso`. A ficha lê `subscription.nextDueAt`; a lista, a régua e a escada
+ * de vencimento leem `charge.dueAt` da cobrança em aberto — e `patchSubscription`
+ * mexia só na primeira. Duas datas para o mesmo conceito na mesma gaveta.
+ *
+ * A cobrança em aberto **sem pagamento** é a projeção do ciclo corrente: ela
+ * segue o vencimento da assinatura. Com pagamento registrado ela é documento
+ * financeiro e não se toca (CLAUDE.md §Dinheiro).
+ */
+describe('updateSubscription — vencimento editado na ficha', () => {
+  let customerId: string;
+  let editedSubscriptionId: string;
+
+  function input(overrides: Partial<z.infer<typeof subscriptionSchema>> = {}) {
+    return {
+      priceCents: '9000',
+      costCents: '3000',
+      cycle: 'MONTHLY' as const,
+      screens: 1,
+      ...overrides,
+    };
+  }
+
+  async function openCharge() {
+    return db.charge.findFirstOrThrow({ where: { subscriptionId: editedSubscriptionId, status: { notIn: ['PAID', 'CANCELLED'] } } });
+  }
+
+  beforeEach(async () => {
+    const customer = await db.customer.create({ data: { name: `Cliente Renovado ${randomUUID()}` } });
+    customerId = customer.id;
+    const subscription = await db.subscription.create({
+      data: { customerId, priceCents: 9000n, costCents: 3000n, cycle: 'MONTHLY', nextDueAt: new Date('2026-06-19T02:59:59.999Z') },
+    });
+    editedSubscriptionId = subscription.id;
+    await db.charge.create({
+      data: {
+        subscriptionId: editedSubscriptionId,
+        customerId,
+        principalCents: 9000n,
+        discountCents: 0n,
+        costCents: 3000n,
+        periodStart: new Date('2026-05-18T00:00:00.000Z'),
+        periodEnd: new Date('2026-06-18T00:00:00.000Z'),
+        dueAt: new Date('2026-06-19T02:59:59.999Z'),
+        status: 'OVERDUE',
+      },
+    });
+  });
+
+  afterEach(async () => {
+    await db.message.deleteMany({ where: { customerId } });
+    await db.payment.deleteMany({ where: { charge: { subscriptionId: editedSubscriptionId } } });
+    await db.charge.deleteMany({ where: { subscriptionId: editedSubscriptionId } });
+    await db.subscription.deleteMany({ where: { id: editedSubscriptionId } });
+    await db.customer.deleteMany({ where: { id: customerId } });
+  });
+
+  it('move o vencimento da cobrança em aberto junto com o da assinatura', async () => {
+    await updateSubscription(editedSubscriptionId, input({ nextDueAt: '2026-12-18' }));
+
+    const charge = await openCharge();
+    expect(charge.dueAt.toISOString()).toBe('2026-12-19T02:59:59.999Z');
+    expect(charge.periodEnd.toISOString()).toBe('2026-12-18T00:00:00.000Z');
+  });
+
+  it('cobrança vencida volta a OPEN quando o vencimento vai para a frente', async () => {
+    await updateSubscription(editedSubscriptionId, input({ nextDueAt: '2026-12-18' }));
+
+    const charge = await openCharge();
+    expect(charge.status).toBe('OPEN');
+  });
+
+  it('cobrança com pagamento registrado não é movida', async () => {
+    const charge = await openCharge();
+    await db.payment.create({
+      data: { chargeId: charge.id, amountCents: 3000n, method: 'PIX', paidAt: new Date('2026-06-10T12:00:00.000Z'), idempotencyKey: randomUUID() },
+    });
+
+    await updateSubscription(editedSubscriptionId, input({ nextDueAt: '2026-12-18' }));
+
+    const untouched = await db.charge.findUniqueOrThrow({ where: { id: charge.id } });
+    expect(untouched.dueAt.toISOString()).toBe('2026-06-19T02:59:59.999Z');
+  });
+
+  // A régua monta o corpo com os dias de atraso congelados na avaliação. Movido
+  // o vencimento, a mensagem pendente cobra uma dívida que o operador acabou de
+  // repactuar — e o despacho só recusa cobrança paga ou cancelada, não esta.
+  it('cancela as mensagens de cobrança pendentes da cobrança movida', async () => {
+    const charge = await openCharge();
+    const pending = await db.message.create({
+      data: {
+        customerId,
+        chargeId: charge.id,
+        toPhone: '+5511999990002',
+        body: 'sua renovação está 84 dia(s) atrasada',
+        scheduledFor: new Date('2026-09-11T12:00:00.000Z'),
+        scheduledDate: new Date('2026-09-11T00:00:00.000Z'),
+      },
+    });
+
+    await updateSubscription(editedSubscriptionId, input({ nextDueAt: '2026-12-18' }));
+
+    const refreshed = await db.message.findUniqueOrThrow({ where: { id: pending.id } });
+    expect(refreshed.status).toBe('CANCELLED');
+    expect(refreshed.cancelReason).toBe('due_date_changed');
+  });
+
+  it('vencimento não enviado não mexe na cobrança em aberto', async () => {
+    await updateSubscription(editedSubscriptionId, input({ priceCents: '3000' }));
+
+    const charge = await openCharge();
+    expect(charge.dueAt.toISOString()).toBe('2026-06-19T02:59:59.999Z');
   });
 });

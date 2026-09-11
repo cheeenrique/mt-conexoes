@@ -58,7 +58,10 @@ async function evaluateChargeStepPair(
   if (step.action === 'SUSPEND') {
     try {
       await db.$transaction(async (tx) => {
-        await tx.subscription.update({ where: { id: charge.subscriptionId }, data: { status: 'SUSPENDED' } });
+        await tx.subscription.update({
+          where: { id: charge.subscriptionId },
+          data: { status: 'SUSPENDED', suspendedAt: now },
+        });
         await tx.dunningExecution.create({ data: { chargeId: charge.id, stepId: step.id, outcome: 'QUEUED' } });
       });
       return { kind: 'suspended' };

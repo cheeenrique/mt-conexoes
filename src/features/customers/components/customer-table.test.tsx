@@ -48,6 +48,21 @@ function setup(overrides: Partial<Parameters<typeof CustomerTable>[0]> = {}) {
   return { softDeleteCustomer };
 }
 
+/**
+ * O operador relatou em 11/09/2026 uma linha com a data na ordem americana. O
+ * dia 18 é o que denuncia: com dia ≤ 12 as duas ordens produzem string
+ * plausível. A coluna passa por `formatLocalDate`, que fixa `pt-BR` — este
+ * teste é a trava contra alguém trocar por `toLocaleDateString()` sem locale,
+ * que segue o idioma de quem renderiza.
+ */
+describe('CustomerTable — coluna Vencimento', () => {
+  it('mostra o vencimento em DD/MM/AAAA, no fuso do negócio', () => {
+    setup({ rows: [{ ...ROW, nextDueAt: '2026-06-19T02:59:59.999Z', situation: 'OVERDUE', daysFromDue: 85 }] });
+
+    expect(within(screen.getByRole('table')).getByText('18/06/2026')).toBeInTheDocument();
+  });
+});
+
 describe('CustomerTable — Remover (soft delete)', () => {
   it('sem a prop softDeleteCustomer, o botão nem aparece', () => {
     setup({ softDeleteCustomer: undefined });

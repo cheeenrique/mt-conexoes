@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   formatCents,
+  formatLocalDate,
   formatLocalDayMonth,
   formatLocalMonthYear,
   formatLocalTime,
@@ -75,6 +76,15 @@ describe('formatação local de data e hora', () => {
 
   it('dia e mês curtos para a coluna de vencimento', () => {
     expect(formatLocalDayMonth('2026-08-22T23:59:59-03:00', TZ)).toBe('22/08');
+  });
+
+  // O dia 18 é o que separa `18/06` de `06/18`: com dia ≤ 12 as duas ordens
+  // produzem string plausível e o erro passa despercebido. Um runtime sem ICU
+  // completo derruba `pt-BR` para `en-US` sem erro nenhum — a data inverte em
+  // silêncio na tela inteira, e só linha com dia > 12 denuncia. Relatado pelo
+  // operador em 11/09/2026; este teste é a trava.
+  it('vencimento sai em DD/MM/AAAA, nunca na ordem americana', () => {
+    expect(formatLocalDate('2026-06-18T23:59:59-03:00', TZ)).toBe('18/06/2026');
   });
 });
 

@@ -222,3 +222,34 @@ describe('cancelCharge', () => {
     await expect(cancelCharge(randomUUID(), 'motivo')).rejects.toThrow(ChargeNotFoundError);
   });
 });
+
+/**
+ * Relatado em 11/09/2026: "renovei ele e está com a situação suspensa". A régua
+ * corta o acesso com o passo SUSPEND, e quitar a cobrança que motivou o corte
+ * era a única coisa que não desfazia o corte — o cliente renovado seguia
+ * `Suspenso` na lista, cinza, fora de todos os degraus da escada de vencimento
+ * (`situationWhere` exige assinatura ACTIVE) e fora dos contadores da triagem.
+ */
+describe('registerPayment — assinatura suspensa pela régua', () => {
+  beforeEach(async () => {
+    await db.subscription.update({
+      where: { id: subscriptionId },
+      data: { status: 'SUSPENDED', suspendedAt: new Date('2026-08-01T12:00:00.000Z') },
+    });
+  });
+
+  it('pagamento total reativa a assinatura e apaga a data de suspensão', async () => {
+    await registerPayment(chargeId, paymentInput({ amountCents: '10000', paidAt: '2026-08-31' }));
+
+    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+    expect(subscription.status).toBe('ACTIVE');
+    expect(subscription.suspendedAt).toBeNull();
+  });
+
+  it('pagamento parcial não reativa — o acesso volta quando o saldo zera, não antes', async () => {
+    await registerPayment(chargeId, paymentInput({ amountCents: '4000' }));
+
+    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+    expect(subscription.status).toBe('SUSPENDED');
+  });
+});

@@ -81,7 +81,8 @@ const OUTCOME_BY_STATUS: Record<StatusKey, LogOutcome | null> = {
 /**
  * Motivos que o job realmente grava hoje:
  * - `dunning_executions.reason` — evaluate.ts:82 (`review`), :86 (`opted_out`), :90 (`no_phone`), :152 (`daily_dedupe`)
- * - `messages.cancelReason`     — scheduled-dispatch.ts:62 (`stale`), :79 (`opted_out`), :88 (`charge_closed`), :93 (`daily_dedupe`)
+ * - `messages.cancelReason`     — scheduled-dispatch.ts:62 (`stale`), :79 (`opted_out`), :88 (`charge_closed`), :93 (`daily_dedupe`);
+ *                                 subscriptions/service.ts (`due_date_changed`, quando a ficha move o vencimento)
  *
  * Código desconhecido aparece cru na tela de propósito: um texto bonito inventado aqui
  * esconderia divergência entre o que o job fez e o que a tela conta.
@@ -93,6 +94,7 @@ const REASON_LABELS: Record<string, string> = {
   review: 'régua em revisão',
   stale: 'parada há mais de 24h na fila',
   charge_closed: 'cliente já pagou',
+  due_date_changed: 'vencimento alterado na ficha',
 };
 
 /** Folga entre `scheduledFor` (relógio do job) e `createdAt` (relógio do banco). */

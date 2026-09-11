@@ -67,7 +67,10 @@ export async function registerPayment(chargeId: string, input: RegisterPaymentIn
 
     if (newStatus === 'PAID') {
       const newNextDueAt = nextDueDate({ paidAt, cycle: charge.subscription.cycle, timezone: settings.timezone });
-      await tx.subscription.update({ where: { id: charge.subscriptionId }, data: { nextDueAt: newNextDueAt } });
+      await tx.subscription.update({
+        where: { id: charge.subscriptionId },
+        data: { nextDueAt: newNextDueAt, ...reactivationPatch(charge.subscription.status) },
+      });
       await tx.charge.create({
         data: {
           subscriptionId: charge.subscriptionId,
@@ -85,6 +88,21 @@ export async function registerPayment(chargeId: string, input: RegisterPaymentIn
 
     return { chargeId, status: newStatus };
   });
+}
+
+/**
+ * Quitar a cobrança devolve o acesso que a régua cortou. O passo `SUSPEND`
+ * (`dunning/evaluate.ts`) é a única coisa que suspende sozinha, e o saldo que
+ * motivou o corte acabou de zerar — sem isto o cliente renovado seguia
+ * `Suspenso` na lista, fora de todos os degraus da escada de vencimento
+ * (`situationWhere` exige assinatura ACTIVE) e fora dos contadores da triagem.
+ *
+ * `CANCELLED` não volta por aqui: cancelar é decisão do operador e tem outro
+ * fluxo (`SubscriptionCancelledError`). Pagamento parcial também não reativa —
+ * o acesso volta quando o saldo zera, não quando entra a primeira parcela.
+ */
+function reactivationPatch(status: string) {
+  return status === 'SUSPENDED' ? { status: 'ACTIVE' as const, suspendedAt: null } : {};
 }
 
 export async function cancelCharge(chargeId: string, reason: string): Promise<void> {

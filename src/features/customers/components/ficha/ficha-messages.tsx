@@ -17,6 +17,7 @@ const CANCEL_REASON_LABEL: Record<string, string> = {
   stale: 'mensagem parada há mais de 24h',
   opted_out: 'cliente pediu pra sair',
   charge_closed: 'cobrança já paga ou cancelada',
+  due_date_changed: 'vencimento alterado na ficha',
 };
 
 export function FichaMessages({ messages, timezone }: { messages: FichaMessageDTO[]; timezone: string }) {

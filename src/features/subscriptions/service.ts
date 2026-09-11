@@ -5,6 +5,7 @@ import { DomainError } from '@/lib/errors';
 import { encrypt, decrypt } from '@/lib/crypto';
 import { firstDueDate, endOfLocalDay, localDateOnly } from '@/core/dates';
 import { buildImportedFirstCharge } from './imported-charge';
+import { alignOpenChargeDueAt } from './open-charge';
 import { applyPercent } from '@/core/money';
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
@@ -198,18 +199,23 @@ export async function patchSubscription(
   const existing = await tx.subscription.findUnique({ where: { id }, omit: { accessPasswordEnc: true } });
   if (!existing || (customerId && existing.customerId !== customerId)) throw new SubscriptionNotFoundError();
 
-  return tx.subscription.update({
+  // Campo ausente = o operador não mexeu no vencimento; sobrescrever com o
+  // valor atual seria reescrever a âncora do ciclo sem que ninguém pedisse.
+  const nextDueAt = input.nextDueAt ? localDateStringToDueAt(input.nextDueAt, timezone) : null;
+
+  const updated = await tx.subscription.update({
     where: { id },
     data: {
       ...toBaseData(input, timezone),
       ...statusPatch(existing, input.status, now),
-      // Campo ausente = o operador não mexeu no vencimento; sobrescrever com
-      // o valor atual seria reescrever a âncora do ciclo sem que ninguém
-      // pedisse.
-      ...(input.nextDueAt ? { nextDueAt: localDateStringToDueAt(input.nextDueAt, timezone) } : {}),
+      ...(nextDueAt ? { nextDueAt } : {}),
     },
     omit: { accessPasswordEnc: true },
   });
+
+  if (nextDueAt) await alignOpenChargeDueAt(tx, { subscriptionId: id, dueAt: nextDueAt, timezone, now });
+
+  return updated;
 }
 
 export async function updateSubscription(id: string, input: SubscriptionInput) {
