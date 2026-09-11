@@ -7,6 +7,22 @@ import { redactSecrets } from './channels/redact';
 import type { SaveChannelCredentialsInput } from './schema';
 import { Prisma, type ChannelProvider } from '@prisma/client';
 
+/**
+ * Desfaz o opt-out (T5). A trava é global por customer e o webhook a liga
+ * sozinho na palavra-chave (`inbound.ts`) — inclusive quando o cliente escreve
+ * "PARE de cobrar, já paguei". Sem volta pela tela, um falso positivo tirava a
+ * pessoa da régua para sempre, em silêncio.
+ *
+ * Só o operador reverte, e só a pedido do cliente: reativar por conta própria
+ * quem pediu para sair é o caminho do número banido.
+ */
+export async function resumeCustomerMessaging(customerId: string): Promise<void> {
+  await db.customer.update({
+    where: { id: customerId },
+    data: { optedOut: false, optedOutAt: null, optedOutReason: null },
+  });
+}
+
 export class ChannelRiskNotAcceptedError extends DomainError {
   constructor(cause?: unknown) {
     super('Confirme que está ciente do risco deste canal antes de salvar.', 'CHANNEL_RISK_NOT_ACCEPTED', { cause });

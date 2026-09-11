@@ -12,7 +12,7 @@ import { fichaSubtitle } from '@/features/customers/components/ficha/ficha-subti
 import { BackButton } from '@/features/customers/components/back-button';
 import { SubscriptionList } from '@/features/subscriptions/components/subscription-list';
 import { loadCustomerFichaAction, revealAccessPasswordAction } from '../ficha-action';
-import { anonymizeCustomerAction } from '../customer-actions';
+import { anonymizeCustomerAction, resumeMessagingAction } from '../customer-actions';
 
 /**
  * Deep link de um cliente: é o que permite compartilhar o link de uma pessoa.
@@ -43,7 +43,12 @@ export default async function CustomerProfilePage({ params }: { params: Promise<
           {CUSTOMER_SITUATION_LABELS[data.situation]}
         </StatusBadge>
       </div>
-      <CustomerFicha data={data} revealPassword={revealAccessPasswordAction} anonymizeCustomer={anonymizeCustomerAction} />
+      <CustomerFicha
+        data={data}
+        revealPassword={revealAccessPasswordAction}
+        anonymizeCustomer={anonymizeCustomerAction}
+        resumeMessaging={resumeMessagingAction}
+      />
       <div className="mt-4">
         <SubscriptionList
           customerId={id}

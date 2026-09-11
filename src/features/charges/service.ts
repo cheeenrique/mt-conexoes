@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
-import { deriveChargeStatus } from '@/core/billing';
+import { computeChargeDiscount, deriveChargeStatus } from '@/core/billing';
 import { nextDueDate, localDateOnly, localDayStartFromIso } from '@/core/dates';
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
@@ -112,6 +112,47 @@ export async function writeOffRemaining(chargeId: string): Promise<{ chargeId: s
     await openNextCycle(tx, charge, paidAt, settings.timezone);
 
     return { chargeId, status: 'PAID' as const };
+  });
+}
+
+/**
+ * Reemite a cobrança em aberto com o que a assinatura diz hoje: preço, custo e
+ * desconto vigente. É a saída para "troquei o plano e a cobrança continua com o
+ * valor velho" — é essa cobrança que a régua manda por WhatsApp.
+ *
+ * Ação explícita, nunca efeito colateral de salvar a ficha: reajuste combinado
+ * para o próximo ciclo também mexe em `priceCents`, e ali a cobrança corrente
+ * está certa. Só o operador sabe qual dos dois casos é o dele.
+ *
+ * ⚠️ Recusa cobrança com pagamento registrado (documento com dinheiro não se
+ * reescreve — CLAUDE.md §Dinheiro). Nesse caso o caminho é a baixa do restante.
+ */
+export async function realignChargeToSubscription(chargeId: string): Promise<void> {
+  const now = new Date();
+
+  await db.$transaction(async (tx) => {
+    const charge = await tx.charge.findUnique({ where: { id: chargeId }, include: { payments: true, subscription: true } });
+    if (!charge) throw new ChargeNotFoundError();
+    if (charge.status === 'PAID') throw new ChargeAlreadyPaidError();
+    if (charge.status === 'CANCELLED') throw new ChargeNotFoundError();
+    if (charge.payments.length > 0) throw new ChargeHasPaymentError();
+
+    const discountCents = computeChargeDiscount(charge.subscription, charge.periodStart);
+
+    await tx.charge.update({
+      where: { id: chargeId },
+      data: {
+        principalCents: charge.subscription.priceCents,
+        costCents: charge.subscription.costCents,
+        discountCents,
+        status: deriveChargeStatus({
+          netCents: charge.subscription.priceCents - discountCents,
+          paidCents: 0n,
+          dueAt: charge.dueAt,
+          now,
+        }),
+      },
+    });
   });
 }
 

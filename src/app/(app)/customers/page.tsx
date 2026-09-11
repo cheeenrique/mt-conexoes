@@ -14,6 +14,8 @@ import { loadCustomerFichaAction, revealAccessPasswordAction } from './ficha-act
 import {
   anonymizeCustomerAction,
   findCustomerByPhoneAction,
+  restoreCustomerAction,
+  resumeMessagingAction,
   saveCustomerFichaAction,
   softDeleteCustomerAction,
 } from './customer-actions';
@@ -77,6 +79,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         saveFicha={saveCustomerFichaAction}
         checkPhone={findCustomerByPhoneAction}
         softDeleteCustomer={softDeleteCustomerAction}
+        restoreCustomer={restoreCustomerAction}
         changePlan={changePlanAction}
       />
       <CustomerFichaDrawer
@@ -85,6 +88,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         saveFicha={saveCustomerFichaAction}
         checkPhone={findCustomerByPhoneAction}
         anonymizeCustomer={anonymizeCustomerAction}
+        resumeMessaging={resumeMessagingAction}
       />
     </AppShell>
   );

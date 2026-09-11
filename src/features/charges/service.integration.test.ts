@@ -4,7 +4,9 @@ import { db } from '@/lib/db';
 import {
   registerPayment,
   writeOffRemaining,
+  realignChargeToSubscription,
   cancelCharge,
+  ChargeHasPaymentError as _ChargeHasPaymentError,
   ChargeWithoutPaymentError,
   ChargeAlreadyPaidError,
   ChargeHasPaymentError,
@@ -325,5 +327,67 @@ describe('writeOffRemaining — baixa do restante como desconto', () => {
     await cancelCharge(chargeId, 'cliente desistiu');
 
     await expect(writeOffRemaining(chargeId)).rejects.toThrow(ChargeNotFoundError);
+  });
+});
+
+
+/**
+ * Relatado em 11/09/2026: cliente de trimestral R$ 90 que virou mensal R$ 30. O
+ * operador troca o plano e a cobrança em aberto continua com o valor velho —
+ * é ela que a régua manda por WhatsApp e que a lista de Cobranças mostra.
+ *
+ * Não pode ser automático na troca de plano: reajuste combinado para o
+ * próximo ciclo também mexe em `priceCents`, e ali a cobrança corrente está
+ * certa. Por isso é ação explícita, com o valor velho e o novo na frente do
+ * operador.
+ */
+describe('realignChargeToSubscription — trazer o valor do plano para a cobrança', () => {
+  it('traz preço, custo e desconto da assinatura para a cobrança em aberto', async () => {
+    await db.subscription.update({ where: { id: subscriptionId }, data: { priceCents: 3000n, costCents: 900n } });
+
+    await realignChargeToSubscription(chargeId);
+
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: chargeId } });
+    expect(charge.principalCents.toString()).toBe('3000');
+    expect(charge.costCents.toString()).toBe('900');
+    expect(charge.discountCents.toString()).toBe('0');
+  });
+
+  it('aplica o desconto vigente da assinatura', async () => {
+    await db.subscription.update({
+      where: { id: subscriptionId },
+      data: { priceCents: 3000n, costCents: 900n, discountType: 'PERCENT', discountValue: '10' },
+    });
+
+    await realignChargeToSubscription(chargeId);
+
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: chargeId } });
+    expect(charge.discountCents.toString()).toBe('300');
+  });
+
+  it('recalcula o status contra o vencimento, sem esperar o cron', async () => {
+    await db.charge.update({ where: { id: chargeId }, data: { status: 'OVERDUE' } });
+    await db.subscription.update({ where: { id: subscriptionId }, data: { priceCents: 3000n } });
+
+    await realignChargeToSubscription(chargeId);
+
+    // FUTURE_DUE_AT está 30 dias à frente: vencida por engano volta a aberta.
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: chargeId } });
+    expect(charge.status).toBe('OPEN');
+  });
+
+  it('cobrança com pagamento registrado é recusada — documento com dinheiro não se reescreve', async () => {
+    await registerPayment(chargeId, paymentInput({ amountCents: '3000' }));
+    await db.subscription.update({ where: { id: subscriptionId }, data: { priceCents: 3000n } });
+
+    await expect(realignChargeToSubscription(chargeId)).rejects.toThrow(_ChargeHasPaymentError);
+
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: chargeId } });
+    expect(charge.principalCents.toString()).toBe('10000');
+  });
+
+  it('cobrança paga ou cancelada é recusada', async () => {
+    await cancelCharge(chargeId, 'cliente desistiu');
+    await expect(realignChargeToSubscription(chargeId)).rejects.toThrow(ChargeNotFoundError);
   });
 });

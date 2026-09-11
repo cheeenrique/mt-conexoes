@@ -3,7 +3,8 @@
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { subscriptionSchema, changeSubscriptionPlanSchema } from './schema';
-import { createSubscription, updateSubscription, revealCredential, changeSubscriptionPlan } from './service';
+import { createSubscription, updateSubscription, changeSubscriptionPlan } from './service';
+import { revealCredential } from './credentials';
 import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';

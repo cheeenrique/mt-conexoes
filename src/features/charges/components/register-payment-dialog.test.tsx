@@ -24,6 +24,8 @@ const charge: ChargeDTO = {
   status: 'OVERDUE',
   dueAt: '2026-09-02T02:59:59.999Z',
   issuedAt: '2026-08-01T03:00:00.000Z',
+  subscriptionPriceCents: '10000',
+  subscriptionCostCents: '3000',
   payments: [],
 };
 

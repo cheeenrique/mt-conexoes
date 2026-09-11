@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { COOKIE_NAME, verifySession } from '@/lib/auth';
+import { isDevAutoLoginEnabled } from '@/lib/dev-login';
 
 // `/api/leads` é a captação do site público: outro domínio, outra conta de
 // hospedagem, nenhuma sessão. Sem a exceção aqui o formulário recebe 307 para
@@ -19,6 +20,10 @@ function matchesPath(pathname: string, path: string): boolean {
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (PUBLIC_PATHS.some((p) => matchesPath(pathname, p))) return NextResponse.next();
+  // Login automático de desenvolvimento: só chega ao handler quando as duas
+  // travas estão ligadas (ver lib/dev-login.ts). Desligado, cai no redirect
+  // para /login como qualquer rota privada — nem chega a existir.
+  if (pathname === '/api/dev-login' && isDevAutoLoginEnabled()) return NextResponse.next();
   if (PUBLIC_PREFIXES.some((p) => matchesPath(pathname, p))) return NextResponse.next();
 
   const token = req.cookies.get(COOKIE_NAME)?.value;

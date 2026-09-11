@@ -6,8 +6,9 @@ import { FichaSubscription } from './ficha-subscription';
 import { FichaAccess } from './ficha-access';
 import { FichaPayments } from './ficha-payments';
 import { FichaMessages } from './ficha-messages';
+import { FichaOptOut } from './ficha-opt-out';
 import { CustomerAnonymizeSection } from './customer-anonymize-section';
-import type { AnonymizeCustomer, CustomerFichaData, RevealAccessPassword } from '../../ficha-types';
+import type { AnonymizeCustomer, CustomerFichaData, ResumeMessaging, RevealAccessPassword } from '../../ficha-types';
 
 /**
  * Corpo da ficha do cliente, na ordem do handoff 04. O mesmo componente serve
@@ -20,15 +21,26 @@ export function CustomerFicha({
   revealPassword,
   subscriptionAction,
   anonymizeCustomer,
+  resumeMessaging,
 }: {
   data: CustomerFichaData;
   revealPassword: RevealAccessPassword;
   subscriptionAction?: ReactNode;
+  /** Desfaz o opt-out (T5). Ausente = o aviso aparece sem o botão. */
+  resumeMessaging?: ResumeMessaging;
   /** Ausente = seção de exclusão não aparece (ex.: tela que ainda não a fiou). */
   anonymizeCustomer?: AnonymizeCustomer;
 }) {
   return (
     <div className="flex flex-col gap-4">
+      <FichaOptOut
+        customerId={data.id}
+        optedOut={data.optedOut}
+        optedOutAt={data.optedOutAt}
+        optedOutReason={data.optedOutReason}
+        timezone={data.timezone}
+        resumeMessaging={resumeMessaging}
+      />
       <FichaProfit
         billedCents={data.billedCents}
         receivedCents={data.receivedCents}

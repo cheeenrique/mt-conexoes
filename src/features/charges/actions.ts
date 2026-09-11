@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { registerPaymentSchema, cancelChargeSchema } from './schema';
-import { registerPayment, cancelCharge, writeOffRemaining } from './service';
+import { registerPayment, cancelCharge, writeOffRemaining, realignChargeToSubscription } from './service';
 import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -46,6 +46,22 @@ export async function writeOffChargeAction(chargeId: string, customerId: string)
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
     logger.error({ route: 'charges.writeOff', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+/** "Atualizar valor": traz preço, custo e desconto da assinatura para a cobrança em aberto. */
+export async function realignChargeAction(chargeId: string, customerId: string): Promise<ActionResult> {
+  try {
+    await requireSession();
+    await realignChargeToSubscription(chargeId);
+    revalidatePath(`/customers/${customerId}`);
+    revalidatePath('/charges');
+    revalidatePath('/');
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'charges.realign', error: String(err), stack: err instanceof Error ? err.stack : undefined });
     return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
   }
 }

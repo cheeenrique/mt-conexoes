@@ -2,7 +2,7 @@ import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { assertAnonymizable } from '@/core/anonymization';
 import { anonymizeCustomerRow } from '@/features/customers/service';
-import { scrubSubscriptionAccess } from '@/features/subscriptions/service';
+import { scrubSubscriptionAccess } from '@/features/subscriptions/credentials';
 import { scrubCustomerMessages } from '@/features/messaging/service';
 import { scrubLeadsOfCustomer } from '@/features/leads/service';
 

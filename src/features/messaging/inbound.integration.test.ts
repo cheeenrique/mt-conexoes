@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import { processInboundMessage } from './inbound';
+import { resumeCustomerMessaging } from './service';
 
 const NOW = new Date('2026-08-10T15:00:00Z');
 
@@ -135,5 +136,42 @@ describe('processInboundMessage', () => {
       expect(refreshedPending.optedOut).toBe(true);
       expect(refreshedPending.optedOutReason).toContain('SAIR');
     });
+  });
+});
+
+
+/**
+ * T5 é global por customer e não tinha volta: o cliente que respondeu "SAIR" —
+ * ou que caiu na palavra-chave por engano ("PARE de mandar, já paguei") — saía
+ * da régua para sempre, sem aparecer em lugar nenhum da tela. O operador não
+ * via o motivo nem tinha como desfazer.
+ */
+describe('resumeCustomerMessaging', () => {
+  it('zera o opt-out e limpa data e motivo', async () => {
+    const customer = await db.customer.create({
+      data: {
+        name: 'Inbound Teste',
+        phone: '+5511977770001',
+        optedOut: true,
+        optedOutAt: new Date('2026-08-01T12:00:00Z'),
+        optedOutReason: 'Palavra-chave: sair',
+      },
+    });
+
+    await resumeCustomerMessaging(customer.id);
+
+    const reloaded = await db.customer.findUniqueOrThrow({ where: { id: customer.id } });
+    expect(reloaded.optedOut).toBe(false);
+    expect(reloaded.optedOutAt).toBeNull();
+    expect(reloaded.optedOutReason).toBeNull();
+  });
+
+  it('idempotente — quem nunca pediu para sair não quebra', async () => {
+    const customer = await db.customer.create({ data: { name: 'Inbound Teste', phone: '+5511977770002' } });
+
+    await resumeCustomerMessaging(customer.id);
+
+    const reloaded = await db.customer.findUniqueOrThrow({ where: { id: customer.id } });
+    expect(reloaded.optedOut).toBe(false);
   });
 });

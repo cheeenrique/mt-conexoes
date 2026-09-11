@@ -24,13 +24,19 @@ export interface ChargeDTO {
   status: string;
   dueAt: string;
   issuedAt: string;
+  /** Preço e custo que a assinatura tem **hoje**. A cobrança carrega o que valia
+   *  na emissão; divergir dos dois é o sinal de "troquei o plano e a cobrança
+   *  ficou com o valor velho", que a tela oferece corrigir. */
+  subscriptionPriceCents: string;
+  subscriptionCostCents: string;
   payments: PaymentDTO[];
 }
 
 function toChargeDTO(row: {
-  id: string; customerId: string; principalCents: bigint; discountCents: bigint;
+  id: string; customerId: string; principalCents: bigint; discountCents: bigint; costCents: bigint;
   status: string; dueAt: Date; issuedAt: Date;
   customer: { name: string; phone: string | null }; supplier: { name: string } | null;
+  subscription: { priceCents: bigint; costCents: bigint };
   payments: { id: string; amountCents: bigint; method: string; paidAt: Date; note: string | null }[];
 }): ChargeDTO {
   const netCents = row.principalCents - row.discountCents;
@@ -48,6 +54,8 @@ function toChargeDTO(row: {
     status: row.status,
     dueAt: row.dueAt.toISOString(),
     issuedAt: row.issuedAt.toISOString(),
+    subscriptionPriceCents: row.subscription.priceCents.toString(),
+    subscriptionCostCents: row.subscription.costCents.toString(),
     payments: row.payments.map((p) => ({
       id: p.id,
       amountCents: p.amountCents.toString(),
@@ -61,6 +69,7 @@ function toChargeDTO(row: {
 const CHARGE_INCLUDE = {
   customer: { select: { name: true, phone: true } },
   supplier: { select: { name: true } },
+  subscription: { select: { priceCents: true, costCents: true } },
   payments: { select: { id: true, amountCents: true, method: true, paidAt: true, note: true } },
 } as const;
 

@@ -2,15 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import { encrypt } from '@/lib/crypto';
-import {
-  createSubscription,
-  revealCredential,
-  changeSubscriptionPlan,
-  updateSubscription,
-  SubscriptionNotFoundError,
-  SubscriptionCancelledError,
-  PlanNotFoundError,
-} from './service';
+import { createSubscription, changeSubscriptionPlan, updateSubscription } from './service';
+import { revealCredential } from './credentials';
+import { SubscriptionNotFoundError, SubscriptionCancelledError, PlanNotFoundError } from './errors';
 import type { subscriptionSchema } from './schema';
 import type { z } from 'zod';
 

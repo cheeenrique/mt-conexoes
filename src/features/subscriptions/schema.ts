@@ -66,7 +66,7 @@ export const subscriptionSchema = z
     }
 
     // FIXED é reais (DECIMAL(10,2)), priceCents é centavos — mesma conversão
-    // que computeChargeDiscount faz no service. Sem este bound, um desconto
+    // que computeChargeDiscount faz em core/billing. Sem este bound, um desconto
     // fixo maior que o preço passa por aqui inteiro e só estoura no banco,
     // no CHECK charges_discount_bounded, como erro genérico de Postgres na
     // tela — o service não recalcula: quando o desconto chega até lá, tem

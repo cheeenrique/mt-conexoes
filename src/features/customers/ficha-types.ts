@@ -53,6 +53,11 @@ export interface FichaPlanOption {
   supplierId: string | null;
 }
 
+/** Desfaz o opt-out (T5). Composta em `app/`: a regra é de mensageria. */
+export type ResumeMessaging = (
+  customerId: string,
+) => Promise<{ ok: true } | { error: { code: string; message: string } }>;
+
 export interface CustomerFichaData {
   id: string;
   name: string;
@@ -63,6 +68,10 @@ export interface CustomerFichaData {
   situation: CustomerSituation;
   /** Offset em dias da cobrança em aberto mais antiga, para o contador do badge. */
   daysFromDue: number | null;
+  /** T5: pediu para não receber mensagem. Global, em todos os canais. */
+  optedOut: boolean;
+  optedOutAt: string | null;
+  optedOutReason: string | null;
   supplierName: string | null;
   sinceAt: string | null;
   timezone: string;

@@ -138,7 +138,7 @@ export function FichaFormSubscription({
       </FichaField>
 
       <p className="text-xs leading-relaxed text-foreground-muted">
-        O novo valor vale a partir da próxima cobrança gerada. Cobranças já emitidas não mudam.
+        Valor e custo novos valem da próxima cobrança gerada. O vencimento muda também a cobrança em aberto, desde que ela ainda não tenha pagamento registrado.
       </p>
     </DrawerSection>
   );

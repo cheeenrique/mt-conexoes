@@ -14,7 +14,14 @@ import { CustomerFicha } from './customer-ficha';
 import { FichaForm } from './ficha-form';
 import { fichaFormValues } from './ficha-form-values';
 import { fichaSubtitle } from './ficha-subtitle';
-import type { AnonymizeCustomer, FindCustomerByPhone, LoadCustomerFicha, RevealAccessPassword, SaveCustomerFicha } from '../../ficha-types';
+import type {
+  AnonymizeCustomer,
+  FindCustomerByPhone,
+  LoadCustomerFicha,
+  ResumeMessaging,
+  RevealAccessPassword,
+  SaveCustomerFicha,
+} from '../../ficha-types';
 
 type Loaded = { key: string; result: Awaited<ReturnType<LoadCustomerFicha>> };
 
@@ -33,12 +40,15 @@ export function CustomerFichaDrawer({
   saveFicha,
   checkPhone,
   anonymizeCustomer,
+  resumeMessaging,
 }: {
   loadFicha: LoadCustomerFicha;
   revealPassword: RevealAccessPassword;
   saveFicha: SaveCustomerFicha;
   checkPhone?: FindCustomerByPhone;
   anonymizeCustomer?: AnonymizeCustomer;
+  /** Desfaz o opt-out (T5). Ausente = o aviso aparece sem o botão. */
+  resumeMessaging?: ResumeMessaging;
 }) {
   const { customerId, closeCustomer } = useCustomerParam();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -108,7 +118,7 @@ export function CustomerFichaDrawer({
                 onCancel={() => setEditing(false)}
                 onSaved={() => {
                   setEditing(false);
-                  setSavedBanner('Alterações salvas. O novo valor vale a partir da próxima cobrança gerada.');
+                  setSavedBanner('Alterações salvas. Valor e custo novos valem da próxima cobrança; o vencimento move também a cobrança em aberto.');
                   setReloadToken((n) => n + 1);
                 }}
               />
@@ -132,7 +142,14 @@ export function CustomerFichaDrawer({
                       </Button>
                     </div>
                   )}
-                  {data && <CustomerFicha data={data} revealPassword={revealPassword} anonymizeCustomer={anonymizeCustomer} />}
+                  {data && (
+                    <CustomerFicha
+                      data={data}
+                      revealPassword={revealPassword}
+                      anonymizeCustomer={anonymizeCustomer}
+                      resumeMessaging={resumeMessaging}
+                    />
+                  )}
                 </DrawerBody>
                 <DrawerFooter>
                   {/* `nativeButton={false}` porque o base-ui avisa quando um

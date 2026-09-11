@@ -3,29 +3,16 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Banknote, MessageCircle, Pencil, Percent } from 'lucide-react';
+import { Banknote, Ban, MessageCircle, Pencil, Percent, RefreshCw } from 'lucide-react';
 import { IconActionButton } from '@/components/ui/icon-action-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatCents, whatsAppUrl } from '@/lib/format';
 import { toastError, toastSuccess } from '@/lib/toast';
-import { writeOffChargeAction } from '../actions';
+import { cancelChargeAction, realignChargeAction, writeOffChargeAction } from '../actions';
+import { CancelChargeDialog } from './cancel-charge-dialog';
+import { canCancel, canWriteOff, isStaleAmount, paymentDisabledReason } from './charge-row-policy';
 import type { ChargeDTO } from '../queries';
-
-/** Por que o botão de registrar pagamento está travado — nunca junta os dois
- *  casos numa frase só ("já paga ou cancelada"): o operador quer saber qual. */
-function paymentDisabledReason(status: ChargeDTO['status']): string | undefined {
-  if (status === 'PAID') return 'Cobrança já paga';
-  if (status === 'CANCELLED') return 'Cobrança cancelada';
-  return undefined;
-}
-
-/** A baixa só existe onde há saldo pago e saldo devendo — o cliente que pagou
- *  parte e não vai pagar o resto. Fora disso o botão nem aparece: cobrança sem
- *  pagamento se cancela, e cobrança quitada não tem restante. */
-function canWriteOff(charge: ChargeDTO): boolean {
-  return charge.status !== 'PAID' && charge.status !== 'CANCELLED' && BigInt(charge.paidCents) > 0n;
-}
 
 /** Ações de linha do padrão de tabela (registrar pagamento, WhatsApp, ficha do
  *  cliente) — reusadas em Cobranças e no painel do Início. */
@@ -38,8 +25,26 @@ export function ChargeRowActions({
 }) {
   const router = useRouter();
   const [confirmingWriteOff, setConfirmingWriteOff] = useState(false);
+  const [confirmingRealign, setConfirmingRealign] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const paymentDisabled = paymentDisabledReason(charge.status);
   const remainingCents = (BigInt(charge.netCents) - BigInt(charge.paidCents)).toString();
+
+  async function handleRealign() {
+    setConfirmingRealign(false);
+    const result = await realignChargeAction(charge.id, charge.customerId);
+    if ('error' in result) return toastError(result.error);
+    toastSuccess('Cobrança atualizada com o valor do plano.');
+    router.refresh();
+  }
+
+  async function handleCancel(reason: string) {
+    setCancelling(false);
+    const result = await cancelChargeAction(charge.id, charge.customerId, { reason });
+    if ('error' in result) return toastError(result.error);
+    toastSuccess('Cobrança cancelada.');
+    router.refresh();
+  }
 
   async function handleWriteOff() {
     setConfirmingWriteOff(false);
@@ -61,8 +66,14 @@ export function ChargeRowActions({
           onClick={() => onRegisterPayment(charge)}
         />
       )}
+      {isStaleAmount(charge) && (
+        <IconActionButton icon={RefreshCw} label="Atualizar valor pelo plano" onClick={() => setConfirmingRealign(true)} />
+      )}
       {canWriteOff(charge) && (
         <IconActionButton icon={Percent} label="Dar baixa no restante" onClick={() => setConfirmingWriteOff(true)} />
+      )}
+      {canCancel(charge) && (
+        <IconActionButton icon={Ban} label="Cancelar cobrança" tone="danger" onClick={() => setCancelling(true)} />
       )}
       {charge.customerPhone ? (
         <IconActionButton
@@ -92,6 +103,20 @@ export function ChargeRowActions({
         </TooltipTrigger>
         <TooltipContent>Ficha do cliente</TooltipContent>
       </Tooltip>
+      <ConfirmDialog
+        open={confirmingRealign}
+        onOpenChange={setConfirmingRealign}
+        title={`Atualizar a cobrança de ${charge.customerName}?`}
+        description={`A cobrança passa de ${formatCents(charge.principalCents)} para ${formatCents(charge.subscriptionPriceCents)}, o valor que o plano tem hoje. Use quando o plano mudou e esta cobrança ficou com o valor antigo — não use para reajuste que vale só do próximo ciclo.`}
+        confirmLabel="Atualizar valor"
+        onConfirm={handleRealign}
+      />
+      <CancelChargeDialog
+        open={cancelling}
+        onOpenChange={setCancelling}
+        customerName={charge.customerName}
+        onConfirm={handleCancel}
+      />
       <ConfirmDialog
         open={confirmingWriteOff}
         onOpenChange={setConfirmingWriteOff}

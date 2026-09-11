@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
-import { CustomerNotFoundError, findCustomerIdByPhone, insertCustomer, resolveImportedCustomer, softDeleteCustomer } from './service';
+import {
+  CustomerNotFoundError,
+  findCustomerIdByPhone,
+  insertCustomer,
+  resolveImportedCustomer,
+  restoreCustomer,
+  softDeleteCustomer,
+} from './service';
 
 const NAME_PREFIX = 'Soft Delete Teste';
 
@@ -38,6 +45,36 @@ describe('softDeleteCustomer', () => {
 
   it('cliente inexistente recusa com CustomerNotFoundError', async () => {
     await expect(softDeleteCustomer(randomUUID(), new Date())).rejects.toThrow(CustomerNotFoundError);
+  });
+});
+
+/**
+ * "Remover" some da lista e para a régua, mas não havia como desfazer: o chip
+ * `Removido` achava o cliente e a única ação da linha era remover de novo. Um
+ * clique errado custava o cadastro até alguém mexer no banco.
+ */
+describe('restoreCustomer', () => {
+  it('zera deletedAt e o cliente volta para a lista', async () => {
+    const customer = await db.customer.create({ data: { name: `${NAME_PREFIX} Restaurar`, deletedAt: new Date() } });
+
+    await restoreCustomer(customer.id);
+
+    const reloaded = await db.customer.findUniqueOrThrow({ where: { id: customer.id } });
+    expect(reloaded.deletedAt).toBeNull();
+  });
+
+  it('idempotente — restaurar quem nunca foi removido não quebra', async () => {
+    const customer = await db.customer.create({ data: { name: `${NAME_PREFIX} Restaurar Duas` } });
+
+    await restoreCustomer(customer.id);
+    await restoreCustomer(customer.id);
+
+    const reloaded = await db.customer.findUniqueOrThrow({ where: { id: customer.id } });
+    expect(reloaded.deletedAt).toBeNull();
+  });
+
+  it('cliente inexistente recusa com CustomerNotFoundError', async () => {
+    await expect(restoreCustomer(randomUUID())).rejects.toThrow(CustomerNotFoundError);
   });
 });
 

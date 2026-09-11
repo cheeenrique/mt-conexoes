@@ -102,6 +102,22 @@ export async function softDeleteCustomer(id: string, now: Date): Promise<void> {
   await db.customer.update({ where: { id }, data: { deletedAt: now } });
 }
 
+/**
+ * Desfaz o "Remover". Existe porque o soft delete não tinha volta: o chip
+ * `Removido` achava o cliente e a única ação da linha era remover de novo, então
+ * um clique errado custava o cadastro até alguém mexer no banco. Ao contrário da
+ * anonimização, nada foi apagado — restaurar é só limpar o carimbo.
+ *
+ * Idempotente: restaurar quem nunca foi removido não é erro, é no-op.
+ */
+export async function restoreCustomer(id: string): Promise<void> {
+  const existing = await db.customer.findUnique({ where: { id }, select: { deletedAt: true } });
+  if (!existing) throw new CustomerNotFoundError();
+  if (!existing.deletedAt) return;
+
+  await db.customer.update({ where: { id }, data: { deletedAt: null } });
+}
+
 export async function anonymizeCustomerRow(
   tx: Prisma.TransactionClient,
   id: string,

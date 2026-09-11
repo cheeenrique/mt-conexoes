@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { getSettings } from '@/lib/settings';
 import { resolveImportedCustomer } from '@/features/customers/service';
-import { createImportedSubscription, findImportedSubscriptionBySupplier } from '@/features/subscriptions/service';
+import { createImportedSubscription, findImportedSubscriptionBySupplier } from '@/features/subscriptions/imported';
 import { parseImportRow, readWorkbookRows, type ParseRowResult, type PhoneIssue } from '@/features/customers/import/workbook';
 import { buildImportPlan, type ImportPlan } from '@/features/customers/import/plan';
 import { ImportFileEmptyError, ImportSupplierNotFoundError } from '@/features/customers/import/errors';

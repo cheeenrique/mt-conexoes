@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 import { classifySubscriptionMargin } from '@/core/money';
 import { db } from '@/lib/db';
-import { computeChargeDiscount } from './service';
+import { computeChargeDiscount } from '@/core/billing';
 import type { BillingCycle, DiscountType, SubscriptionStatus } from '@prisma/client';
 
 export interface SubscriptionDTO {

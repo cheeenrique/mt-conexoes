@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { requireSession } from '@/lib/auth';
 import { customerFichaSchema } from '@/features/customers/ficha-schema';
-import { findCustomerIdByPhone, softDeleteCustomer } from '@/features/customers/service';
+import { findCustomerIdByPhone, restoreCustomer, softDeleteCustomer } from '@/features/customers/service';
+import { resumeCustomerMessaging } from '@/features/messaging/service';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';
@@ -80,6 +81,39 @@ export async function softDeleteCustomerAction(customerId: string): Promise<Acti
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
     logger.error({ route: 'customers.softDelete', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+/** Desfaz o "Remover". Nada foi apagado — restaurar é limpar o carimbo. */
+export async function restoreCustomerAction(customerId: string): Promise<ActionResult> {
+  try {
+    await requireSession();
+    await restoreCustomer(customerId);
+    revalidatePath('/customers');
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'customers.restore', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+/**
+ * Desfaz o opt-out (T5). Mora aqui, e não em `features/customers`, porque a
+ * regra é de mensageria — `app/` é a camada que pode cruzar as duas features
+ * (`.claude/rules/01-arquitetura.md`).
+ */
+export async function resumeMessagingAction(customerId: string): Promise<ActionResult> {
+  try {
+    await requireSession();
+    await resumeCustomerMessaging(customerId);
+    revalidatePath('/customers');
+    revalidatePath(`/customers/${customerId}`);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'customers.resumeMessaging', error: String(err), stack: err instanceof Error ? err.stack : undefined });
     return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
   }
 }

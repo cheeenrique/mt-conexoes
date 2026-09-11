@@ -150,6 +150,10 @@ export async function countCustomerSituations(params: CustomerListFilters): Prom
 
 export interface CustomerHeadDTO extends CustomerDTO {
   situation: CustomerSituation;
+  /** T5: o cliente pediu para não receber mensagem. Global, em todos os canais. */
+  optedOut: boolean;
+  optedOutAt: string | null;
+  optedOutReason: string | null;
   /** Mesmo offset da lista, para o badge da ficha mostrar o contador de dias. */
   daysFromDue: number | null;
   supplierName: string | null;
@@ -176,6 +180,9 @@ export async function getCustomerHead(
 
   return {
     ...toDTO(row),
+    optedOut: row.optedOut,
+    optedOutAt: row.optedOutAt?.toISOString() ?? null,
+    optedOutReason: row.optedOutReason,
     supplierName: sub?.supplier?.name ?? null,
     sinceAt: oldest?.startedAt.toISOString() ?? null,
     daysFromDue: openChargeDueAt ? daysFromDue(openChargeDueAt, now, timezone) : null,
