@@ -22,11 +22,21 @@ describe('customerSituationLabel', () => {
     expect(customerSituationLabel('SUSPENDED', null)).toBe('Suspenso');
   });
 
-  // Suspenso com cobrança vencida existe: a situação ganha do atraso, mas o
-  // offset continua vindo preenchido do DTO. O rótulo não pode virar
-  // "Suspenso · 9d" — o contador só faz sentido nos degraus da escada.
+  // Suspenso passou a ser estado transitório: a régua corta por atraso e o
+  // pagamento religa (charges/service.ts). O rótulo carrega o tamanho da
+  // dívida pela mesma razão de "Em atraso · 34d" — cortado há 3 dias e cortado
+  // há 3 meses pedem coisas diferentes do operador.
+  it('suspenso carrega o atraso que motivou o corte', () => {
+    expect(customerSituationLabel('SUSPENDED', 84)).toBe('Suspenso · 84d');
+  });
+
+  it('suspenso sem atraso não inventa contador — corte manual com cobrança em dia', () => {
+    expect(customerSituationLabel('SUSPENDED', -5)).toBe('Suspenso');
+    expect(customerSituationLabel('SUSPENDED', 0)).toBe('Suspenso');
+  });
+
   it('estado fora da escada ignora o offset que vier junto', () => {
-    expect(customerSituationLabel('SUSPENDED', 9)).toBe('Suspenso');
     expect(customerSituationLabel('DELETED', 4)).toBe('Removido');
+    expect(customerSituationLabel('ANONYMIZED', 4)).toBe('Anonimizado');
   });
 });

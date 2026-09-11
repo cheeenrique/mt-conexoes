@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { registerPaymentSchema, cancelChargeSchema } from './schema';
-import { registerPayment, cancelCharge } from './service';
+import { registerPayment, cancelCharge, writeOffRemaining } from './service';
 import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
@@ -26,6 +26,26 @@ export async function registerPaymentAction(chargeId: string, customerId: string
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
     logger.error({ route: 'charges.registerPayment', error: String(err), stack: err instanceof Error ? err.stack : undefined });
+    return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
+  }
+}
+
+/**
+ * "Dar baixa no restante": o que falta vira desconto e a cobrança fecha com o
+ * que entrou. Sem corpo para validar — os dois ids vêm da linha da tabela, e o
+ * service é quem recusa cobrança paga, cancelada ou sem pagamento nenhum.
+ */
+export async function writeOffChargeAction(chargeId: string, customerId: string): Promise<ActionResult> {
+  try {
+    await requireSession();
+    await writeOffRemaining(chargeId);
+    revalidatePath(`/customers/${customerId}`);
+    revalidatePath('/charges');
+    revalidatePath('/');
+    return { ok: true as const };
+  } catch (err) {
+    if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
+    logger.error({ route: 'charges.writeOff', error: String(err), stack: err instanceof Error ? err.stack : undefined });
     return { error: { code: 'UNEXPECTED', message: messages.common.unexpectedError } };
   }
 }

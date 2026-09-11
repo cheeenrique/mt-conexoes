@@ -20,6 +20,9 @@ const COUNT_TONE: Record<CustomerTriageSituation, string> = {
   DUE_SOON: 'text-warning',
   DUE_TODAY: 'text-brand-light',
   OVERDUE: 'text-danger',
+  // Fecha a escada em neutro, como o badge da linha: cortado já não é urgência
+  // do dia — a decisão de cobrar já foi tomada e executada.
+  SUSPENDED: 'text-foreground',
 };
 
 const UNDERLINE_TONE: Record<CustomerTriageSituation, string> = {
@@ -27,6 +30,7 @@ const UNDERLINE_TONE: Record<CustomerTriageSituation, string> = {
   DUE_SOON: 'bg-warning',
   DUE_TODAY: 'bg-brand-light',
   OVERDUE: 'bg-danger',
+  SUSPENDED: 'bg-foreground',
 };
 
 function TriageItem({

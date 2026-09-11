@@ -195,13 +195,12 @@ describe('resolveCustomerSituation', () => {
 
 describe('isCustomerSituationFilter', () => {
   it('aceita as situações que viram chip', () => {
-    for (const value of ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE', 'NO_CHARGE', 'ANONYMIZED', 'DELETED']) {
+    for (const value of ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE', 'SUSPENDED', 'NO_CHARGE', 'ANONYMIZED', 'DELETED']) {
       expect(isCustomerSituationFilter(value)).toBe(true);
     }
   });
 
   it('recusa situação derivada que não tem chip, e lixo vindo da URL', () => {
-    expect(isCustomerSituationFilter('SUSPENDED')).toBe(false);
     expect(isCustomerSituationFilter('NO_SUBSCRIPTION')).toBe(false);
     expect(isCustomerSituationFilter('; DROP TABLE customers')).toBe(false);
   });

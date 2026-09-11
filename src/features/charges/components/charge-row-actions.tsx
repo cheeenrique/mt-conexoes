@@ -1,8 +1,15 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
-import { Banknote, MessageCircle, Pencil } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Banknote, MessageCircle, Pencil, Percent } from 'lucide-react';
 import { IconActionButton } from '@/components/ui/icon-action-button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { whatsAppUrl } from '@/lib/format';
+import { formatCents, whatsAppUrl } from '@/lib/format';
+import { toastError, toastSuccess } from '@/lib/toast';
+import { writeOffChargeAction } from '../actions';
 import type { ChargeDTO } from '../queries';
 
 /** Por que o botão de registrar pagamento está travado — nunca junta os dois
@@ -11,6 +18,13 @@ function paymentDisabledReason(status: ChargeDTO['status']): string | undefined 
   if (status === 'PAID') return 'Cobrança já paga';
   if (status === 'CANCELLED') return 'Cobrança cancelada';
   return undefined;
+}
+
+/** A baixa só existe onde há saldo pago e saldo devendo — o cliente que pagou
+ *  parte e não vai pagar o resto. Fora disso o botão nem aparece: cobrança sem
+ *  pagamento se cancela, e cobrança quitada não tem restante. */
+function canWriteOff(charge: ChargeDTO): boolean {
+  return charge.status !== 'PAID' && charge.status !== 'CANCELLED' && BigInt(charge.paidCents) > 0n;
 }
 
 /** Ações de linha do padrão de tabela (registrar pagamento, WhatsApp, ficha do
@@ -22,7 +36,18 @@ export function ChargeRowActions({
   charge: ChargeDTO;
   onRegisterPayment: (charge: ChargeDTO) => void;
 }) {
+  const router = useRouter();
+  const [confirmingWriteOff, setConfirmingWriteOff] = useState(false);
   const paymentDisabled = paymentDisabledReason(charge.status);
+  const remainingCents = (BigInt(charge.netCents) - BigInt(charge.paidCents)).toString();
+
+  async function handleWriteOff() {
+    setConfirmingWriteOff(false);
+    const result = await writeOffChargeAction(charge.id, charge.customerId);
+    if ('error' in result) return toastError(result.error);
+    toastSuccess('Cobrança fechada com o valor já pago.');
+    router.refresh();
+  }
 
   return (
     <div className="flex items-center justify-end gap-1.5">
@@ -35,6 +60,9 @@ export function ChargeRowActions({
           tone="success"
           onClick={() => onRegisterPayment(charge)}
         />
+      )}
+      {canWriteOff(charge) && (
+        <IconActionButton icon={Percent} label="Dar baixa no restante" onClick={() => setConfirmingWriteOff(true)} />
       )}
       {charge.customerPhone ? (
         <IconActionButton
@@ -64,6 +92,14 @@ export function ChargeRowActions({
         </TooltipTrigger>
         <TooltipContent>Ficha do cliente</TooltipContent>
       </Tooltip>
+      <ConfirmDialog
+        open={confirmingWriteOff}
+        onOpenChange={setConfirmingWriteOff}
+        title={`Fechar a cobrança de ${charge.customerName}?`}
+        description={`Os ${formatCents(remainingCents)} que faltam viram desconto: a cobrança fecha com os ${formatCents(charge.paidCents)} que o cliente pagou, o faturado do mês cai para esse valor e o próximo ciclo abre contado do último pagamento. Não dá para desfazer.`}
+        confirmLabel="Dar baixa"
+        onConfirm={handleWriteOff}
+      />
     </div>
   );
 }

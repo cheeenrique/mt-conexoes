@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { deriveChargeStatus } from '@/core/billing';
@@ -22,6 +23,9 @@ export class ChargeHasPaymentError extends DomainError {
 }
 export class PaymentDateInFutureError extends DomainError {
   constructor(cause?: unknown) { super('A data do pagamento não pode ser no futuro.', 'PAYMENT_DATE_IN_FUTURE', { cause }); }
+}
+export class ChargeWithoutPaymentError extends DomainError {
+  constructor(cause?: unknown) { super('Esta cobrança não tem pagamento registrado — cancele em vez de dar baixa.', 'CHARGE_WITHOUT_PAYMENT', { cause }); }
 }
 
 export async function registerPayment(chargeId: string, input: RegisterPaymentInput) {
@@ -65,28 +69,85 @@ export async function registerPayment(chargeId: string, input: RegisterPaymentIn
 
     await tx.charge.update({ where: { id: chargeId }, data: { status: newStatus, paidAt: newStatus === 'PAID' ? paidAt : charge.paidAt } });
 
-    if (newStatus === 'PAID') {
-      const newNextDueAt = nextDueDate({ paidAt, cycle: charge.subscription.cycle, timezone: settings.timezone });
-      await tx.subscription.update({
-        where: { id: charge.subscriptionId },
-        data: { nextDueAt: newNextDueAt, ...reactivationPatch(charge.subscription.status) },
-      });
-      await tx.charge.create({
-        data: {
-          subscriptionId: charge.subscriptionId,
-          customerId: charge.customerId,
-          supplierId: charge.supplierId,
-          principalCents: charge.subscription.priceCents,
-          discountCents: 0n,
-          costCents: charge.subscription.costCents,
-          periodStart: charge.periodEnd,
-          periodEnd: localDateOnly(newNextDueAt, settings.timezone),
-          dueAt: newNextDueAt,
-        },
-      });
-    }
+    if (newStatus === 'PAID') await openNextCycle(tx, charge, paidAt, settings.timezone);
 
     return { chargeId, status: newStatus };
+  });
+}
+
+/**
+ * Dá por encerrada a cobrança que o cliente não vai pagar até o fim: o que
+ * falta vira desconto na própria cobrança, e ela fecha com o dinheiro que
+ * entrou de verdade.
+ *
+ * Existe porque nenhum dos dois caminhos que havia servia ao caso real — o
+ * cliente de R$ 90 que decidiu ficar no mensal e pagou R$ 30. Cancelar é
+ * proibido (tem pagamento registrado) e editar o valor também: documento com
+ * dinheiro registrado é imutável. Desconto é a peça que o domínio já tinha
+ * para "não vou cobrar isto" sem reescrever o que foi recebido — o faturado
+ * cai para o acordado, o recebido não se mexe, o custo segue congelado.
+ *
+ * Sem pagamento nenhum não é baixa, é cancelamento — e esse caminho já existe,
+ * com motivo obrigatório.
+ */
+export async function writeOffRemaining(chargeId: string): Promise<{ chargeId: string; status: 'PAID' }> {
+  const settings = await getSettings();
+
+  return db.$transaction(async (tx) => {
+    const charge = await tx.charge.findUnique({ where: { id: chargeId }, include: { payments: true, subscription: true } });
+    if (!charge) throw new ChargeNotFoundError();
+    if (charge.status === 'PAID') throw new ChargeAlreadyPaidError();
+    if (charge.status === 'CANCELLED') throw new ChargeNotFoundError();
+    if (charge.payments.length === 0) throw new ChargeWithoutPaymentError();
+
+    const paidCents = charge.payments.reduce((sum, p) => sum + p.amountCents, 0n);
+    // Data do último pagamento: é dela que o ciclo seguinte conta, pela mesma
+    // regra do pagamento total (CLAUDE.md §Data e fuso).
+    const paidAt = charge.payments.reduce((latest, p) => (p.paidAt > latest ? p.paidAt : latest), charge.payments[0].paidAt);
+
+    await tx.charge.update({
+      where: { id: chargeId },
+      data: { discountCents: charge.principalCents - paidCents, status: 'PAID', paidAt },
+    });
+    await openNextCycle(tx, charge, paidAt, settings.timezone);
+
+    return { chargeId, status: 'PAID' as const };
+  });
+}
+
+type ChargeWithSubscription = Prisma.ChargeGetPayload<{ include: { subscription: true } }>;
+
+/**
+ * Cobrança quitada fecha o ciclo e abre o próximo — o segundo dos dois únicos
+ * momentos em que uma `Charge` nasce (CLAUDE.md §Data e fuso). Compartilhado
+ * entre o pagamento total e a baixa do restante: duplicar cálculo de
+ * vencimento entre dois caminhos é divergência de valor garantida
+ * (`.claude/rules/05-reuso.md`).
+ */
+async function openNextCycle(
+  tx: Prisma.TransactionClient,
+  charge: ChargeWithSubscription,
+  paidAt: Date,
+  timezone: string,
+): Promise<void> {
+  const newNextDueAt = nextDueDate({ paidAt, cycle: charge.subscription.cycle, timezone });
+
+  await tx.subscription.update({
+    where: { id: charge.subscriptionId },
+    data: { nextDueAt: newNextDueAt, ...reactivationPatch(charge.subscription.status) },
+  });
+  await tx.charge.create({
+    data: {
+      subscriptionId: charge.subscriptionId,
+      customerId: charge.customerId,
+      supplierId: charge.supplierId,
+      principalCents: charge.subscription.priceCents,
+      discountCents: 0n,
+      costCents: charge.subscription.costCents,
+      periodStart: charge.periodEnd,
+      periodEnd: localDateOnly(newNextDueAt, timezone),
+      dueAt: newNextDueAt,
+    },
   });
 }
 

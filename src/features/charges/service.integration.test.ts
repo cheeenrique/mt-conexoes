@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import {
   registerPayment,
+  writeOffRemaining,
   cancelCharge,
+  ChargeWithoutPaymentError,
   ChargeAlreadyPaidError,
   ChargeHasPaymentError,
   ChargeNotFoundError,
@@ -251,5 +253,77 @@ describe('registerPayment — assinatura suspensa pela régua', () => {
 
     const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
     expect(subscription.status).toBe('SUSPENDED');
+  });
+});
+
+
+/**
+ * Relatado em 11/09/2026: cliente de R$ 90 (trimestral) que decidiu ficar só no
+ * mensal e pagou R$ 30. A cobrança fica devendo 60 para sempre — cancelar é
+ * proibido (tem pagamento) e editar o valor também (documento com dinheiro
+ * registrado é imutável, CLAUDE.md §Dinheiro). Não havia saída pela tela.
+ *
+ * A saída é a que o domínio já tem: o que não vai ser cobrado vira desconto na
+ * própria cobrança. O dinheiro recebido não se reescreve, o faturado cai para o
+ * que foi de fato acordado, e o ciclo seguinte abre contado do dia do pagamento.
+ */
+describe('writeOffRemaining — baixa do restante como desconto', () => {
+  it('fecha a cobrança com o que já foi pago e joga a diferença para o desconto', async () => {
+    await registerPayment(chargeId, paymentInput({ amountCents: '3000', paidAt: '2026-08-31' }));
+
+    const result = await writeOffRemaining(chargeId);
+
+    expect(result.status).toBe('PAID');
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: chargeId } });
+    expect(charge.status).toBe('PAID');
+    expect(charge.discountCents.toString()).toBe('7000');
+    expect(charge.principalCents.toString()).toBe('10000');
+    // Custo congelado na emissão: a baixa é decisão comercial, não erro de custo.
+    expect(charge.costCents.toString()).toBe('3000');
+    expect(charge.paidAt?.toISOString()).toBe('2026-08-31T03:00:00.000Z');
+  });
+
+  it('abre o ciclo seguinte contado do dia em que o cliente pagou', async () => {
+    await registerPayment(chargeId, paymentInput({ amountCents: '3000', paidAt: '2026-08-31' }));
+
+    await writeOffRemaining(chargeId);
+
+    const next = await db.charge.findFirstOrThrow({ where: { subscriptionId, id: { not: chargeId } } });
+    expect(next.dueAt.toISOString()).toBe('2026-10-01T02:59:59.999Z');
+    // Preço do ciclo novo sai da assinatura, não do que sobrou da baixa.
+    expect(next.principalCents.toString()).toBe('10000');
+
+    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+    expect(subscription.nextDueAt.toISOString()).toBe('2026-10-01T02:59:59.999Z');
+  });
+
+  it('religa a assinatura que a régua tinha cortado', async () => {
+    await db.subscription.update({ where: { id: subscriptionId }, data: { status: 'SUSPENDED', suspendedAt: new Date() } });
+    await registerPayment(chargeId, paymentInput({ amountCents: '3000', paidAt: '2026-08-31' }));
+
+    await writeOffRemaining(chargeId);
+
+    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+    expect(subscription.status).toBe('ACTIVE');
+    expect(subscription.suspendedAt).toBeNull();
+  });
+
+  it('cobrança sem pagamento nenhum é recusada — aí o caminho é cancelar', async () => {
+    await expect(writeOffRemaining(chargeId)).rejects.toThrow(ChargeWithoutPaymentError);
+
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: chargeId } });
+    expect(charge.discountCents.toString()).toBe('0');
+  });
+
+  it('cobrança já paga é recusada', async () => {
+    await registerPayment(chargeId, paymentInput({ amountCents: '10000' }));
+
+    await expect(writeOffRemaining(chargeId)).rejects.toThrow(ChargeAlreadyPaidError);
+  });
+
+  it('cobrança cancelada é recusada', async () => {
+    await cancelCharge(chargeId, 'cliente desistiu');
+
+    await expect(writeOffRemaining(chargeId)).rejects.toThrow(ChargeNotFoundError);
   });
 });

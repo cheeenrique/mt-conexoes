@@ -148,7 +148,7 @@ beforeAll(async () => {
 afterAll(purge);
 
 /** Busca pelo prefixo da fixture isola o recorte — nada de total absoluto global. */
-type ChipSituation = 'UP_TO_DATE' | 'DUE_SOON' | 'DUE_TODAY' | 'OVERDUE' | 'NO_CHARGE';
+type ChipSituation = 'UP_TO_DATE' | 'DUE_SOON' | 'DUE_TODAY' | 'OVERDUE' | 'SUSPENDED' | 'NO_CHARGE';
 
 function listFixture(params: { q?: string; situation?: ChipSituation } = {}) {
   return listCustomers({ page: 1, perPage: 20, q: params.q ?? TAG, situation: params.situation, now: NOW, timezone: TZ });
@@ -217,23 +217,26 @@ describe('listCustomers — chips de situação', () => {
     expect(rows.map((r) => r.name).sort()).toEqual([`${TAG} Atraso`, `${TAG} AtrasoEHoje`]);
   });
 
-  it('nenhum chip traz o suspenso — mas ele continua na lista sem filtro', async () => {
-    const filtered = await Promise.all(
+  // Suspenso é o último degrau da escada, não um estado fora dela: a régua corta
+  // por atraso e o pagamento religa (charges/service.ts). Quem estava cortado há
+  // 80 dias não aparecia em degrau nenhum — justamente o maior devedor da base
+  // sumindo do número que o operador olha antes do primeiro clique.
+  it('o chip "Suspenso" traz quem está cortado, e nenhum outro degrau o traz', async () => {
+    const { rows } = await listFixture({ situation: 'SUSPENDED' });
+    expect(rows.map((r) => r.name)).toEqual([`${TAG} Suspenso`]);
+
+    const outros = await Promise.all(
       (['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE', 'NO_CHARGE'] as const).map((situation) =>
         listFixture({ situation }),
       ),
     );
-    const names = filtered.flatMap((result) => result.rows.map((row) => row.name));
-    expect(names).not.toContain(`${TAG} Suspenso`);
-
-    const { rows } = await listFixture();
-    expect(rows.map((r) => r.name)).toContain(`${TAG} Suspenso`);
+    expect(outros.flatMap((result) => result.rows.map((row) => row.name))).not.toContain(`${TAG} Suspenso`);
   });
 
   // O predicado do chip e `resolveCustomerSituation` são dois códigos diferentes
   // sobre o mesmo conceito. Este teste é o que impede um divergir do outro.
   it('toda linha que o chip devolve carrega a situação daquele chip', async () => {
-    for (const situation of ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE', 'NO_CHARGE'] as const) {
+    for (const situation of ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE', 'SUSPENDED', 'NO_CHARGE'] as const) {
       const { rows } = await listFixture({ situation });
       expect(rows.length).toBeGreaterThan(0);
       expect(rows.every((row) => row.situation === situation)).toBe(true);

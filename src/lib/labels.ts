@@ -101,6 +101,11 @@ export function customerSituationLabel(situation: CustomerSituation, daysFromDue
   if (daysFromDue === null) return base;
   if (situation === 'DUE_SOON') return `Vence em ${-daysFromDue}d`;
   if (situation === 'OVERDUE') return `${base} · ${daysFromDue}d`;
+  // Suspenso é estado transitório: a régua corta por atraso e o pagamento
+  // religa. O contador diz o tamanho da dívida que motivou o corte — só quando
+  // ela existe, porque suspender também é ação manual, e aí a cobrança pode
+  // estar em dia (offset negativo viraria "Suspenso · -5d").
+  if (situation === 'SUSPENDED' && daysFromDue > 0) return `${base} · ${daysFromDue}d`;
   return base;
 }
 

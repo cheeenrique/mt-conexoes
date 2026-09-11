@@ -53,6 +53,13 @@ function situationWhere(
 
   // ANONYMIZED e DELETED não caem aqui — `listCustomers` já resolve os dois
   // antes de chamar esta função (ver o comentário lá).
+  //
+  // `SUSPENDED` espelha o desempate de `resolveCustomerSituation`: a assinatura
+  // que decide a linha é a ativa, e só na falta dela a suspensa. Sem o `none`,
+  // quem tem um pacote ativo e outro cortado cairia em dois degraus.
+  if (situation === 'SUSPENDED') {
+    return { subscriptions: { some: { status: 'SUSPENDED' }, none: { status: 'ACTIVE' } } };
+  }
   if (situation === 'NO_CHARGE') {
     return { ...activeSubscription, charges: { none: { status } } };
   }

@@ -44,14 +44,15 @@ export type CustomerSituation =
  * delete ("Remover" na tabela) — diferente de `ANONYMIZED` (direito de
  * eliminação, LGPD): aqui o dado continua intacto, só sai da lista e da régua.
  *
- * `SUSPENDED` e `NO_SUBSCRIPTION` ficam de fora: não são recortes da escada de
- * cobrança, e o operador chega neles pela busca.
+ * `NO_SUBSCRIPTION` fica de fora: não é recorte da escada de cobrança, e o
+ * operador chega nele pela busca.
  */
 export const CUSTOMER_SITUATION_FILTERS = [
   'UP_TO_DATE',
   'DUE_SOON',
   'DUE_TODAY',
   'OVERDUE',
+  'SUSPENDED',
   'NO_CHARGE',
   'ANONYMIZED',
   'DELETED',
@@ -64,8 +65,13 @@ export type CustomerSituationFilter = (typeof CUSTOMER_SITUATION_FILTERS)[number
  * chips porque é o recorte que o operador olha todo dia — "quem preciso cobrar
  * hoje" — enquanto `NO_CHARGE`, `ANONYMIZED` e `DELETED` são administrativos e
  * moram no select "Outros".
+ *
+ * `SUSPENDED` fecha a escada em vez de ficar fora dela: o corte de acesso é o
+ * último passo da régua, e o pagamento religa (`charges/service.ts`). Enquanto
+ * ficava fora, o maior devedor da base — cortado há três meses — não aparecia
+ * em degrau nenhum nem em contador nenhum.
  */
-export const CUSTOMER_TRIAGE_SITUATIONS = ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE'] as const;
+export const CUSTOMER_TRIAGE_SITUATIONS = ['UP_TO_DATE', 'DUE_SOON', 'DUE_TODAY', 'OVERDUE', 'SUSPENDED'] as const;
 
 export type CustomerTriageSituation = (typeof CUSTOMER_TRIAGE_SITUATIONS)[number];
 
