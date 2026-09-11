@@ -7,10 +7,18 @@ import { DateInput } from './date-input';
 /** Espelha o uso real (Controller do react-hook-form): `value` some do controle do pai. */
 function ControlledDateInput({ initial = '' }: { initial?: string }) {
   const [value, setValue] = useState(initial);
+  const [changes, setChanges] = useState(0);
   return (
     <>
-      <DateInput value={value} onValueChange={setValue} />
+      <DateInput
+        value={value}
+        onValueChange={(next) => {
+          setChanges((n) => n + 1);
+          setValue(next);
+        }}
+      />
       <output data-testid="value">{value}</output>
+      <output data-testid="changes">{changes}</output>
     </>
   );
 }
@@ -28,6 +36,22 @@ describe('DateInput', () => {
     await user.type(screen.getByRole('textbox'), '10092026');
 
     expect(screen.getByTestId('value')).toHaveTextContent('2026-09-10');
+  });
+
+  /**
+   * A máscara dispara `onAccept('')` sozinha ao montar com o campo vazio. Isso
+   * chegava ao pai como "o operador apagou o campo" — e o diálogo de pagamento,
+   * que usa esse sinal para parar de sugerir o próximo vencimento, nascia
+   * achando que ele já tinha escolhido uma data (em branco).
+   */
+  it('montar vazio não avisa o pai de mudança nenhuma', () => {
+    render(<ControlledDateInput />);
+    expect(screen.getByTestId('changes')).toHaveTextContent('0');
+  });
+
+  it('montar preenchido também não avisa mudança', () => {
+    render(<ControlledDateInput initial="2026-09-10" />);
+    expect(screen.getByTestId('changes')).toHaveTextContent('0');
   });
 
   it('esvaziar o campo zera o valor em vez de manter a data anterior', async () => {

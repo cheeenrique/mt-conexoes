@@ -1,23 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Check, Loader2 } from 'lucide-react';
 import type { z } from 'zod';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { CurrencyInput } from '@/components/ui/currency-input';
-import { DateInput } from '@/components/ui/date-input';
-import { Select } from '@/components/ui/select';
-import { localDateOnly } from '@/core/dates';
-import { NextDueHint } from './next-due-hint';
+import { localDateOnly, type BillingCycle } from '@/core/dates';
+import { PaymentFields } from './register-payment-fields';
+import { suggestNextDueAt } from './next-due-preview';
 import { formatLocalDate } from '@/lib/format';
 import { toastError } from '@/lib/toast';
 import { registerPaymentSchema } from '../schema';
 import { registerPaymentAction } from '../actions';
-import { PAYMENT_METHOD_OPTIONS } from '@/lib/labels';
 import type { ChargeDTO } from '../queries';
 
 type FormValues = z.input<typeof registerPaymentSchema>;
@@ -39,6 +35,10 @@ function todayLocalIso(timezone: string): string {
  */
 function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; timezone: string; onDone: () => void }) {
   const [idempotencyKey] = useState(() => crypto.randomUUID());
+  // O vencimento sugerido acompanha a data do pagamento **até** o operador
+  // editá-lo. Depois disso a escolha é dele: recalcular por cima apagaria o
+  // prazo que ele acabou de combinar com o cliente.
+  const [dueTouched, setDueTouched] = useState(false);
   const todayIso = todayLocalIso(timezone);
   const remainingCents = (BigInt(charge.netCents) - BigInt(charge.paidCents)).toString();
 
@@ -47,14 +47,28 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
     register,
     handleSubmit,
     setError,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(registerPaymentSchema),
-    defaultValues: { amountCents: remainingCents, method: 'PIX', paidAt: todayIso, note: '', idempotencyKey },
+    defaultValues: {
+      amountCents: remainingCents,
+      method: 'PIX',
+      paidAt: todayIso,
+      nextDueAt: '',
+      note: '',
+      idempotencyKey,
+    },
   });
 
-  const paidAt = watch('paidAt') ?? '';
+  // `useWatch` e não `watch`: só ele re-renderiza o componente quando a data
+  // muda, que é o que mantém o vencimento sugerido acompanhando o campo.
+  const paidAt = useWatch({ control, name: 'paidAt', defaultValue: todayIso }) ?? todayIso;
+  const suggestedDueAt = suggestNextDueAt({
+    paidAt,
+    currentDueAt: new Date(charge.dueAt),
+    cycle: charge.subscriptionCycle as BillingCycle,
+    timezone,
+  });
 
   async function onSubmit(values: FormValues) {
     // Teto de hoje: comparação de ISO é lexicográfica e basta. O servidor
@@ -65,7 +79,19 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
       return;
     }
 
-    const result = await registerPaymentAction(charge.id, charge.customerId, values);
+    // Campo vazio = o operador não mexeu: vale a regra, recalculada aqui a
+    // partir do que ele de fato submeteu, nunca de um valor preso a um render.
+    const nextDueAt =
+      values.nextDueAt ||
+      suggestNextDueAt({
+        paidAt: values.paidAt,
+        currentDueAt: new Date(charge.dueAt),
+        cycle: charge.subscriptionCycle as BillingCycle,
+        timezone,
+      }) ||
+      '';
+
+    const result = await registerPaymentAction(charge.id, charge.customerId, { ...values, nextDueAt });
     if ('error' in result) {
       toastError(result.error);
       return;
@@ -84,38 +110,15 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
       </DialogHeader>
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         <input type="hidden" {...register('idempotencyKey')} />
-        <div className="space-y-1.5">
-          <Label htmlFor="amountCents">Valor</Label>
-          <Controller
+          <PaymentFields
             control={control}
-            name="amountCents"
-            render={({ field }) => <CurrencyInput id="amountCents" value={field.value} onValueChange={field.onChange} />}
+            register={register}
+            errors={errors}
+            suggestedDueAt={suggestedDueAt}
+            dueTouched={dueTouched}
+            onDueTouched={() => setDueTouched(true)}
+            timezone={timezone}
           />
-          {errors.amountCents && <p className="mt-1 text-sm text-danger">{errors.amountCents.message}</p>}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="paidAt">Data</Label>
-          <Controller
-            control={control}
-            name="paidAt"
-            render={({ field }) => <DateInput id="paidAt" value={field.value ?? ''} onValueChange={field.onChange} />}
-          />
-          {errors.paidAt ? (
-            <p className="mt-1 text-sm text-danger">{errors.paidAt.message}</p>
-          ) : (
-            <NextDueHint paidAt={paidAt} cycle={charge.subscriptionCycle} timezone={timezone} />
-          )}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="method">Forma</Label>
-          <Controller
-            control={control}
-            name="method"
-            render={({ field }) => (
-              <Select id="method" value={field.value} onValueChange={field.onChange} options={[...PAYMENT_METHOD_OPTIONS]} />
-            )}
-          />
-        </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onDone}>
             Cancelar

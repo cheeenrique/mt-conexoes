@@ -330,8 +330,9 @@ async function seedCustomer01AtivoEmDia(
     costCents: 1000n,
     cycle: 'MONTHLY' as const,
     startedAt: dueAtOffset(now, -95, timezone),
-    // Próxima cobrança = data do pagamento do ciclo atual + duração do ciclo — nunca dia fixo.
-    nextDueAt: nextDueDate({ paidAt, cycle: 'MONTHLY', timezone }),
+    // Próximo vencimento ancorado na data mais tarde entre o vencimento em
+    // aberto e o pagamento — aqui o cliente pagou no dia, então dá no mesmo.
+    nextDueAt: nextDueDate({ paidAt, currentDueAt: paidAt, cycle: 'MONTHLY', timezone }),
     status: 'ACTIVE' as const,
     suspendedAt: null,
   };

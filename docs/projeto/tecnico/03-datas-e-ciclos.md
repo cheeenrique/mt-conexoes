@@ -3,12 +3,17 @@
 > Vive em `src/core/dates.ts` e `src/core/billing-cycle.ts`. Puro, sem I/O, sem `new Date()` interno.
 > **TDD obrigatório.** É a fonte histórica de bug nº 1 deste domínio.
 > Confirmado com o dono do produto em 2026-08-06 — spec de origem em `docs/superpowers/specs/2026-08-06-vencimento-por-pagamento-design.md`.
+>
+> ⚠️ **Revisto em 2026-09-11, a pedido do operador.** A âncora deixou de ser
+> sempre o pagamento e passou a ser **a data mais tarde entre o vencimento em
+> aberto e o pagamento**. O texto abaixo está atualizado; o spec de agosto
+> descreve a versão anterior.
 
 ## Princípios
 
 1. **Banco em UTC. Conceito em local.** Vencimento, corte de relatório e "hoje" são conceitos no fuso do negócio (`Settings.timezone`, padrão `America/Sao_Paulo`). O banco guarda UTC; a conversão acontece na borda.
 2. **Vencimento é `23:59:59.999` local.** Cobrança que vence dia 10 está em dia até o fim do dia 10 no fuso do cliente.
-3. **Vencimento do próximo ciclo é sempre derivado da data em que o pagamento do ciclo atual foi quitado.** Não existe dia fixo gravado na assinatura — o "dia" usado no cálculo é o dia do pagamento, e ele muda o ciclo inteiro pra frente quando o cliente atrasa.
+3. **Vencimento do próximo ciclo é derivado da âncora: a data mais tarde entre o vencimento em aberto e o dia do pagamento.** Não existe dia fixo gravado na assinatura. Pagou antes do vencimento, a âncora é o vencimento — pagar adiantado não custa dias ao cliente. Pagou depois, a âncora é o pagamento, e o ciclo inteiro anda para frente.
 4. **`new Date()` não existe dentro de `core/`.** O instante atual entra por parâmetro. Sem isso, o teste passa hoje e quebra dia 31.
 
 Biblioteca: `date-fns` v4 + `@date-fns/tz`. Nada de aritmética manual sobre milissegundos.
@@ -17,7 +22,22 @@ Biblioteca: `date-fns` v4 + `@date-fns/tz`. Nada de aritmética manual sobre mil
 
 ## Vencimento por data de pagamento
 
-O modelo é: **vencimento(ciclo N+1) = dataPagamentoTotal(ciclo N) + duração(cycle)**, mesmo dia do mês de N meses à frente.
+O modelo é: **vencimento(ciclo N+1) = âncora + duração(cycle)**, mesmo dia do mês de N meses à frente, onde
+**âncora = max(vencimento(ciclo N), dataPagamentoTotal(ciclo N))** comparados em dia local.
+
+| Vencimento | Pagou | Âncora | Próximo (mensal) |
+|---|---|---|---|
+| 10/08 | 05/08 | 10/08 (vencimento) | 10/09 |
+| 10/08 | 10/08 | 10/08 (empate) | 10/09 |
+| 10/08 | 12/08 | 12/08 (pagamento) | 12/09 |
+
+⚠️ **Por que não é sempre o pagamento.** Era, até 11/09/2026. Quem pagava adiantado perdia os
+dias adiantados, e o vencimento andava para trás sozinho: dia 10 pago no dia 5 virava dia 5, que
+pago no dia 1 virava dia 1. Numa base que paga antes do vencimento por hábito, o vencimento
+migrava para o começo do mês em poucos ciclos, sem ninguém ter pedido.
+
+O diálogo de pagamento **sugere** essa data num campo editável — o operador troca quando combinou
+outro prazo, e o que ele escolher é o que grava. Campo vazio cai na regra.
 
 Cliente que paga em dia todo mês vence sempre no mesmo dia — na prática se comporta como uma âncora fixa. Cliente que atrasa "anda" o ciclo inteiro pra frente: pagou o ciclo de janeiro só em 05/02, o ciclo de fevereiro vence 05/03, não no dia em que venceria se ele tivesse pagado em dia.
 
@@ -43,7 +63,7 @@ O problema: cliente pagou dia 31. Fevereiro não tem 31.
 
 A resposta errada, e comum, é gravar 28 como se fosse o novo "dia de vencimento" permanente. Aí o cliente que pagasse em março de novo dia 31 veria o sistema vencer dia 28 pra sempre.
 
-A resposta certa é **usar o dia do pagamento a cada ciclo e aplicar o clamp de novo, do zero, a cada cálculo**:
+A resposta certa é **usar o dia da âncora a cada ciclo e aplicar o clamp de novo, do zero, a cada cálculo**:
 
 ```ts
 /** Dia efetivo do vencimento naquele mês, respeitando o dia desejado. */

@@ -96,7 +96,7 @@ describe('registerPaymentSchema', () => {
 });
 
 describe('registerPayment', () => {
-  it('pagamento total marca PAID e emite a próxima Charge com vencimento certo', async () => {
+  it('pagamento total marca PAID e emite a próxima Charge um ciclo à frente do vencimento', async () => {
     const result = await registerPayment(chargeId, paymentInput({ amountCents: '10000', paidAt: '2026-08-31' }));
 
     expect(result.status).toBe('PAID');
@@ -105,34 +105,15 @@ describe('registerPayment', () => {
     expect(charge.status).toBe('PAID');
     expect(charge.paidAt).not.toBeNull();
 
-    // Pagou 31/08 -> próximo vencimento cai em setembro, que só tem 30 dias:
-    // clamp de fim de mês.
-    const nextCharge = await db.charge.findFirst({
-      where: { subscriptionId, id: { not: chargeId } },
-    });
-    expect(nextCharge).not.toBeNull();
-    expect(nextCharge!.dueAt.toISOString()).toBe('2026-10-01T02:59:59.999Z');
-    expect(nextCharge!.periodEnd.toISOString()).toBe('2026-09-30T00:00:00.000Z');
-
-    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
-    expect(subscription.nextDueAt.toISOString()).toBe('2026-10-01T02:59:59.999Z');
-  });
-
-  it('pagamento registrado com atraso conta o ciclo a partir do dia em que o cliente pagou', async () => {
-    // O cliente pagou 01/09 e o operador só registrou dias depois: o próximo
-    // vencimento é 01/10, contado do dia do pagamento, nunca do dia do registro.
-    const result = await registerPayment(chargeId, paymentInput({ amountCents: '10000', paidAt: '2026-09-01' }));
-
-    expect(result.status).toBe('PAID');
-
-    const charge = await db.charge.findUniqueOrThrow({ where: { id: chargeId } });
-    expect(charge.paidAt?.toISOString()).toBe('2026-09-01T03:00:00.000Z');
-
+    // Que data exatamente é assunto do describe "âncora do próximo vencimento",
+    // com vencimento e pagamento fixos. Aqui basta: a próxima nasce, à frente
+    // da que foi quitada, e assinatura e cobrança apontam para o mesmo dia.
     const nextCharge = await db.charge.findFirstOrThrow({ where: { subscriptionId, id: { not: chargeId } } });
-    expect(nextCharge.dueAt.toISOString()).toBe('2026-10-02T02:59:59.999Z');
+    expect(nextCharge.dueAt.getTime()).toBeGreaterThan(charge.dueAt.getTime());
+    expect(nextCharge.periodStart.toISOString()).toBe(charge.periodEnd.toISOString());
 
     const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
-    expect(subscription.nextDueAt.toISOString()).toBe('2026-10-02T02:59:59.999Z');
+    expect(subscription.nextDueAt.toISOString()).toBe(nextCharge.dueAt.toISOString());
   });
 
   it('data de pagamento no futuro é recusada e não grava Payment', async () => {
@@ -285,18 +266,18 @@ describe('writeOffRemaining — baixa do restante como desconto', () => {
     expect(charge.paidAt?.toISOString()).toBe('2026-08-31T03:00:00.000Z');
   });
 
-  it('abre o ciclo seguinte contado do dia em que o cliente pagou', async () => {
+  it('abre o ciclo seguinte, com o preço da assinatura', async () => {
     await registerPayment(chargeId, paymentInput({ amountCents: '3000', paidAt: '2026-08-31' }));
 
     await writeOffRemaining(chargeId);
 
     const next = await db.charge.findFirstOrThrow({ where: { subscriptionId, id: { not: chargeId } } });
-    expect(next.dueAt.toISOString()).toBe('2026-10-01T02:59:59.999Z');
+    expect(next.dueAt.getTime()).toBeGreaterThan(FUTURE_DUE_AT.getTime());
     // Preço do ciclo novo sai da assinatura, não do que sobrou da baixa.
     expect(next.principalCents.toString()).toBe('10000');
 
     const subscription = await db.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
-    expect(subscription.nextDueAt.toISOString()).toBe('2026-10-01T02:59:59.999Z');
+    expect(subscription.nextDueAt.toISOString()).toBe(next.dueAt.toISOString());
   });
 
   it('religa a assinatura que a régua tinha cortado', async () => {
@@ -389,5 +370,88 @@ describe('realignChargeToSubscription — trazer o valor do plano para a cobran�
   it('cobrança paga ou cancelada é recusada', async () => {
     await cancelCharge(chargeId, 'cliente desistiu');
     await expect(realignChargeToSubscription(chargeId)).rejects.toThrow(ChargeNotFoundError);
+  });
+});
+
+
+/**
+ * Regra do operador, 11/09/2026: "vence 10 e foi pago 05, conta o ciclo 10 → 10
+ * do mês seguinte; se o vencimento é 10 e foi pago 12, conta 12 → 12."
+ *
+ * Antes contava sempre do pagamento, e quem pagava adiantado perdia os dias
+ * adiantados — o vencimento andava para trás mês a mês em toda a base que paga
+ * antes. O campo do diálogo sugere esta data e aceita outra: prazo combinado
+ * caso a caso é decisão do operador, não do cálculo.
+ */
+describe('registerPayment — âncora do próximo vencimento', () => {
+  let anchorSubscriptionId: string;
+  let anchorChargeId: string;
+  let anchorCustomerId: string;
+
+  beforeEach(async () => {
+    const customer = await db.customer.create({ data: { name: `Cliente Âncora ${randomUUID()}` } });
+    anchorCustomerId = customer.id;
+    const subscription = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 3000n, costCents: 1000n, cycle: 'MONTHLY', nextDueAt: new Date('2026-08-11T02:59:59.999Z') },
+    });
+    anchorSubscriptionId = subscription.id;
+    const charge = await db.charge.create({
+      data: {
+        subscriptionId: subscription.id,
+        customerId: customer.id,
+        principalCents: 3000n,
+        discountCents: 0n,
+        costCents: 1000n,
+        periodStart: new Date('2026-07-10T00:00:00.000Z'),
+        periodEnd: new Date('2026-08-10T00:00:00.000Z'),
+        dueAt: new Date('2026-08-11T02:59:59.999Z'), // 10/08 23:59:59 local
+      },
+    });
+    anchorChargeId = charge.id;
+  });
+
+  afterEach(async () => {
+    await db.payment.deleteMany({ where: { charge: { subscriptionId: anchorSubscriptionId } } });
+    await db.charge.deleteMany({ where: { subscriptionId: anchorSubscriptionId } });
+    await db.subscription.deleteMany({ where: { id: anchorSubscriptionId } });
+    await db.customer.deleteMany({ where: { id: anchorCustomerId } });
+  });
+
+  async function nextChargeDueAt(): Promise<string> {
+    const next = await db.charge.findFirstOrThrow({
+      where: { subscriptionId: anchorSubscriptionId, id: { not: anchorChargeId } },
+    });
+    return next.dueAt.toISOString();
+  }
+
+  it('pagou adiantado: o vencimento não anda para trás (vence 10, pagou 05 → 10/09)', async () => {
+    await registerPayment(anchorChargeId, paymentInput({ amountCents: '3000', paidAt: '2026-08-05' }));
+
+    expect(await nextChargeDueAt()).toBe('2026-09-11T02:59:59.999Z'); // 10/09
+    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: anchorSubscriptionId } });
+    expect(subscription.nextDueAt.toISOString()).toBe('2026-09-11T02:59:59.999Z');
+  });
+
+  it('pagou atrasado: conta do dia do pagamento (vence 10, pagou 12 → 12/09)', async () => {
+    await registerPayment(anchorChargeId, paymentInput({ amountCents: '3000', paidAt: '2026-08-12' }));
+
+    expect(await nextChargeDueAt()).toBe('2026-09-13T02:59:59.999Z'); // 12/09
+  });
+
+  it('vencimento escolhido pelo operador manda sobre a regra', async () => {
+    await registerPayment(
+      anchorChargeId,
+      paymentInput({ amountCents: '3000', paidAt: '2026-08-05', nextDueAt: '2026-09-30' }),
+    );
+
+    expect(await nextChargeDueAt()).toBe('2026-10-01T02:59:59.999Z'); // 30/09 23:59:59 local
+    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: anchorSubscriptionId } });
+    expect(subscription.nextDueAt.toISOString()).toBe('2026-10-01T02:59:59.999Z');
+  });
+
+  it('campo vazio cai na regra, não em data inválida', async () => {
+    await registerPayment(anchorChargeId, paymentInput({ amountCents: '3000', paidAt: '2026-08-05', nextDueAt: '' }));
+
+    expect(await nextChargeDueAt()).toBe('2026-09-11T02:59:59.999Z');
   });
 });

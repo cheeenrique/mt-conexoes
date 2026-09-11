@@ -89,8 +89,11 @@ Legenda: **P** pré-condição · **A** ação · **E** esperado.
 | B15 | Atualizar valor pelo plano | P: trocar o plano de um cliente com cobrança em aberto sem pagamento → E: botão aparece **só** enquanto os valores divergem; confirmação mostra "de X para Y"; depois de aplicado o botão some |
 | B16 | Atualizar valor com pagamento registrado | E: o botão não aparece — reescrever documento com dinheiro é proibido |
 | B17 | Cancelar exige motivo | A: cancelar cobrança → E: confirmar fica desabilitado até digitar o motivo; o motivo grava em `charges.cancelReason` |
-| B18 | Prévia do próximo vencimento | A: abrir "Registrar pagamento" → E: rodapé do campo Data mostra o vencimento que o pagamento vai abrir, recalculado a cada tecla |
-| B19 | Aviso de ciclo que nasce vencido | A: pôr uma data de semanas atrás → E: aviso em âmbar "já vencido há N dias, porque o ciclo conta do dia do pagamento" **antes** de confirmar |
+| B18 | Próximo vencimento sugerido | A: abrir "Registrar pagamento" → E: campo "Próximo vencimento" vem preenchido pela regra e acompanha a data do pagamento a cada tecla |
+| B19 | Aviso de ciclo que nasce vencido | A: pôr um vencimento no passado → E: aviso em âmbar "Já vencido há N dias" **antes** de confirmar |
+| B20 | Pagou adiantado mantém o dia | P: vence 20, pagar hoje (antes) → E: sugestão = dia 20 do mês seguinte, não hoje + 1 mês |
+| B21 | Pagou atrasado conta do pagamento | P: vence 10, pagar 12 → E: sugestão = 12 do mês seguinte |
+| B22 | Vencimento escolhido manda | A: trocar o campo → E: grava a data digitada, não a sugerida; trocar a data do pagamento depois volta a sugerir |
 
 ## 6. Régua (`/dunning`)
 
@@ -583,6 +586,24 @@ operador ver isso **antes** de confirmar — daí B18/B19, verificados na tela n
 passada: com a data de hoje o rodapé diz "Próximo vencimento: 11/10/2026."; com 10/08
 vira, em âmbar, "Próximo vencimento: 10/09/2026 — já vencido há 1 dia, porque o ciclo
 conta do dia do pagamento."
+
+## Terceira passada — 11/09/2026, troca da regra de vencimento
+
+O operador pediu a regra nova: "vence 10 e foi pago 05, conta o ciclo 10 → 10 do mês seguinte;
+se o vencimento é 10 e foi pago 12, conta 12 → 12". Verificado na tela com dois clientes
+semeados (`ZAncora Adiantado`, `ZAncora Atrasado`):
+
+| # | Observado |
+|---|---|
+| **B20** | Vence 20/09, pago hoje 11/09 → campo sugeriu **20/10/2026**. Antes teria sugerido 11/10 e o cliente perderia 9 dias |
+| **B21** | Trocando a data do pagamento para 25/09 (depois do vencimento) → campo passou a **25/10/2026** na mesma tecla |
+| **B22** | Trocando o campo para 01/12/2026 e confirmando → cobrança antiga `Paga` e a nova aberta em **01/12/2026**, não na data da regra |
+
+⚠️ Dois defeitos acharam-se só aqui, nenhum deles visível em teste: o campo nascia **em branco**
+porque `IMaskInput` dispara `onAccept` ao montar, e isso chegava ao formulário como "o operador
+mexeu no campo" — o diálogo parava de sugerir antes de existir. Corrigido em
+`components/ui/date-input.tsx`, que agora só avisa mudança quando o valor de fato muda; dois
+testes travam o comportamento.
 
 ## Não rodado nesta passada
 

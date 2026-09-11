@@ -11,6 +11,15 @@ export const registerPaymentSchema = z.object({
     .string({ error: 'Data do pagamento inválida.' })
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data do pagamento inválida.')
     .refine(isValidCalendarDate, 'Data do pagamento inválida.'),
+  // Vencimento do ciclo seguinte. Ausente = o service aplica a regra
+  // (`nextDueDate`: a mais tarde entre o vencimento em aberto e o pagamento).
+  // Preenchido = o operador combinou outra data com o cliente e ela manda.
+  nextDueAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data do próximo vencimento inválida.')
+    .refine(isValidCalendarDate, 'Data do próximo vencimento inválida.')
+    .optional()
+    .or(z.literal('')),
   note: z.string().optional(),
   idempotencyKey: z.string().min(1, 'Identificador de envio ausente.'),
 });

@@ -55,10 +55,35 @@ function computeDueDate(referenceLocal: TZDate, cycle: BillingCycle, timezone: s
   return endOfLocalDay(target.getFullYear(), target.getMonth(), day, timezone);
 }
 
-/** Vencimento do próximo ciclo, a partir de quando o ciclo atual foi pago. */
-export function nextDueDate(params: { paidAt: Date; cycle: BillingCycle; timezone: string }): Date {
-  const local = new TZDate(params.paidAt, params.timezone);
-  return computeDueDate(local, params.cycle, params.timezone);
+/**
+ * Vencimento do próximo ciclo. A âncora é **a data mais tarde** entre o
+ * vencimento que estava em aberto e o dia em que o cliente pagou:
+ *
+ * - pagou **antes** do vencimento → conta do vencimento (vence 10, pagou 05 → 10 do mês seguinte)
+ * - pagou **depois** → conta do pagamento (vence 10, pagou 12 → 12 do mês seguinte)
+ *
+ * Regra do operador (11/09/2026). Antes contava sempre do pagamento, e quem
+ * pagava adiantado perdia os dias adiantados: pagar dia 5 de um vencimento dia
+ * 10 jogava o vencimento seguinte para o dia 5, e no mês seguinte para o dia 1 —
+ * o vencimento andava para trás sozinho, mês a mês, em toda a base que paga
+ * antes. Pagar adiantado nunca pode custar dias ao cliente.
+ *
+ * A comparação é em **dia local**, não em instante: `dueAt` é 23:59:59 do dia e
+ * `paidAt` é 00:00, então comparar os dois crus diria que um pagamento feito no
+ * próprio dia do vencimento veio antes dele.
+ */
+export function nextDueDate(params: {
+  paidAt: Date;
+  /** Vencimento da cobrança que está sendo quitada. */
+  currentDueAt: Date;
+  cycle: BillingCycle;
+  timezone: string;
+}): Date {
+  const paidDay = localDateOnly(params.paidAt, params.timezone);
+  const dueDay = localDateOnly(params.currentDueAt, params.timezone);
+  const anchor = paidDay.getTime() > dueDay.getTime() ? params.paidAt : params.currentDueAt;
+
+  return computeDueDate(new TZDate(anchor, params.timezone), params.cycle, params.timezone);
 }
 
 /** Vencimento da primeira cobrança, sem pagamento anterior. */

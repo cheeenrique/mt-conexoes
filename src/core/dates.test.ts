@@ -32,74 +32,164 @@ describe('resolveDueDay', () => {
   });
 });
 
+/**
+ * A âncora do próximo ciclo é **a mais tarde** entre o vencimento em aberto e o
+ * dia em que o cliente pagou. Regra do operador, 11/09/2026: "vence 10 e foi
+ * pago 05, conta o ciclo 10 → 10 do mês seguinte; se o vencimento é 10 e foi
+ * pago 12, conta 12 → 12".
+ *
+ * Antes contava sempre do pagamento, e quem pagava adiantado **perdia** os dias
+ * adiantados — o vencimento andava para trás mês a mês: pagar dia 5 de um
+ * vencimento dia 10 passava o vencimento seguinte para o dia 5, e no mês
+ * seguinte para o dia 1, e assim por diante.
+ */
+describe('nextDueDate — âncora entre vencimento e pagamento', () => {
+  it('pagou adiantado: mantém o dia do vencimento (vence 10, pagou 05 → 10 do mês seguinte)', () => {
+    const due = nextDueDate({
+      paidAt: new Date('2026-08-05T15:00:00Z'),
+      currentDueAt: new Date('2026-08-11T02:59:59.999Z'), // 10/08 23:59:59 local
+      cycle: 'MONTHLY',
+      timezone: TZ,
+    });
+    expect(due.toISOString()).toBe('2026-09-11T02:59:59.999Z'); // 10/09
+  });
+
+  it('pagou atrasado: conta do dia do pagamento (vence 10, pagou 12 → 12 do mês seguinte)', () => {
+    const due = nextDueDate({
+      paidAt: new Date('2026-08-12T15:00:00Z'),
+      currentDueAt: new Date('2026-08-11T02:59:59.999Z'),
+      cycle: 'MONTHLY',
+      timezone: TZ,
+    });
+    expect(due.toISOString()).toBe('2026-09-13T02:59:59.999Z'); // 12/09
+  });
+
+  it('pagou no próprio dia do vencimento: os dois caminhos dão o mesmo dia', () => {
+    const due = nextDueDate({
+      paidAt: new Date('2026-08-10T15:00:00Z'),
+      currentDueAt: new Date('2026-08-11T02:59:59.999Z'),
+      cycle: 'MONTHLY',
+      timezone: TZ,
+    });
+    expect(due.toISOString()).toBe('2026-09-11T02:59:59.999Z'); // 10/09
+  });
+
+  it('adiantado não deixa o vencimento andar para trás mês a mês', () => {
+    // Dois ciclos seguidos pagos com cinco dias de antecedência: o dia 10 fica.
+    const primeiro = nextDueDate({
+      paidAt: new Date('2026-08-05T15:00:00Z'),
+      currentDueAt: new Date('2026-08-11T02:59:59.999Z'),
+      cycle: 'MONTHLY',
+      timezone: TZ,
+    });
+    const segundo = nextDueDate({
+      paidAt: new Date('2026-09-05T15:00:00Z'),
+      currentDueAt: primeiro,
+      cycle: 'MONTHLY',
+      timezone: TZ,
+    });
+    expect(segundo.toISOString()).toBe('2026-10-11T02:59:59.999Z'); // 10/10
+  });
+
+  it('adiantado com vencimento em fim de mês: 31/01 pago em 20/01 → 28/02', () => {
+    const due = nextDueDate({
+      paidAt: new Date('2026-01-20T15:00:00Z'),
+      currentDueAt: new Date('2026-02-01T02:59:59.999Z'), // 31/01 23:59:59 local
+      cycle: 'MONTHLY',
+      timezone: TZ,
+    });
+    expect(due.toISOString()).toBe('2026-03-01T02:59:59.999Z'); // 28/02
+  });
+
+  it('adiantado trimestral: vence 10/08, pagou 05/08 → 10/11', () => {
+    const due = nextDueDate({
+      paidAt: new Date('2026-08-05T15:00:00Z'),
+      currentDueAt: new Date('2026-08-11T02:59:59.999Z'),
+      cycle: 'QUARTERLY',
+      timezone: TZ,
+    });
+    expect(due.toISOString()).toBe('2026-11-11T02:59:59.999Z'); // 10/11
+  });
+
+  it('atraso de mais de um ciclo conta do pagamento, não acumula vencimento vencido', () => {
+    const due = nextDueDate({
+      paidAt: new Date('2026-09-11T15:00:00Z'),
+      currentDueAt: new Date('2026-06-19T02:59:59.999Z'), // 18/06, três meses atrás
+      cycle: 'MONTHLY',
+      timezone: TZ,
+    });
+    expect(due.toISOString()).toBe('2026-10-12T02:59:59.999Z'); // 11/10
+  });
+});
+
 describe('nextDueDate — clamp de fim de mês', () => {
   it('pagou 31/01 → vence 28/02 (comum)', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-01-31T15:00:00Z'), cycle: 'MONTHLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-01-31T15:00:00Z'), currentDueAt: new Date('2025-12-31T02:59:59.999Z'), cycle: 'MONTHLY', timezone: TZ });
     expect(due.toISOString()).toBe('2026-03-01T02:59:59.999Z'); // 28/02 23:59:59.999 -03:00
   });
 
   it('pagou 31/01 → vence 29/02 (bissexto 2028)', () => {
-    const due = nextDueDate({ paidAt: new Date('2028-01-31T15:00:00Z'), cycle: 'MONTHLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2028-01-31T15:00:00Z'), currentDueAt: new Date('2027-12-31T02:59:59.999Z'), cycle: 'MONTHLY', timezone: TZ });
     expect(due.toISOString()).toBe('2028-03-01T02:59:59.999Z'); // 29/02 23:59:59.999 -03:00
   });
 
   it('pagou 31/01, trimestral → vence 30/04', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-01-31T15:00:00Z'), cycle: 'QUARTERLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-01-31T15:00:00Z'), currentDueAt: new Date('2025-12-31T02:59:59.999Z'), cycle: 'QUARTERLY', timezone: TZ });
     expect(due.toISOString()).toBe('2026-05-01T02:59:59.999Z'); // 30/04 23:59:59.999 -03:00
   });
 
   it('pagou 28/02, depois pagou 28/03 → mantém dia 28, não sobe pra 31', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-03-28T15:00:00Z'), cycle: 'MONTHLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-03-28T15:00:00Z'), currentDueAt: new Date('2026-03-01T02:59:59.999Z'), cycle: 'MONTHLY', timezone: TZ });
     expect(due.toISOString()).toBe('2026-04-29T02:59:59.999Z'); // 28/04 23:59:59.999 -03:00
   });
 
   it('pagou dia 31 em março, ciclo mensal → clampa pra 30 em abril, não "lembra" do 31', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-03-31T15:00:00Z'), cycle: 'MONTHLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-03-31T15:00:00Z'), currentDueAt: new Date('2026-03-01T02:59:59.999Z'), cycle: 'MONTHLY', timezone: TZ });
     expect(due.toISOString()).toBe('2026-05-01T02:59:59.999Z'); // 30/04 (abril tem 30 dias, não 31/04)
   });
 
   it('pagou 28/02 → vence 28/03, não 31/03 (clamp não gruda; usa só o dia do pagamento real)', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-02-28T15:00:00Z'), cycle: 'MONTHLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-02-28T15:00:00Z'), currentDueAt: new Date('2026-02-01T02:59:59.999Z'), cycle: 'MONTHLY', timezone: TZ });
     expect(due.toISOString()).toBe('2026-03-29T02:59:59.999Z'); // 28/03 23:59:59.999 -03:00
   });
 
   it('pagou dia 1 → sempre dia 1', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-06-01T15:00:00Z'), cycle: 'MONTHLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-06-01T15:00:00Z'), currentDueAt: new Date('2026-05-02T02:59:59.999Z'), cycle: 'MONTHLY', timezone: TZ });
     expect(due.toISOString()).toBe('2026-07-02T02:59:59.999Z'); // 01/07 23:59:59.999 -03:00
   });
 
   it('pagou dia 15 → nunca muda', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-05-15T15:00:00Z'), cycle: 'MONTHLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-05-15T15:00:00Z'), currentDueAt: new Date('2026-05-01T02:59:59.999Z'), cycle: 'MONTHLY', timezone: TZ });
     expect(due.toISOString()).toBe('2026-06-16T02:59:59.999Z'); // 15/06 23:59:59.999 -03:00
   });
 
   it('semestral: pagou 31/08 → vence 28/02', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-08-31T15:00:00Z'), cycle: 'SEMIANNUAL', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-08-31T15:00:00Z'), currentDueAt: new Date('2026-08-01T02:59:59.999Z'), cycle: 'SEMIANNUAL', timezone: TZ });
     expect(due.toISOString()).toBe('2027-03-01T02:59:59.999Z');
   });
 
   it('anual: pagou 29/02/2028 → vence 28/02/2029', () => {
-    const due = nextDueDate({ paidAt: new Date('2028-02-29T15:00:00Z'), cycle: 'ANNUAL', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2028-02-29T15:00:00Z'), currentDueAt: new Date('2028-02-01T02:59:59.999Z'), cycle: 'ANNUAL', timezone: TZ });
     expect(due.toISOString()).toBe('2029-03-01T02:59:59.999Z');
   });
 
   it('anual atravessando virada de ano: pagou 15/12/2026 → vence 15/12/2027', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-12-15T15:00:00Z'), cycle: 'ANNUAL', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-12-15T15:00:00Z'), currentDueAt: new Date('2026-12-01T02:59:59.999Z'), cycle: 'ANNUAL', timezone: TZ });
     expect(due.toISOString()).toBe('2027-12-16T02:59:59.999Z');
   });
 
   it('pagou dia 31 em julho, mensal → mês alvo agosto tem 31 dias → vence 31/08', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-07-31T15:00:00Z'), cycle: 'MONTHLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-07-31T15:00:00Z'), currentDueAt: new Date('2026-07-01T02:59:59.999Z'), cycle: 'MONTHLY', timezone: TZ });
     expect(due.toISOString()).toBe('2026-09-01T02:59:59.999Z'); // 31/08 23:59:59.999 -03:00
   });
 
   it('trimestral: pagou 30/04 → vence 30/07, não 31/07', () => {
-    const due = nextDueDate({ paidAt: new Date('2026-04-30T15:00:00Z'), cycle: 'QUARTERLY', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2026-04-30T15:00:00Z'), currentDueAt: new Date('2026-04-01T02:59:59.999Z'), cycle: 'QUARTERLY', timezone: TZ });
     expect(due.toISOString()).toBe('2026-07-31T02:59:59.999Z'); // 30/07 23:59:59.999 -03:00
   });
 
   it('semestral: pagou 28/02, depois pagou 28/02 de novo → vence 28/08, não 31/08', () => {
-    const due = nextDueDate({ paidAt: new Date('2027-02-28T15:00:00Z'), cycle: 'SEMIANNUAL', timezone: TZ });
+    const due = nextDueDate({ paidAt: new Date('2027-02-28T15:00:00Z'), currentDueAt: new Date('2027-02-01T02:59:59.999Z'), cycle: 'SEMIANNUAL', timezone: TZ });
     expect(due.toISOString()).toBe('2027-08-29T02:59:59.999Z'); // 28/08 23:59:59.999 -03:00
   });
 });

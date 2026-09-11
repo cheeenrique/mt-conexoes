@@ -1,43 +1,57 @@
 import { describe, expect, it } from 'vitest';
-import { nextDuePreview } from './next-due-preview';
+import { daysAlreadyLate, suggestNextDueAt } from './next-due-preview';
 
 const TZ = 'America/Sao_Paulo';
 const NOW = new Date('2026-09-11T15:00:00Z'); // 12:00 de 11/09 em São Paulo
 
-/**
- * O relato do operador em 11/09/2026: "renovei ele e está dando que está em
- * atraso · 1d". Ele registrou hoje um pagamento feito em 10/08; o ciclo mensal
- * a partir dali venceu 10/09 — ontem. A regra está certa (CLAUDE.md §Data e
- * fuso), o que faltava era ele ver isso antes de confirmar.
- */
-describe('nextDuePreview', () => {
-  it('avisa quando o próximo ciclo já nasce vencido — o caso que virou relato de bug', () => {
-    const preview = nextDuePreview({ paidAt: '2026-08-10', cycle: 'MONTHLY', timezone: TZ, now: NOW });
+const VENCE_10_08 = new Date('2026-08-11T02:59:59.999Z'); // 10/08 23:59:59 local
 
-    expect(preview?.dueAt.toISOString()).toBe('2026-09-11T02:59:59.999Z'); // 10/09 23:59:59 local
-    expect(preview?.daysLate).toBe(1);
+/**
+ * A sugestão que preenche o campo do diálogo. Segue a regra do operador
+ * (11/09/2026): âncora na data mais tarde entre o vencimento em aberto e o
+ * pagamento.
+ */
+describe('suggestNextDueAt', () => {
+  it('pagou adiantado: mantém o dia do vencimento (vence 10, pagou 05 → 10/09)', () => {
+    expect(suggestNextDueAt({ paidAt: '2026-08-05', currentDueAt: VENCE_10_08, cycle: 'MONTHLY', timezone: TZ })).toBe('2026-09-10');
   });
 
-  it('pagamento de hoje abre o ciclo no futuro, sem aviso', () => {
-    const preview = nextDuePreview({ paidAt: '2026-09-11', cycle: 'MONTHLY', timezone: TZ, now: NOW });
-
-    expect(preview?.daysLate).toBe(0);
+  it('pagou atrasado: conta do pagamento (vence 10, pagou 12 → 12/09)', () => {
+    expect(suggestNextDueAt({ paidAt: '2026-08-12', currentDueAt: VENCE_10_08, cycle: 'MONTHLY', timezone: TZ })).toBe('2026-09-12');
   });
 
   it('respeita o ciclo da assinatura, não assume mensal', () => {
-    const preview = nextDuePreview({ paidAt: '2026-09-11', cycle: 'QUARTERLY', timezone: TZ, now: NOW });
-
-    expect(preview?.dueAt.toISOString()).toBe('2026-12-12T02:59:59.999Z'); // 11/12 local
+    expect(suggestNextDueAt({ paidAt: '2026-08-05', currentDueAt: VENCE_10_08, cycle: 'QUARTERLY', timezone: TZ })).toBe('2026-11-10');
   });
 
-  it('clamp de fim de mês: pagou 31/01, mensal, vence 28/02', () => {
-    const preview = nextDuePreview({ paidAt: '2026-01-31', cycle: 'MONTHLY', timezone: TZ, now: NOW });
-
-    expect(preview?.dueAt.toISOString()).toBe('2026-03-01T02:59:59.999Z'); // 28/02 23:59:59 local
+  it('clamp de fim de mês: vencia 31/01, pagou 31/01, mensal → 28/02', () => {
+    const vence31 = new Date('2026-02-01T02:59:59.999Z');
+    expect(suggestNextDueAt({ paidAt: '2026-01-31', currentDueAt: vence31, cycle: 'MONTHLY', timezone: TZ })).toBe('2026-02-28');
   });
 
-  it('data incompleta ou inexistente no calendário não vira prévia errada', () => {
-    expect(nextDuePreview({ paidAt: '2026-09', cycle: 'MONTHLY', timezone: TZ, now: NOW })).toBeNull();
-    expect(nextDuePreview({ paidAt: '2026-02-31', cycle: 'MONTHLY', timezone: TZ, now: NOW })).toBeNull();
+  it('data incompleta ou inexistente no calendário não vira sugestão errada', () => {
+    expect(suggestNextDueAt({ paidAt: '2026-09', currentDueAt: VENCE_10_08, cycle: 'MONTHLY', timezone: TZ })).toBeNull();
+    expect(suggestNextDueAt({ paidAt: '2026-02-31', currentDueAt: VENCE_10_08, cycle: 'MONTHLY', timezone: TZ })).toBeNull();
+  });
+});
+
+/**
+ * O relato de 11/09/2026: "renovei ele e está dando que está em atraso · 1d".
+ * Registrar hoje um pagamento feito semanas atrás abre um ciclo que já nasce
+ * vencido — o aviso existe para ele ver isso antes de confirmar.
+ */
+describe('daysAlreadyLate', () => {
+  it('conta os dias quando o vencimento escolhido já passou', () => {
+    expect(daysAlreadyLate({ nextDueAt: '2026-09-10', timezone: TZ, now: NOW })).toBe(1);
+  });
+
+  it('hoje e futuro não são atraso', () => {
+    expect(daysAlreadyLate({ nextDueAt: '2026-09-11', timezone: TZ, now: NOW })).toBe(0);
+    expect(daysAlreadyLate({ nextDueAt: '2026-10-11', timezone: TZ, now: NOW })).toBe(0);
+  });
+
+  it('campo vazio ou meio digitado não vira aviso', () => {
+    expect(daysAlreadyLate({ nextDueAt: '', timezone: TZ, now: NOW })).toBeNull();
+    expect(daysAlreadyLate({ nextDueAt: '2026-02-31', timezone: TZ, now: NOW })).toBeNull();
   });
 });

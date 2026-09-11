@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
 import { computeChargeDiscount, deriveChargeStatus } from '@/core/billing';
-import { nextDueDate, localDateOnly, localDayStartFromIso } from '@/core/dates';
+import { nextDueDate, endOfLocalDay, localDateOnly, localDayStartFromIso } from '@/core/dates';
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
 import type { registerPaymentSchema } from './schema';
@@ -69,7 +69,9 @@ export async function registerPayment(chargeId: string, input: RegisterPaymentIn
 
     await tx.charge.update({ where: { id: chargeId }, data: { status: newStatus, paidAt: newStatus === 'PAID' ? paidAt : charge.paidAt } });
 
-    if (newStatus === 'PAID') await openNextCycle(tx, charge, paidAt, settings.timezone);
+    if (newStatus === 'PAID') {
+      await openNextCycle(tx, charge, paidAt, settings.timezone, input.nextDueAt || undefined);
+    }
 
     return { chargeId, status: newStatus };
   });
@@ -156,6 +158,12 @@ export async function realignChargeToSubscription(chargeId: string): Promise<voi
   });
 }
 
+/** `YYYY-MM-DD` local vira 23:59:59.999 daquele dia, que é como todo vencimento é gravado. */
+function localDateStringToEndOfDay(dateStr: string, timezone: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return endOfLocalDay(year, month - 1, day, timezone);
+}
+
 type ChargeWithSubscription = Prisma.ChargeGetPayload<{ include: { subscription: true } }>;
 
 /**
@@ -170,8 +178,12 @@ async function openNextCycle(
   charge: ChargeWithSubscription,
   paidAt: Date,
   timezone: string,
+  /** `YYYY-MM-DD` escolhido pelo operador no diálogo. Ausente = vale a regra. */
+  overrideDueAt?: string,
 ): Promise<void> {
-  const newNextDueAt = nextDueDate({ paidAt, cycle: charge.subscription.cycle, timezone });
+  const newNextDueAt = overrideDueAt
+    ? localDateStringToEndOfDay(overrideDueAt, timezone)
+    : nextDueDate({ paidAt, currentDueAt: charge.dueAt, cycle: charge.subscription.cycle, timezone });
 
   await tx.subscription.update({
     where: { id: charge.subscriptionId },
