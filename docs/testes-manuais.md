@@ -97,6 +97,10 @@ Legenda: **P** pré-condição · **A** ação · **E** esperado.
 | B23 | Campo de dinheiro substitui a seleção | A: ficha → "Valor cobrado por ciclo" com valor → selecionar tudo → digitar `3000` → E: `R$ 30,00`, **não** o valor antigo com os dígitos somados à direita |
 | B24 | Apagar com seleção zera | A: selecionar tudo → Backspace ou Delete → E: `R$ 0,00`, não um dígito a menos |
 | B25 | Auditoria de preço | `pnpm audit:prices` → E: lista quem paga 5x menos que o cadastrado, e quem tem margem > 90% sem histórico |
+| B26 | Correção em lote — prévia | `pnpm fix:prices` → E: nada gravado; cada linha diz o preço novo e **qual** desfecho (realinhar ou fechar) |
+| B27 | Correção em lote — aplicar | `pnpm fix:prices --apply` → E: preço vira a mediana paga; cobrança sem pagamento é realinhada, com pagamento fecha e abre a próxima no preço certo |
+| B28 | Trava de pagamento simbólico | P: cliente com pagamento de R$ 0,01 → E: aparece na lista como IGNORADO, preço **não** muda |
+| B29 | Idempotência do lote | A: rodar `--apply` duas vezes → E: a segunda não acha nada para corrigir |
 
 ## 6. Régua (`/dunning`)
 
@@ -623,6 +627,18 @@ que estava errado, e a causa é o campo de dinheiro.
 ⚠️ Selecionar o conteúdo e digitar por cima é o gesto universal para trocar o valor de um campo,
 e é invisível em teste de unidade que só simula digitação em campo vazio. Dois testes novos em
 `currency-input.test.tsx` travam o comportamento.
+
+## Quinta passada — 12/09/2026, correção em lote do preço
+
+| # | Observado |
+|---|---|
+| **B26** | Prévia com os dois casos reais semeados: `ZFix Walderi: R$ 1.830,00 → R$ 30,00 [cobrança fecha pelo valor já pago e abre a próxima]` e `ZFix MarcoTadeu: R$ 750,00 → R$ 30,00 [cobrança em aberto passa a valer o preço novo]` — desfechos diferentes, previstos certo antes de gravar |
+| **B27** | Depois do `--apply`, conferido no banco: Walderi com preço R$ 30, cobrança de 09/09 `PAID` (principal 1830, desconto 1800, pago 30) e a nova de 10/10 em R$ 30; Marco Tadeu com a cobrança de 09/09 realinhada para R$ 30, sem cobrança nova |
+| **B28** | `Demo · Pagamento Parcial` (pagou R$ 0,01 de propósito) apareceu como `IGNORADO: o que pagou não cobre o custo` e não foi tocado |
+| **B29** | Segunda passada: `Com preço suspeito: 1 (corrigíveis: 0)` |
+
+⚠️ A trava do B28 nasceu **da prévia**: sem ela o lote proporia `R$ 35,00 → R$ 0,01` e teria
+estragado a assinatura. Prévia obrigatória não é cerimônia — foi ela que mostrou o problema.
 
 ## Não rodado nesta passada
 
