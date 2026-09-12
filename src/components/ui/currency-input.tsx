@@ -26,16 +26,20 @@ import { formatCents } from '@/lib/format';
  * porque num acumulador ela não significa nada. Colar continua funcionando pelo
  * `onChange`, que aí sim lê a string inteira — é o único caso em que ela é a
  * intenção do operador.
+ *
+ * 3. **Seleção era ignorada, e digitar por cima somava.** Selecionar o conteúdo
+ *    e digitar é o gesto universal para trocar o valor de um campo; aqui a tecla
+ *    virava mais um dígito à direita do que já estava lá. Campo em `R$ 30,00`,
+ *    selecionar tudo e digitar `5000` dava `R$ 300.050,00`. Relatado em
+ *    11/09/2026 por dois clientes de R$ 30,00/mês cadastrados em R$ 1.830,00 e
+ *    R$ 750,00 — os dois exatamente cem vezes um valor plausível, que é o que
+ *    duas teclas por cima de um valor existente produzem.
+ *
+ *    Qualquer seleção recomeça do zero, e não só a que cobre tudo: num
+ *    acumulador não existe edição posicional (Home, End e setas são barradas
+ *    logo abaixo), então seleção só pode significar "trocar isto".
  */
-const EDITING_KEYS_TO_IGNORE = new Set([
-  'Home',
-  'End',
-  'ArrowLeft',
-  'ArrowRight',
-  'ArrowUp',
-  'ArrowDown',
-  'Delete',
-]);
+const EDITING_KEYS_TO_IGNORE = new Set(['Home', 'End', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']);
 
 export function CurrencyInput({
   value,
@@ -51,15 +55,18 @@ export function CurrencyInput({
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
 
+    const { selectionStart, selectionEnd } = event.currentTarget;
+    const hasSelection = selectionStart !== selectionEnd;
+
     if (/^\d$/.test(event.key)) {
       event.preventDefault();
-      onValueChange(appendDigit(cents, event.key));
+      onValueChange(appendDigit(hasSelection ? '0' : cents, event.key));
       return;
     }
 
-    if (event.key === 'Backspace') {
+    if (event.key === 'Backspace' || event.key === 'Delete') {
       event.preventDefault();
-      onValueChange(dropLastDigit(cents));
+      onValueChange(hasSelection ? '0' : dropLastDigit(cents));
       return;
     }
 

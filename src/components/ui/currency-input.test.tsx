@@ -46,6 +46,44 @@ describe('CurrencyInput', () => {
     expect(input).toHaveValue('R$ 12,34');
   });
 
+  /**
+   * Relatado em 11/09/2026: dois clientes de R$ 30,00/mês com a cobrança em
+   * R$ 1.830,00 e R$ 750,00 — os dois exatamente cem vezes um valor plausível.
+   * Selecionar o conteúdo e digitar por cima é o gesto universal para trocar o
+   * valor de um campo, e aqui ele **somava** em vez de substituir: o
+   * `onKeyDown` trata a tecla como dígito novo e não enxerga a seleção.
+   */
+  it('selecionar tudo e digitar por cima substitui o valor, não soma', async () => {
+    const user = userEvent.setup();
+    function Controlado() {
+      const [cents, setCents] = useState('3000'); // R$ 30,00 já cadastrado
+      return <CurrencyInput value={cents} onValueChange={setCents} />;
+    }
+    render(<Controlado />);
+    const input = screen.getByRole('textbox');
+
+    await user.tripleClick(input);
+    await user.keyboard('5000');
+
+    expect(input).toHaveValue('R$ 50,00');
+  });
+
+  it('apagar com o conteúdo selecionado zera, em vez de tirar um dígito', async () => {
+    const user = userEvent.setup();
+    function Controlado() {
+      const [cents, setCents] = useState('1830'); // R$ 18,30
+      return <CurrencyInput value={cents} onValueChange={setCents} />;
+    }
+    render(<Controlado />);
+    const input = screen.getByRole('textbox');
+
+    await user.tripleClick(input);
+    await user.keyboard('{Backspace}');
+
+    // Apagar com tudo selecionado zera, em vez de tirar um dígito só.
+    expect(input).toHaveValue('R$ 0,00');
+  });
+
   it('apagar volta um dígito de cada vez', async () => {
     function Controlado() {
       const [cents, setCents] = useState('1234');

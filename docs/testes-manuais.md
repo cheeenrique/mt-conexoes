@@ -94,6 +94,9 @@ Legenda: **P** pré-condição · **A** ação · **E** esperado.
 | B20 | Pagou adiantado mantém o dia | P: vence 20, pagar hoje (antes) → E: sugestão = dia 20 do mês seguinte, não hoje + 1 mês |
 | B21 | Pagou atrasado conta do pagamento | P: vence 10, pagar 12 → E: sugestão = 12 do mês seguinte |
 | B22 | Vencimento escolhido manda | A: trocar o campo → E: grava a data digitada, não a sugerida; trocar a data do pagamento depois volta a sugerir |
+| B23 | Campo de dinheiro substitui a seleção | A: ficha → "Valor cobrado por ciclo" com valor → selecionar tudo → digitar `3000` → E: `R$ 30,00`, **não** o valor antigo com os dígitos somados à direita |
+| B24 | Apagar com seleção zera | A: selecionar tudo → Backspace ou Delete → E: `R$ 0,00`, não um dígito a menos |
+| B25 | Auditoria de preço | `pnpm audit:prices` → E: lista quem paga 5x menos que o cadastrado, e quem tem margem > 90% sem histórico |
 
 ## 6. Régua (`/dunning`)
 
@@ -604,6 +607,22 @@ porque `IMaskInput` dispara `onAccept` ao montar, e isso chegava ao formulário 
 mexeu no campo" — o diálogo parava de sugerir antes de existir. Corrigido em
 `components/ui/date-input.tsx`, que agora só avisa mudança quando o valor de fato muda; dois
 testes travam o comportamento.
+
+## Quarta passada — 11/09/2026, valor cadastrado cem vezes maior
+
+Relato: dois clientes de R$ 30,00/mês cadastrados em R$ 1.830,00 e R$ 750,00, e o pagamento de
+R$ 30,00 ficando "Parcial". O sistema estava certo — 30 de 1830 é parcial mesmo. O cadastro é
+que estava errado, e a causa é o campo de dinheiro.
+
+| # | Observado |
+|---|---|
+| **B23** | Campo em `R$ 1.830,00`, selecionar tudo e digitar `3000` → `R$ 30,00`. Antes o mesmo gesto dava `R$ 18.300.030,00`: o `onKeyDown` tratava a tecla como dígito novo à direita e não enxergava a seleção |
+| **B25** | `pnpm audit:prices` apontou o caso semeado: "cadastrado R$ 1.830,00, paga R$ 30,00 (61x menos)" |
+| — | Correção ponta a ponta: ficha → valor para R$ 30,00 → cobrança em aberto (que tinha R$ 30 pagos de R$ 1.830) → "Dar baixa no restante" → cobrança `R$ 30,00 / Paga` e próximo ciclo em R$ 30,00 |
+
+⚠️ Selecionar o conteúdo e digitar por cima é o gesto universal para trocar o valor de um campo,
+e é invisível em teste de unidade que só simula digitação em campo vazio. Dois testes novos em
+`currency-input.test.tsx` travam o comportamento.
 
 ## Não rodado nesta passada
 

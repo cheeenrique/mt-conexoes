@@ -18,7 +18,8 @@
     "db:seed:test": "tsx scripts/with-test-db.ts tsx prisma/seed.ts",
     "db:seed:demo": "tsx prisma/seed-demo.ts",
     "import:customers": "dotenv -e .env.local -- tsx scripts/import-customers.ts",
-    "backfill:imported-charges": "dotenv -e .env.local -- tsx scripts/backfill-imported-charges.ts"
+    "backfill:imported-charges": "dotenv -e .env.local -- tsx scripts/backfill-imported-charges.ts",
+    "audit:prices": "dotenv -e .env.local -- tsx scripts/audit-subscription-prices.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
