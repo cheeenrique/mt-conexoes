@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { findPriceSuspicions } from '@/features/subscriptions/price-audit';
+import { findPriceSuspicions, findStaleCharges } from '@/features/subscriptions/price-audit';
 import { realignChargeToSubscription, writeOffRemaining } from '@/features/charges/service';
 
 /**
@@ -49,8 +49,69 @@ export interface PriceFixRow {
 
 export interface PriceFixSummary {
   checked: number;
+  /** Cobranças que ficaram para trás da assinatura — o caso do Walderi. */
+  staleCharges: PriceFixRow[];
+  /** Assinaturas cujo próprio preço destoa do histórico de pagamento. */
   rows: PriceFixRow[];
   applied: number;
+}
+
+/**
+ * Cobranças em aberto emitidas por um preço que a assinatura já não pratica.
+ * Aqui o preço certo não é palpite: é o que a assinatura diz hoje. Sem
+ * pagamento a cobrança é realinhada; com pagamento ela fecha pelo que entrou e
+ * o ciclo seguinte abre no valor certo.
+ */
+async function fixStaleCharges(apply: boolean): Promise<{ rows: PriceFixRow[]; applied: number }> {
+  const charges = await db.charge.findMany({
+    where: { status: { in: ['OPEN', 'OVERDUE', 'PARTIALLY_PAID'] } },
+    select: {
+      id: true,
+      principalCents: true,
+      customer: { select: { name: true } },
+      subscription: { select: { id: true, priceCents: true } },
+      payments: { select: { amountCents: true } },
+    },
+  });
+
+  const stale = findStaleCharges(
+    charges.map((charge) => ({
+      chargeId: charge.id,
+      customerName: charge.customer.name,
+      principalCents: charge.principalCents,
+      subscriptionPriceCents: charge.subscription.priceCents,
+      paidCents: charge.payments.reduce((sum, payment) => sum + payment.amountCents, 0n),
+    })),
+  );
+
+  const rows: PriceFixRow[] = [];
+  let applied = 0;
+
+  for (const row of stale) {
+    const charge = charges.find((c) => c.id === row.chargeId)!;
+    const base = {
+      subscriptionId: charge.subscription.id,
+      customerName: row.customerName,
+      fromCents: row.principalCents,
+      toCents: row.subscriptionPriceCents,
+    };
+    const outcome: PriceFixOutcome = row.hasPayment ? 'cobranca_fechada' : 'cobranca_realinhada';
+
+    if (!apply) {
+      rows.push({ ...base, outcome });
+      continue;
+    }
+    try {
+      if (row.hasPayment) await writeOffRemaining(row.chargeId);
+      else await realignChargeToSubscription(row.chargeId);
+      rows.push({ ...base, outcome });
+      applied += 1;
+    } catch (err) {
+      rows.push({ ...base, outcome: 'falhou', error: String(err) });
+    }
+  }
+
+  return { rows, applied };
 }
 
 /** O que vai acontecer com a cobrança em aberto desta assinatura — lido sem gravar nada,
@@ -77,6 +138,10 @@ async function fixOne(subscriptionId: string, toCents: bigint): Promise<PriceFix
 }
 
 export async function fixSuspiciousPrices(params: { apply: boolean }): Promise<PriceFixSummary> {
+  // Primeiro as cobranças que ficaram para trás: ali o preço certo é conhecido,
+  // e resolver antes evita que a família heurística veja um histórico sujo.
+  const stale = await fixStaleCharges(params.apply);
+
   const subscriptions = await db.subscription.findMany({
     where: { status: { not: 'CANCELLED' } },
     select: {
@@ -137,5 +202,10 @@ export async function fixSuspiciousPrices(params: { apply: boolean }): Promise<P
     }
   }
 
-  return { checked: subscriptions.length, rows, applied };
+  return {
+    checked: subscriptions.length,
+    staleCharges: stale.rows,
+    rows,
+    applied: applied + stale.applied,
+  };
 }

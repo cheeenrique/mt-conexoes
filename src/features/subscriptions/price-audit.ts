@@ -1,4 +1,19 @@
 /**
+ * Duas famílias de preço errado na base, achadas por caminhos diferentes.
+ *
+ * **1. Cobrança em aberto que não acompanhou a assinatura** (`findStaleCharges`).
+ * `Charge.principalCents` é congelado na emissão e não muda quando o operador
+ * troca o plano ou corrige o valor na ficha. É o caso relatado em 11/09/2026:
+ * assinatura em R$ 30,00 com a cobrança em R$ 1.830,00 — e é a cobrança que a
+ * régua manda por WhatsApp e que a tela de Cobranças mostra. Aqui não há
+ * palpite: o preço certo é o que a assinatura diz hoje.
+ *
+ * **2. Assinatura com preço fora do que o cliente paga** (`findPriceSuspicions`).
+ * Quando o valor errado está na própria assinatura, o único juiz é o histórico
+ * de pagamento.
+ */
+
+/**
  * Acha assinaturas com preço fora do que o cliente de fato paga.
  *
  * Nasceu de dois casos relatados em 11/09/2026: clientes de R$ 30,00/mês
@@ -82,4 +97,52 @@ export function findPriceSuspicions(rows: SubscriptionPriceRow[]): PriceSuspicio
   }
 
   return suspicions.sort((a, b) => (b.priceCents > a.priceCents ? 1 : -1));
+}
+
+
+/**
+ * Quantas vezes a cobrança precisa ser maior que a assinatura para ser erro, e
+ * não reajuste. Cobrança em aberto **deve** divergir quando o operador combinou
+ * um preço novo para o ciclo seguinte — é por isso que atualizar o valor é
+ * botão, e não efeito colateral de salvar a ficha. Reajuste de R$ 30 para
+ * R$ 35 é 1,17x; o caso relatado era 61x.
+ */
+const STALE_CHARGE_RATIO = 2;
+
+export interface OpenChargeRow {
+  chargeId: string;
+  customerName: string;
+  /** Valor congelado na emissão da cobrança. */
+  principalCents: bigint;
+  /** O que a assinatura diz hoje. */
+  subscriptionPriceCents: bigint;
+  paidCents: bigint;
+}
+
+export interface StaleCharge extends OpenChargeRow {
+  /** Quantas vezes a cobrança é maior que o preço de hoje. */
+  ratio: number;
+  /** Com dinheiro registrado a cobrança não se reescreve: fecha pelo que entrou. */
+  hasPayment: boolean;
+}
+
+/**
+ * Cobranças em aberto emitidas por um preço que a assinatura já não pratica.
+ *
+ * Só o lado "cobrança maior que a assinatura": é o que gera cobrança absurda na
+ * tela e no WhatsApp. O contrário — cobrança menor que o preço de hoje — é o
+ * desenho normal de um reajuste que vale do próximo ciclo, e mexer nele seria
+ * cobrar a mais do cliente por conta própria.
+ */
+export function findStaleCharges(rows: OpenChargeRow[]): StaleCharge[] {
+  const stale: StaleCharge[] = [];
+
+  for (const row of rows) {
+    if (row.subscriptionPriceCents <= 0n) continue;
+    const ratio = Number(row.principalCents) / Number(row.subscriptionPriceCents);
+    if (ratio < STALE_CHARGE_RATIO) continue;
+    stale.push({ ...row, ratio, hasPayment: row.paidCents > 0n });
+  }
+
+  return stale.sort((a, b) => b.ratio - a.ratio);
 }

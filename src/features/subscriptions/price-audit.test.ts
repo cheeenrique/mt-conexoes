@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findPriceSuspicions, type SubscriptionPriceRow } from './price-audit';
+import { findPriceSuspicions, findStaleCharges, type OpenChargeRow, type SubscriptionPriceRow } from './price-audit';
 
 function row(overrides: Partial<SubscriptionPriceRow> = {}): SubscriptionPriceRow {
   return {
@@ -58,5 +58,52 @@ describe('findPriceSuspicions', () => {
 
   it('assinatura de graça não é suspeita de preço', () => {
     expect(findPriceSuspicions([row({ priceCents: 0n, paymentsCents: [] })])).toEqual([]);
+  });
+});
+
+function openCharge(overrides: Partial<OpenChargeRow> = {}): OpenChargeRow {
+  return {
+    chargeId: 'charge-1',
+    customerName: 'Cliente',
+    principalCents: 3000n,
+    subscriptionPriceCents: 3000n,
+    paidCents: 0n,
+    ...overrides,
+  };
+}
+
+/**
+ * O caso do Walderi (11/09/2026): assinatura em R$ 30,00 com a cobrança em
+ * aberto ainda em R$ 1.830,00, porque `principalCents` é congelado na emissão e
+ * a troca de plano não o toca.
+ */
+describe('findStaleCharges', () => {
+  it('pega a cobrança que ficou 61x acima do preço da assinatura', () => {
+    const [found] = findStaleCharges([openCharge({ principalCents: 183000n, paidCents: 3000n })]);
+
+    expect(found.ratio).toBe(61);
+    expect(found.hasPayment).toBe(true);
+  });
+
+  it('cobrança no mesmo valor da assinatura não é suspeita', () => {
+    expect(findStaleCharges([openCharge()])).toEqual([]);
+  });
+
+  it('reajuste não vira suspeita — cobrança de R$ 30 com assinatura em R$ 35 fica quieta', () => {
+    expect(findStaleCharges([openCharge({ principalCents: 3000n, subscriptionPriceCents: 3500n })])).toEqual([]);
+  });
+
+  it('cobrança menor que o preço de hoje nunca é corrigida — seria cobrar a mais por conta própria', () => {
+    expect(findStaleCharges([openCharge({ principalCents: 3000n, subscriptionPriceCents: 90000n })])).toEqual([]);
+  });
+
+  it('sem pagamento, marca que dá para realinhar direto', () => {
+    const [found] = findStaleCharges([openCharge({ principalCents: 75000n, paidCents: 0n })]);
+
+    expect(found.hasPayment).toBe(false);
+  });
+
+  it('assinatura sem preço não serve de referência', () => {
+    expect(findStaleCharges([openCharge({ principalCents: 183000n, subscriptionPriceCents: 0n })])).toEqual([]);
   });
 });

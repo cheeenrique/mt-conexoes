@@ -35,19 +35,25 @@ async function main() {
   const summary = await fixSuspiciousPrices({ apply });
 
   const IGNORADOS: PriceFixOutcome[] = ['sem_historico', 'pagamento_implausivel'];
-  const corrigiveis = summary.rows.filter((row) => !IGNORADOS.includes(row.outcome));
-  console.log(apply ? 'Correção aplicada.' : 'Prévia — nada foi gravado. Rode com --apply para gravar.');
-  console.log(`Assinaturas vivas conferidas: ${summary.checked}`);
-  console.log(`Com preço suspeito: ${summary.rows.length} (corrigíveis: ${corrigiveis.length})\n`);
+  const corrigiveis = [...summary.staleCharges, ...summary.rows].filter((row) => !IGNORADOS.includes(row.outcome));
 
-  for (const row of summary.rows) {
+  function print(row: (typeof summary.rows)[number]) {
     const destino = row.toCents === null ? '—' : formatCents(row.toCents);
     console.log(`  - ${row.customerName}: ${formatCents(row.fromCents)} → ${destino}  [${OUTCOME_LABEL[row.outcome]}]`);
     if (row.error) console.log(`      ${row.error}`);
   }
 
-  if (apply) console.log(`\nAssinaturas corrigidas: ${summary.applied}`);
-  else if (corrigiveis.length > 0) console.log('\nConfira a lista acima. Se estiver certa: pnpm fix:prices --apply');
+  console.log(apply ? 'Correção aplicada.' : 'Prévia — nada foi gravado. Rode com --apply para gravar.');
+  console.log(`Assinaturas vivas conferidas: ${summary.checked}\n`);
+
+  console.log(`Cobranças que ficaram para trás da assinatura: ${summary.staleCharges.length}`);
+  summary.staleCharges.forEach(print);
+
+  console.log(`\nAssinaturas com preço fora do histórico: ${summary.rows.length}`);
+  summary.rows.forEach(print);
+
+  if (apply) console.log(`\nCorrigidas: ${summary.applied}`);
+  else if (corrigiveis.length > 0) console.log('\nConfira as listas acima. Se estiverem certas: pnpm fix:prices --apply');
 
   await db.$disconnect();
 }

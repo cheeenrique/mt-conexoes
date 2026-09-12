@@ -67,6 +67,10 @@ function rowOf(summary: Awaited<ReturnType<typeof fixSuspiciousPrices>>, suffix:
   return summary.rows.find((r) => r.customerName === `${TAG} ${suffix}`);
 }
 
+function staleOf(summary: Awaited<ReturnType<typeof fixSuspiciousPrices>>, suffix: string) {
+  return summary.staleCharges.find((r) => r.customerName === `${TAG} ${suffix}`);
+}
+
 /**
  * Relatado em 11/09/2026: clientes de R$ 30,00/mês cadastrados em R$ 1.830,00 e
  * R$ 750,00. O preço certo está no histórico — quem pagou R$ 30 nas últimas
@@ -156,5 +160,60 @@ describe('fixSuspiciousPrices', () => {
     const segunda = await fixSuspiciousPrices({ apply: true });
 
     expect(rowOf(segunda, 'Walderi')).toBeUndefined();
+  });
+});
+
+
+/**
+ * O caso do Walderi, conferido na base real em 12/09/2026: a **assinatura**
+ * estava certa (R$ 30,00, plano mensal) e a **cobrança em aberto** é que tinha
+ * ficado em R$ 1.830,00 — `principalCents` é congelado na emissão e a troca de
+ * plano não o toca. A primeira auditoria não via isso porque só olhava o preço
+ * da assinatura.
+ */
+describe('fixSuspiciousPrices — cobrança que ficou para trás da assinatura', () => {
+  it('fecha pelo valor pago e abre o ciclo seguinte no preço da assinatura', async () => {
+    const { subscriptionId } = await seed({ suffix: 'Walderi', priceCents: 3000n, chargeDueDay: '2026-09-10', chargePaidCents: 3000n });
+    // A cobrança nasceu cara e a assinatura foi corrigida depois.
+    await db.charge.updateMany({
+      where: { subscriptionId, status: { notIn: ['PAID', 'CANCELLED'] } },
+      data: { principalCents: 183000n, costCents: 62000n },
+    });
+
+    const summary = await fixSuspiciousPrices({ apply: true });
+
+    expect(staleOf(summary, 'Walderi')).toMatchObject({ fromCents: 183000n, toCents: 3000n, outcome: 'cobranca_fechada' });
+    const paid = await db.charge.findFirstOrThrow({ where: { subscriptionId, dueAt: due('2026-09-10') } });
+    expect(paid.status).toBe('PAID');
+    expect((paid.principalCents - paid.discountCents).toString()).toBe('3000');
+
+    const next = await db.charge.findFirstOrThrow({ where: { subscriptionId, dueAt: { gt: due('2026-09-10') } } });
+    expect(next.principalCents.toString()).toBe('3000');
+  });
+
+  it('sem pagamento, realinha a cobrança em vez de fechar', async () => {
+    const { subscriptionId } = await seed({ suffix: 'Tadeu', priceCents: 3000n, chargeDueDay: '2026-09-10' });
+    await db.charge.updateMany({
+      where: { subscriptionId, status: { notIn: ['PAID', 'CANCELLED'] } },
+      data: { principalCents: 75000n, costCents: 20000n },
+    });
+
+    const summary = await fixSuspiciousPrices({ apply: true });
+
+    expect(staleOf(summary, 'Tadeu')?.outcome).toBe('cobranca_realinhada');
+    const open = await db.charge.findFirstOrThrow({ where: { subscriptionId, status: { notIn: ['PAID', 'CANCELLED'] } } });
+    expect(open.principalCents.toString()).toBe('3000');
+    expect(open.costCents.toString()).toBe('1000');
+  });
+
+  it('reajuste combinado para o próximo ciclo não é tocado', async () => {
+    const { subscriptionId } = await seed({ suffix: 'Reajuste', priceCents: 3500n, chargeDueDay: '2026-09-10' });
+    // Cobrança emitida a R$ 30 e assinatura já em R$ 35: divergência de propósito.
+
+    const summary = await fixSuspiciousPrices({ apply: true });
+
+    expect(staleOf(summary, 'Reajuste')).toBeUndefined();
+    const open = await db.charge.findFirstOrThrow({ where: { subscriptionId, status: { notIn: ['PAID', 'CANCELLED'] } } });
+    expect(open.principalCents.toString()).toBe('3500');
   });
 });
