@@ -13,13 +13,18 @@
  *
  *   1. Sobrou cobrança em aberto fora do preço da assinatura?
  *   2. Sobrou assinatura fora do plano que o operador atribuiu a ela?
- *   3. Sobrou cobrança cujo custo destoa do custo da assinatura?
+ *   3. Sobrou assinatura muito abaixo do plano que ela aponta?
+ *
+ * ⚠️ Cortesia (preço zero, as contas do próprio operador) e preço negociado
+ * acima do plano **não** contam como divergência: acusá-los toda rodada é a
+ * forma mais rápida de fazer o operador parar de ler o diagnóstico.
  *
  * A terceira é a que denuncia o acumulado: custo multiplicado junto com o preço
  * é ciclo somado, não preço errado.
  */
 import { db } from '@/lib/db';
 import { formatCents } from '@/lib/format';
+import { findPlanMismatches } from '@/features/subscriptions/price-audit';
 
 const RATIO = 2;
 
@@ -48,7 +53,16 @@ async function main() {
 
   const precoFora = charges.filter((c) => ratio(c.principalCents, c.subscription.priceCents) >= RATIO);
   const custoFora = charges.filter((c) => ratio(c.costCents, c.subscription.costCents) >= RATIO);
-  const planoFora = subscriptions.filter((s) => s.plan && s.priceCents !== s.plan.priceCents);
+  const planoFora = findPlanMismatches(
+    subscriptions
+      .filter((s) => s.plan)
+      .map((s) => ({
+        customerName: s.customer.name,
+        priceCents: s.priceCents,
+        planName: s.plan!.name,
+        planPriceCents: s.plan!.priceCents,
+      })),
+  );
 
   console.log(`Cobranças em aberto conferidas: ${charges.length}`);
   console.log(`Assinaturas com plano atribuído: ${subscriptions.length}\n`);
@@ -63,9 +77,9 @@ async function main() {
     console.log(`   - ${c.customer.name}: custo ${formatCents(c.costCents)} vs assinatura ${formatCents(c.subscription.costCents)}`);
   }
 
-  console.log(`\n3. Assinatura fora do preço do plano que ela aponta: ${planoFora.length}`);
-  for (const s of planoFora) {
-    console.log(`   - ${s.customer.name}: assinatura ${formatCents(s.priceCents)} vs plano "${s.plan!.name}" ${formatCents(s.plan!.priceCents)} (telas: ${s.screens})`);
+  console.log(`\n3. Assinatura muito abaixo do plano que aponta (${RATIO}x+): ${planoFora.length}`);
+  for (const row of planoFora) {
+    console.log(`   - ${row.customerName}: assinatura ${formatCents(row.priceCents)} vs plano "${row.planName}" ${formatCents(row.planPriceCents)}`);
   }
 
   const total = precoFora.length + custoFora.length + planoFora.length;

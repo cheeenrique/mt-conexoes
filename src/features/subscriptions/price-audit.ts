@@ -146,3 +146,34 @@ export function findStaleCharges(rows: OpenChargeRow[]): StaleCharge[] {
 
   return stale.sort((a, b) => b.ratio - a.ratio);
 }
+
+
+/**
+ * Quanto a assinatura precisa estar **abaixo** do plano para ser suspeita.
+ * Acima do plano nunca é: cobrar mais de um cliente é decisão comercial, e
+ * acusar isso transforma o diagnóstico em ruído que ninguém lê.
+ */
+const PLAN_MISMATCH_RATIO = 2;
+
+export interface PlanMismatchRow {
+  customerName: string;
+  priceCents: bigint;
+  planName: string;
+  planPriceCents: bigint;
+}
+
+/**
+ * Assinaturas que ficaram bem abaixo do plano que apontam — sinal de plano
+ * trocado sem o preço acompanhar (um mensal de R$ 30 apontando para um plano
+ * anual de R$ 360, por exemplo).
+ *
+ * ⚠️ Preço **zero** fica de fora: é cortesia, e na base real são as contas do
+ * próprio operador ("Eu", "Meu Quarto"). Acusá-las toda vez que o diagnóstico
+ * roda é a forma mais rápida de fazer o operador parar de lê-lo.
+ */
+export function findPlanMismatches(rows: PlanMismatchRow[]): PlanMismatchRow[] {
+  return rows.filter((row) => {
+    if (row.priceCents <= 0n || row.planPriceCents <= 0n) return false;
+    return Number(row.planPriceCents) / Number(row.priceCents) >= PLAN_MISMATCH_RATIO;
+  });
+}

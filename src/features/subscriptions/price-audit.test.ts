@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { findPriceSuspicions, findStaleCharges, type OpenChargeRow, type SubscriptionPriceRow } from './price-audit';
+import {
+  findPlanMismatches,
+  findPriceSuspicions,
+  findStaleCharges,
+  type OpenChargeRow,
+  type PlanMismatchRow,
+  type SubscriptionPriceRow,
+} from './price-audit';
 
 function row(overrides: Partial<SubscriptionPriceRow> = {}): SubscriptionPriceRow {
   return {
@@ -105,5 +112,34 @@ describe('findStaleCharges', () => {
 
   it('assinatura sem preço não serve de referência', () => {
     expect(findStaleCharges([openCharge({ principalCents: 183000n, subscriptionPriceCents: 0n })])).toEqual([]);
+  });
+});
+
+
+function planRow(overrides: Partial<PlanMismatchRow> = {}): PlanMismatchRow {
+  return { customerName: 'Cliente', priceCents: 3000n, planName: 'Mensal', planPriceCents: 3000n, ...overrides };
+}
+
+/**
+ * Conferido contra a base real em 12/09/2026: dos 6 que a primeira versão
+ * acusava, 4 eram contas do próprio operador a R$ 0,00 ("Eu", "Meu Quarto") e 2
+ * eram preço negociado **acima** do plano. Nenhum era erro.
+ */
+describe('findPlanMismatches', () => {
+  it('pega a assinatura que ficou muito abaixo do plano — mensal apontando para anual', () => {
+    const found = findPlanMismatches([planRow({ priceCents: 3000n, planName: 'Anual', planPriceCents: 36000n })]);
+    expect(found).toHaveLength(1);
+  });
+
+  it('cortesia não é divergência — é a conta do próprio operador', () => {
+    expect(findPlanMismatches([planRow({ priceCents: 0n, planPriceCents: 36000n })])).toEqual([]);
+  });
+
+  it('preço acima do plano é negociação, não erro', () => {
+    expect(findPlanMismatches([planRow({ priceCents: 5500n, planPriceCents: 4000n })])).toEqual([]);
+  });
+
+  it('diferença pequena para baixo também não acusa', () => {
+    expect(findPlanMismatches([planRow({ priceCents: 3000n, planPriceCents: 3500n })])).toEqual([]);
   });
 });
