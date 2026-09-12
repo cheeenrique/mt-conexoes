@@ -33,8 +33,8 @@ async function main() {
       deletedAt: true,
       subscriptions: {
         select: {
-          id: true, status: true, cycle: true, priceCents: true, costCents: true,
-          nextDueAt: true, planId: true, plan: { select: { name: true, priceCents: true } },
+          id: true, status: true, cycle: true, priceCents: true, costCents: true, screens: true,
+          nextDueAt: true, planId: true, plan: { select: { name: true, priceCents: true, costCents: true } },
         },
       },
       charges: {
@@ -59,9 +59,11 @@ async function main() {
     if (customer.deletedAt) console.log('  ⚠️ removido');
 
     for (const sub of customer.subscriptions) {
-      const plano = sub.plan ? `${sub.plan.name} (plano: ${formatCents(sub.plan.priceCents)})` : 'sem plano';
+      const plano = sub.plan
+        ? `${sub.plan.name} (plano: ${formatCents(sub.plan.priceCents)} / custo ${formatCents(sub.plan.costCents)})`
+        : 'sem plano';
       console.log(
-        `  assinatura ${sub.status} ${sub.cycle} — preço ${formatCents(sub.priceCents)}, custo ${formatCents(sub.costCents)} — ${plano} — próximo venc. ${day(sub.nextDueAt)}`,
+        `  assinatura ${sub.status} ${sub.cycle} — preço ${formatCents(sub.priceCents)}, custo ${formatCents(sub.costCents)}, TELAS ${sub.screens} — ${plano} — próximo venc. ${day(sub.nextDueAt)}`,
       );
     }
 

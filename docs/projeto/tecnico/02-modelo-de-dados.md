@@ -477,3 +477,29 @@ model CredentialReveal {
 - Migration aplicada é imutável. Corrigir é migration nova.
 - Índice parcial, `CHECK` e o índice de singleton entram como SQL manual, e isso fica registrado no `README` do `prisma/`.
 - Alteração destrutiva usa expand/contract: adiciona, migra o dado, passa a ler do novo, remove numa migration posterior.
+
+## Valor acumulado na importação — episódio de 12/09/2026
+
+A base importada tinha 16 cobranças em aberto com preço **e custo** multiplicados pelo mesmo
+fator inteiro em relação à assinatura: Ph em 3x nos dois (1 tela, plano de R$ 30 e custo de
+R$ 10, cobrança de R$ 90 e custo de R$ 30), Josenildo em 2x, Walderi em ~61x.
+
+Preço errado não mexe no custo do fornecedor. O que multiplica os dois junto é **número de
+ciclos** — a coluna `VALOR` da planilha trazia um acumulado, não a mensalidade, e
+`createImportedSubscription` copia esse valor para a assinatura **e** para a primeira cobrança.
+Quando o operador depois atribuiu o plano certo a cada cliente, a assinatura foi para a
+mensalidade e a cobrança ficou com o acumulado.
+
+⚠️ **Não era o campo de dinheiro.** A primeira leitura culpou `CurrencyInput`, que de fato somava
+o dígito digitado por cima da seleção (corrigido em `6ba2ae8`) — mas erro de digitação não produz
+2x exato em quatro clientes seguidos, nem multiplica o custo junto. As duas coisas eram
+independentes.
+
+Corrigido em lote com `pnpm fix:prices --apply` (12/09/2026), alinhando cada cobrança em aberto
+ao preço do plano. `pnpm health:prices` confere se sobrou divergência; `pnpm inspect:customer
+"<nome>"` abre um cliente.
+
+**Antes da próxima importação:** conferir o que a coluna `VALOR` da planilha significa naquele
+arquivo. Se for acumulado de novo, o mapeamento em `features/customers/import/workbook.ts`
+precisa apontar para a coluna da mensalidade — o parser está correto, o que estava errado era a
+origem.
