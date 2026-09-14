@@ -22,7 +22,8 @@
     "audit:prices": "dotenv -e .env.local -- tsx scripts/audit-subscription-prices.ts",
     "fix:prices": "dotenv -e .env.local -- tsx scripts/fix-subscription-prices.ts",
     "inspect:customer": "dotenv -e .env.local -- tsx scripts/inspect-customer.ts",
-    "health:prices": "dotenv -e .env.local -- tsx scripts/health-prices.ts"
+    "health:prices": "dotenv -e .env.local -- tsx scripts/health-prices.ts",
+    "health:charges": "dotenv -e .env.local -- tsx scripts/health-charges.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
