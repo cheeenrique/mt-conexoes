@@ -21,3 +21,6 @@ next-env.d.ts
 # relatórios locais (dados de cliente reais — nunca versionar)
 tmp/
 .playwright-mcp/
+
+# gcloud config local (por máquina)
+.gcloudconfig

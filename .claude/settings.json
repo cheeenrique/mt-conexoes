@@ -1,0 +1,5 @@
+{
+  "env": {
+    "CLOUDSDK_ACTIVE_CONFIG_NAME": "mt-conexoes"
+  }
+}
