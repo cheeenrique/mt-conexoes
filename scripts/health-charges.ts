@@ -16,7 +16,9 @@
  * Responde cinco perguntas:
  *
  *   1. Alguma assinatura ativa está sem cobrança em aberto? (buraco de emissão)
- *      Cliente excluído/anonimizado não conta — mesmo recorte do backfill.
+ *      Cliente excluído/anonimizado e cortesia (preço zero) não contam — os dois
+ *      estão sem cobrança de propósito, e acusá-los toda rodada ensina o operador
+ *      a ignorar a saída.
  *   2. Sobrou cobrança vencida ainda `OPEN`? (sinal de `charges-mark-overdue` parado)
  *   3. Quando saiu a última cobrança? (pulso da emissão)
  *   4. Quando a régua avaliou pela última vez? (pulso de `dunning-evaluate`)
@@ -58,6 +60,10 @@ async function main() {
       // backfill (`customer-charge-backfill.ts`): ninguém vai emitir cobrança pra ele, então
       // acusá-lo toda rodada só ensina o operador a ignorar a saída.
       customer: { deletedAt: null, anonymizedAt: null },
+      // Cortesia não tem cobrança de propósito (`isCourtesySubscription`), então
+      // listá-la aqui é gritar lobo toda rodada — o jeito mais rápido de fazer o
+      // operador parar de ler o diagnóstico. Ela sai no contador logo abaixo.
+      priceCents: { gt: 0 },
     },
     select: {
       id: true, nextDueAt: true, priceCents: true,
@@ -78,6 +84,13 @@ async function main() {
     }
     console.log('\n   → Sem cobrança aberta o cliente não entra em /charges nem na régua.');
     console.log('   → Base importada antes da correção: `pnpm backfill:imported-charges`.');
+  }
+
+  const courtesyCount = await db.subscription.count({
+    where: { status: 'ACTIVE', priceCents: { lte: 0 }, customer: { deletedAt: null, anonymizedAt: null } },
+  });
+  if (courtesyCount > 0) {
+    console.log(`\n   ${courtesyCount} assinatura(s) de cortesia (preço zero) — sem cobrança por regra, não é buraco.`);
   }
 
   // 2. Vencida e ainda OPEN — charges-mark-overdue não passou.
