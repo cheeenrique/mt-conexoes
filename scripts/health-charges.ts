@@ -25,9 +25,11 @@
  *   5. Com o envio pausado, quanto está represado — e quanto já passou de 24h?
  *
  * ⚠️ A quinta importa: mensagem `PENDING` parada há mais de 24h vira `CANCELLED`
- * com motivo `stale` na primeira passada depois de despausar (T8), e o
- * `UNIQUE(chargeId, stepId)` impede a régua de gerar aquele par de novo. Fila
- * velha não é fila — é cobrança que nunca vai sair.
+ * com motivo `stale` na primeira passada depois de despausar (T8). O texto dela
+ * está congelado no dia da avaliação — "vence hoje (09/09)" mandado em 14/09 é pior
+ * que mensagem nenhuma —, então morrer é o certo. O cancelamento devolve o par
+ * `(cobrança, passo)` para a régua, que refaz o que ainda faz sentido com a data e
+ * os dias de atraso corretos. Fila velha não é fila; é retrabalho agendado.
  */
 import { db } from '@/lib/db';
 import { formatCents } from '@/lib/format';
@@ -134,7 +136,8 @@ async function main() {
   console.log(`\n5. Envio ${settings.sendingPaused ? 'PAUSADO' : 'ativo'} · ${pending} mensagem(ns) PENDING.`);
   if (pendingStale > 0) {
     console.log(`   ⚠️  ${pendingStale} delas já passaram de 24h — viram CANCELLED 'stale' na primeira passada`);
-    console.log("      depois de despausar, e o UNIQUE(chargeId, stepId) impede a régua de refazê-las.");
+    console.log('      depois de despausar. O texto está congelado no dia da avaliação, então morrer');
+    console.log('      é o certo: o par volta pra régua, que refaz com a data e o atraso corretos.');
   }
 
   console.log('');
