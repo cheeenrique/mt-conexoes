@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
-import { computeChargeDiscount, deriveChargeStatus } from '@/core/billing';
+import { computeChargeDiscount, deriveChargeStatus, isCourtesySubscription } from '@/core/billing';
 import { nextDueDate, endOfLocalDay, localDateOnly, localDayStartFromIso } from '@/core/dates';
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
@@ -189,6 +189,11 @@ async function openNextCycle(
     where: { id: charge.subscriptionId },
     data: { nextDueAt: newNextDueAt, ...reactivationPatch(charge.subscription.status) },
   });
+  // Cortesia avança o vencimento (o acesso continua tendo validade) e não abre
+  // cobrança nova — ver `isCourtesySubscription`. Chegar aqui com preço zero é raro
+  // (exige cobrança antiga de antes da regra sendo quitada agora), mas quitar uma
+  // dessas não pode ressuscitar o ciclo de cobrança que a cortesia não tem.
+  if (isCourtesySubscription(charge.subscription)) return;
   await tx.charge.create({
     data: {
       subscriptionId: charge.subscriptionId,

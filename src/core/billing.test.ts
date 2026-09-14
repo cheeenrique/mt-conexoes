@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveChargeStatus } from './billing';
+import { deriveChargeStatus, isCourtesySubscription } from './billing';
 
 const DUE = new Date('2026-08-10T23:59:59.999Z'); // 23:59:59 local já em UTC
 
@@ -42,5 +42,26 @@ describe('deriveChargeStatus', () => {
   it('vencimento exatamente igual a now ainda não é OVERDUE (dueAt é inclusive)', () => {
     const status = deriveChargeStatus({ netCents: 10_000n, paidCents: 0n, dueAt: DUE, now: DUE });
     expect(status).toBe('OPEN');
+  });
+});
+
+describe('isCourtesySubscription', () => {
+  it('preço zero é cortesia', () => {
+    expect(isCourtesySubscription({ priceCents: 0n })).toBe(true);
+  });
+
+  it('um centavo já não é cortesia — cobrar R$ 0,01 é cobrar', () => {
+    expect(isCourtesySubscription({ priceCents: 1n })).toBe(false);
+  });
+
+  it('preço normal não é cortesia', () => {
+    expect(isCourtesySubscription({ priceCents: 3_000n })).toBe(false);
+  });
+
+  // Não existe preço negativo no schema (`CHECK price_cents >= 0`), mas a função é
+  // pura e não deve inventar um terceiro estado se uma linha estragada aparecer:
+  // "não é para cobrar" é a resposta segura.
+  it('preço negativo cai no lado da cortesia, não em cobrança', () => {
+    expect(isCourtesySubscription({ priceCents: -1n })).toBe(true);
   });
 });

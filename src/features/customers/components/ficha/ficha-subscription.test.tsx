@@ -59,3 +59,21 @@ describe('FichaSubscription', () => {
     expect(screen.getByText(/ainda não tem assinatura/)).toBeInTheDocument();
   });
 });
+
+describe('FichaSubscription — cortesia', () => {
+  it('preço zero mostra o selo Cortesia e diz que não gera cobrança', () => {
+    render(<FichaSubscription subscription={makeSubscription({ priceCents: '0' })} timezone={TZ} />);
+
+    expect(screen.getByText('Cortesia')).toBeInTheDocument();
+    expect(screen.getByText('Não gera cobrança')).toBeInTheDocument();
+    // O valor some: "R$ 0,00 por ciclo" lia como cobrança de zero reais, que é o
+    // que o sistema fazia antes — emitia e a cobrança nascia PAID.
+    expect(screen.queryByText('R$ 0,00')).not.toBeInTheDocument();
+  });
+
+  it('preço normal não mostra selo de cortesia', () => {
+    render(<FichaSubscription subscription={makeSubscription()} timezone={TZ} />);
+
+    expect(screen.queryByText('Cortesia')).not.toBeInTheDocument();
+  });
+});

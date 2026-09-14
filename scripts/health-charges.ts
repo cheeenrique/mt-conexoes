@@ -16,6 +16,7 @@
  * Responde cinco perguntas:
  *
  *   1. Alguma assinatura ativa está sem cobrança em aberto? (buraco de emissão)
+ *      Cliente excluído/anonimizado não conta — mesmo recorte do backfill.
  *   2. Sobrou cobrança vencida ainda `OPEN`? (sinal de `charges-mark-overdue` parado)
  *   3. Quando saiu a última cobrança? (pulso da emissão)
  *   4. Quando a régua avaliou pela última vez? (pulso de `dunning-evaluate`)
@@ -50,7 +51,14 @@ async function main() {
 
   // 1. Assinatura ativa sem cobrança em aberto.
   const orphans = await db.subscription.findMany({
-    where: { status: 'ACTIVE', charges: { none: { status: { in: [...OPEN_STATUSES] } } } },
+    where: {
+      status: 'ACTIVE',
+      charges: { none: { status: { in: [...OPEN_STATUSES] } } },
+      // Cliente excluído ou anonimizado sai do diagnóstico pelo mesmo motivo que sai do
+      // backfill (`customer-charge-backfill.ts`): ninguém vai emitir cobrança pra ele, então
+      // acusá-lo toda rodada só ensina o operador a ignorar a saída.
+      customer: { deletedAt: null, anonymizedAt: null },
+    },
     select: {
       id: true, nextDueAt: true, priceCents: true,
       customer: { select: { name: true } },

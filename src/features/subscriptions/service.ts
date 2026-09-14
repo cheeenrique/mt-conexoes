@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { SubscriptionNotFoundError, SubscriptionCancelledError, PlanNotFoundError } from './errors';
 import { encrypt } from '@/lib/crypto';
 import { firstDueDate, endOfLocalDay, localDateOnly } from '@/core/dates';
-import { computeChargeDiscount } from '@/core/billing';
+import { computeChargeDiscount, isCourtesySubscription } from '@/core/billing';
 import { alignOpenChargeDueAt } from './open-charge';
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
@@ -119,7 +119,13 @@ export async function insertSubscriptionWithFirstCharge(
     omit: { accessPasswordEnc: true },
   });
 
-  if (subscription.status === 'ACTIVE') {
+  // Cortesia (preço zero) não abre cobrança: sem `Charge` ela fica fora de /charges,
+  // fora dos chips de vencimento e fora da régua — que é o ponto. Antes disto a
+  // cobrança de R$ 0 nascia `PAID` (`deriveChargeStatus`: 0 >= 0), nunca passava por
+  // registrar pagamento e por isso nunca chamava `openNextCycle`: a cortesia emitia
+  // uma cobrança e parava para sempre, aparecendo no diagnóstico como assinatura
+  // ativa sem cobrança em aberto.
+  if (subscription.status === 'ACTIVE' && !isCourtesySubscription(subscription)) {
     const periodStart = localDateOnly(startedAt, timezone);
     await tx.charge.create({
       data: {

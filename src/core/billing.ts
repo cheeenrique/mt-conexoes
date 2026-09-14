@@ -21,6 +21,25 @@ export function deriveChargeStatus(params: {
 }
 
 /**
+ * Assinatura de cortesia: acesso concedido sem cobrar. Na base real são as contas
+ * do próprio operador ("Eu", "Meu Quarto") e os acessos que ele dá de graça.
+ *
+ * Preço zero **é** a marcação — não existe campo separado, de propósito. Dois
+ * campos que podem discordar (`isCourtesy: true` com `priceCents: 3000`) criam um
+ * estado que alguém cria sem querer e ninguém sabe ler depois. `price-audit.ts` já
+ * tratava preço zero como cortesia antes desta função existir; isto só dá nome à
+ * regra e um lugar só para ela morar.
+ *
+ * ⚠️ Cortesia não é isenção de um ciclo. "Este mês não cobro" é `discountType` /
+ * `discountValue` na assinatura, que mantém a cobrança existindo com valor zerado.
+ * Cortesia é a ausência permanente de cobrança: sem `Charge`, a assinatura não
+ * aparece em /charges, não entra na régua e não vira mensagem.
+ */
+export function isCourtesySubscription(subscription: { priceCents: bigint }): boolean {
+  return subscription.priceCents <= 0n;
+}
+
+/**
  * Desconto vigente na emissão de uma cobrança, em centavos. `discountUntil`
  * precisa cobrir o início do período — desconto vencido não entra na cobrança
  * nova.

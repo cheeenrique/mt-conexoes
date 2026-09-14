@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { marginPercent } from '@/core/money';
 import { formatCents, formatLocalDate, formatPercent } from '@/lib/format';
+import { isCourtesySubscription } from '@/core/billing';
 import { marginToneClass } from '@/lib/margin-tone';
 import { CYCLE_LABELS, SUBSCRIPTION_STATUS_LABELS } from '@/lib/labels';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -37,12 +38,14 @@ export function FichaSubscription({
   }
 
   const margin = marginPercent(BigInt(subscription.priceCents), BigInt(subscription.costCents));
+  const isCourtesy = isCourtesySubscription({ priceCents: BigInt(subscription.priceCents) });
 
   return (
     <section className="flex flex-col gap-3.5 rounded border border-border bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-bold uppercase tracking-[.08em] text-foreground-muted">Assinatura</span>
         <div className="flex items-center gap-2">
+          {isCourtesy && <StatusBadge tone="neutral">Cortesia</StatusBadge>}
           <StatusBadge tone={subscription.status === 'ACTIVE' ? 'success' : 'neutral'}>
             {SUBSCRIPTION_STATUS_LABELS[subscription.status] ?? subscription.status}
           </StatusBadge>
@@ -54,10 +57,16 @@ export function FichaSubscription({
         <Field label="Próximo vencimento">{formatLocalDate(subscription.nextDueAt, timezone)}</Field>
         <Field label="Telas">{subscription.screens}</Field>
         <Field label="Paga por ciclo">
-          {formatCents(subscription.priceCents)}
-          <span className="ml-1 text-xs text-foreground-muted">
-            {CYCLE_LABELS[subscription.cycle] ?? subscription.cycle}
-          </span>
+          {isCourtesy ? (
+            <span className="text-foreground-muted">Não gera cobrança</span>
+          ) : (
+            <>
+              {formatCents(subscription.priceCents)}
+              <span className="ml-1 text-xs text-foreground-muted">
+                {CYCLE_LABELS[subscription.cycle] ?? subscription.cycle}
+              </span>
+            </>
+          )}
         </Field>
         <Field label="Custo por ciclo">{formatCents(subscription.costCents)}</Field>
         <Field label="Margem">

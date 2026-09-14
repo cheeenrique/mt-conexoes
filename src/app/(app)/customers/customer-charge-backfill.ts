@@ -45,6 +45,10 @@ export async function backfillImportedCharges(params: {
       status: 'ACTIVE',
       charges: { none: {} },
       customer: { deletedAt: null, anonymizedAt: null },
+      // Cortesia (preço zero) nunca teve cobrança de propósito — ver
+      // `isCourtesySubscription`. Sem este recorte o backfill "conserta" justamente
+      // as assinaturas que a regra manda deixar sem cobrança.
+      priceCents: { gt: 0 },
     },
     orderBy: { nextDueAt: 'asc' },
     select: {

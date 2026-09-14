@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { encrypt } from '@/lib/crypto';
+import { isCourtesySubscription } from '@/core/billing';
 import { buildImportedFirstCharge } from './imported-charge';
 
 /** A planilha de origem não tem coluna de ciclo — toda linha importada é mensal. */
@@ -48,6 +49,11 @@ export async function createImportedSubscription(
     },
     select: { id: true },
   });
+
+  // Cortesia importada não abre cobrança — mesma regra da criação manual
+  // (`isCourtesySubscription`). A planilha traz preço zero nas contas do próprio
+  // operador; emitir para elas enche /charges de linha que ninguém vai cobrar.
+  if (isCourtesySubscription({ priceCents: params.priceCents })) return subscription;
 
   await tx.charge.create({
     data: buildImportedFirstCharge({
