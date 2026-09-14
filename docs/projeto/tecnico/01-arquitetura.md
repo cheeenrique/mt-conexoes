@@ -174,7 +174,7 @@ Cloud Scheduler chama Route Handlers com token OIDC. O handler valida o token; s
 |---|---|---|
 | `charges-mark-overdue` | diário 03:00 | Marca `OPEN` com `dueAt < agora` como `OVERDUE`. Não gera cobrança — cobrança nasce na criação da assinatura e no pagamento total, não por job. |
 | `dunning-evaluate` | diário 07:00 | Avalia a régua e cria as linhas `PENDING` em `messages` |
-| `messages-dispatch` | a cada 15 min, 08:00–20:00 | Envia as `PENDING` respeitando as travas; falha vira retry na próxima passada |
+| `messages-dispatch` | a cada 15 min, dentro da quiet hour de Ajustes (hoje 09:00–20:00) | Envia as `PENDING` respeitando as travas; falha vira retry na próxima passada. **2 mensagens por passada, 42s–78s entre elas** — ritmo anti-banimento do Evolution, ver [`06-regua-e-canais.md`](./06-regua-e-canais.md) |
 | `ping` | não agendado em produção | Só valida o token e responde. Encanamento: confirma que o Cloud Scheduler alcança o Cloud Run com OIDC, sem tocar no banco. |
 
 ⚠️ O Cloud Scheduler tem **3 jobs no plano free** (ver Stack, acima) e os três de produção (`charges-mark-overdue`, `dunning-evaluate`, `messages-dispatch`) já ocupam todos. `ping` não entra na conta — só é chamado manualmente ou por um scheduler de staging, nunca registrado como o 4º job em produção.

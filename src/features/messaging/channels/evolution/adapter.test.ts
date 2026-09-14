@@ -205,3 +205,13 @@ describe('evolutionAdapter.healthCheck', () => {
     expect(result).toEqual({ ok: false, reason: 'Não foi possível alcançar o servidor Evolution. Confira o endereço e se ele está no ar.' });
   });
 });
+
+describe('capabilities', () => {
+  // ⚠️ Número banido é número novo — não existe recurso. O canal não oficial paga
+  // o ritmo em risco de banimento, então o limite declarado aqui não é o que o
+  // servidor Evolution aguenta (ele aguenta muito mais): é o que a heurística
+  // antispam do WhatsApp tolera vindo de um número que acabou de parear.
+  it('declara 1 mensagem por minuto — ritmo anti-banimento, não limite do servidor', () => {
+    expect(evolutionAdapter.capabilities.rateLimitPerMinute).toBe(1);
+  });
+});

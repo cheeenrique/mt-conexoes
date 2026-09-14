@@ -175,7 +175,22 @@ export const evolutionAdapter: ChannelAdapter & PairableChannel = {
     supportsFreeText: true,
     requiresApprovedTemplate: false,
     maxBodyLength: 4096,
-    rateLimitPerMinute: 20,
+    // ⚠️ 1/min, não o que o servidor Evolution aguenta. O canal não oficial não tem
+    // recurso contra banimento — número queimado é número novo, e reparear custa
+    // uma linha nova e o histórico de conversa do antigo. Em 20/min o despacho
+    // esvaziava a fila do dia numa rajada de ~2min logo na abertura da janela, que
+    // é exatamente a forma que a heurística antispam do WhatsApp procura.
+    //
+    // O número cai em cascata em `core/send-throttle.ts`: `sendDelayMs` vira 42s–78s
+    // entre envios (jitter de ±30% sobre 60s) e `dispatchBatchSize` vira 2 por
+    // passada. Com passada a cada 15min, a média real fica em uma mensagem a cada
+    // ~7min, e o teto em 88/dia na janela de 11h — folga sobre os ~10 vencimentos
+    // diários da base.
+    //
+    // Sim, é a `capabilities` do provider carregando política nossa. Enquanto o
+    // Evolution for o único canal com esse risco, o campo separado seria indireção
+    // com um consumidor só (`.claude/rules/05-reuso.md`).
+    rateLimitPerMinute: 1,
   },
   send,
   healthCheck,

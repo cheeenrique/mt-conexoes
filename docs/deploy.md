@@ -40,8 +40,8 @@ Cloud Run escala até 3 — o teto do plano free estoura e o painel começa a da
 erro de conexão sob carga. `3` é folgado para o volume deste cliente.
 
 ⚠️ **Horas de computação.** O plano free do Neon dá ~192 h/mês e suspende o
-banco após ~5 min ocioso. O cron `messages-dispatch` roda a cada 15 min das 8h
-às 19h — 48 despertares por dia, cada um segurando o banco acordado pelo mínimo:
+banco após ~5 min ocioso. O cron `messages-dispatch` roda a cada 15 min das 9h
+às 19h — 44 despertares por dia, cada um segurando o banco acordado pelo mínimo:
 ~4 h/dia, ~120 h/mês, antes de qualquer uso da tela. Cabe, mas com pouca folga.
 Se apertar, passar o job para `*/30` corta pela metade (`50-scheduler.sh`).
 
@@ -101,7 +101,8 @@ Login no `$URL` com o e-mail e senha do passo 40.
 ## 5 · Configurar o painel (na UI, uma vez)
 
 1. **Ajustes › Negócio** — fuso `America/Sao_Paulo`, janela de silêncio
-   (padrão 08:00–20:00), dados do negócio.
+   (09:00–20:00 em produção; o padrão do schema ainda é 08:00), dados do negócio.
+   ⚠️ Mudou a janela aqui, reexecutar `50-scheduler.sh` com a faixa nova.
 2. **Fornecedores** e **Planos** — antes de importar, senão a planilha não tem
    onde ancorar.
 3. **Clientes › Importar planilha** — 2 etapas: a prévia não grava nada; só o

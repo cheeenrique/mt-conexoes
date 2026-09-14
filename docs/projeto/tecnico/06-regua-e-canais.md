@@ -105,7 +105,17 @@ A escrita das execuções e das mensagens acontece **em uma transação por cust
 
 ## Motor — despacho
 
-Job `messages-dispatch`, a cada 15 minutos entre 08:00 e 20:00 local.
+Job `messages-dispatch`, a cada 15 minutos dentro da janela de quiet hours de
+Ajustes (hoje 09:00–20:00 local).
+
+⚠️ **Ritmo dentro da passada não é o que o provider aguenta — é o que o WhatsApp
+tolera.** O adapter Evolution declara `rateLimitPerMinute: 1`, e daí sai tudo:
+`sendDelayMs` dá 42s–78s entre envios (jitter de ±30% sobre 60s, porque intervalo
+cravado é padrão tão reconhecível quanto rajada) e `dispatchBatchSize` dá 2
+mensagens por passada. Média real: uma mensagem a cada ~7 minutos; teto de 88 por
+dia na janela de 11h. Em 20/min, que era o valor anterior, a fila inteira do dia
+saía numa rajada de ~2 minutos na abertura da janela. Número banido é número novo
+— não existe recurso.
 
 ```
 kill switch ligado (Settings.sendingPaused)? ..... não envia nada        (T8)

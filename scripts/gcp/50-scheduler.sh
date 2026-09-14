@@ -16,9 +16,15 @@ gcloud run services add-iam-policy-binding "$SERVICE" \
 # ⚠️ O plano free do Cloud Scheduler cobre 3 jobs. Estes três ocupam todos.
 # `ping` fica fora de propósito — ver docs/projeto/tecnico/01-arquitetura.md.
 #
-# messages-dispatch para às 19h45 e não às 20h45: a quiet hour padrão fecha às
-# 20:00, e as quatro passadas da hora das 20 só encontrariam a trava T6
-# reagendando. São quatro cold starts por dia sem nada para enviar.
+# messages-dispatch roda 9h–19h45, não 8h–20h45: a janela de quiet hours em
+# produção é 09:00–20:00, e passada fora dela só encontra a trava T6 reagendando
+# — cold start por cold start sem nada para enviar.
+#
+# ⚠️ Esta faixa espelha `Settings.quietHourStart`/`quietHourEnd`, que o operador
+# muda na tela sem tocar aqui. Mexeu na janela em Ajustes, reexecutar este script
+# com a faixa nova; senão a única consequência é passada desperdiçada (mais cedo)
+# ou atraso de até 15min na primeira mensagem (mais tarde) — nunca mensagem fora
+# da janela, porque quem decide isso é a T6, não o cron.
 schedule_job() {
   local name="$1" cron="$2"
   local args=(
@@ -42,7 +48,7 @@ schedule_job() {
 
 schedule_job charges-mark-overdue "0 3 * * *"
 schedule_job dunning-evaluate     "0 7 * * *"
-schedule_job messages-dispatch    "*/15 8-19 * * *"
+schedule_job messages-dispatch    "*/15 9-19 * * *"
 
 echo
 echo "3 jobs no ar. Encanamento (OIDC alcança o Cloud Run) sem tocar no banco:"
