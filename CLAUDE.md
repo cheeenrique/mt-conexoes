@@ -14,7 +14,7 @@ Quatro coisas que a estrutura não deixa óbvias: **assinatura não tem rota pr�
 
 **O que ainda não está pronto** — está aqui porque um documento que promete mais do que o código entrega é pior que um desatualizado:
 
-- **`META_CLOUD` é configurável e não entrega.** O adapter monta o POST de template, mas nenhum ponto do despacho preenche `templateRef`: `send()` recusa sempre, com "Passo sem template aprovado". Marcar esse canal como padrão hoje é ficar sem envio.
+- **`META_CLOUD` está completo em código e nunca falou com a Meta de verdade.** O caminho existe inteiro — `metaTemplateName` no passo (`dunning/components/step-message-fields.tsx`) → `message-build.ts` congela `templateName`/`templateParams` na `Message` → `evaluate-persist.ts` grava → `scheduled-dispatch.ts` monta o `templateRef` → `meta-cloud/adapter.ts` POSTa o template no Graph. O que não existe é observação: nenhum envio real, nenhuma credencial de WABA exercitada, nenhum template aprovado de verdade. Antes de marcar esse canal como padrão: passo sem `metaTemplateName` vira `SKIPPED`, não mensagem — a régua inteira precisa ter template aprovado do lado da Meta, um por passo.
 - **Pareamento por QR nunca foi visto conectando de verdade** — exige um WhatsApp real lendo o código. O caminho `open` tem teste, não observação.
 - **"Ativar sem descartar a revisão" não dispara retroativo.** `UNIQUE(chargeId, stepId)` impede reprocessar o par, então nenhuma daquelas mensagens sai. O rótulo do botão já é honesto (o handoff chamava de "Enviar todas"); o comportamento certo é decisão de produto em aberto.
 - **Turnstile implementado e desligado por padrão** (`features/leads/turnstile.ts`): sem `TURNSTILE_SECRET_KEY`, passa direto. O rate limit por IP em `lead_attempts` continua valendo.
@@ -126,7 +126,7 @@ lib/       ──> Prisma, env
 - No pareamento por QR, `instanceName` e `webhookToken` são **gerados pelo painel**, e endereço do servidor/chave de API vêm de `EVOLUTION_BASE_URL`/`EVOLUTION_API_KEY` (env — a agência já provisionou o servidor no deploy) — o operador só digita o número que vai enviar. Os quatro viram chaves do mesmo blob criptografado. O caminho `CREDENTIALS` ("já tenho uma instância pareada") continua pedindo endereço e chave: pode ser um servidor diferente do provisionado. `ChannelConfig.phoneNumber` vem do `wuid` que o `connection.update` reporta ao conectar, nunca de campo digitado.
 - ⚠️ QR e código de pareamento não são persistidos nem logados: Server Action → prop → `<img>`, morrem com o diálogo.
 - Meta Cloud API só entrega **template aprovado** fora da janela de 24h. Passo sem `metaTemplateName` num canal que exige template vira `SKIPPED` (motivo `template_not_approved`), não uma mensagem que não chega — a trava existe em `dunning/evaluate.ts` e tem produtor.
-- ⚠️ O envio por template em si **não está implementado**: nada preenche `templateRef` no despacho, então `META_CLOUD` recusa todo envio. Ver §Estado atual antes de tratar esse canal como entregável.
+- O envio por template está implementado ponta a ponta (`message-build.ts` congela o nome e os params na `Message`, `scheduled-dispatch.ts` monta o `templateRef`), mas nunca rodou contra a Meta real. Ver §Estado atual antes de tratar esse canal como entregável.
 
 **Segurança**
 - Senha de acesso do assinante: AES-256-GCM, mascarada na tela, revelação **auditada** em `credential_reveals`, fora de log, Sentry, export e mensagem. O DTO padrão não inclui o campo.
