@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daysOf, directionOf, offsetDaysFrom, stepLabel } from './step-offset';
+import { catchUpOffset, daysOf, directionOf, offsetDaysFrom, stepLabel } from './step-offset';
 
 describe('offsetDaysFrom', () => {
   it('antes do vencimento vira deslocamento negativo', () => {
@@ -34,5 +34,23 @@ describe('stepLabel', () => {
     expect(stepLabel(-5)).toBe('D-5');
     expect(stepLabel(0)).toBe('D0');
     expect(stepLabel(3)).toBe('D+3');
+  });
+});
+
+describe('catchUpOffset', () => {
+  const STEPS = [
+    { offsetDays: -2, action: 'SEND_MESSAGE' },
+    { offsetDays: 0, action: 'SEND_MESSAGE' },
+    { offsetDays: 3, action: 'SEND_MESSAGE' },
+    { offsetDays: 5, action: 'SUSPEND' },
+  ];
+
+  it('é o último degrau de mensagem, não o de maior offset', () => {
+    expect(catchUpOffset(STEPS)).toBe(3);
+  });
+
+  it('régua sem degrau de mensagem não tem degrau de recuperação', () => {
+    expect(catchUpOffset([{ offsetDays: 5, action: 'SUSPEND' }])).toBeNull();
+    expect(catchUpOffset([])).toBeNull();
   });
 });

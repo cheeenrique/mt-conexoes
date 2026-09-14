@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { consolidate, daysFromDue, type PendingStep } from '@/core/dunning-rules';
+import { consolidate, daysFromDue, selectStepsForCharge, type PendingStep } from '@/core/dunning-rules';
 import { buildPendingStep, type ChargeForStep, type StepForEvaluation } from './message-build';
 import { getDefaultRuleWithSteps } from './queries';
 import { getSettings, type SettingsDTO } from '@/lib/settings';
@@ -105,10 +105,12 @@ export async function evaluateDunningRule(now: Date, requiresApprovedTemplate: b
     include: { customer: true, payments: { select: { amountCents: true } } },
   });
 
+  // Casamento degrau↔cobrança mora em `core/` (`selectStepsForCharge`): é regra, e o
+  // último degrau de mensagem casa por "a partir de" pra recuperar quem passou por
+  // baixo da escada enquanto o envio estava pausado. Repetir o `===` aqui era o que
+  // deixava cobrança vencida sem nenhuma mensagem, para sempre.
   const chargeStepPairs = charges.flatMap((charge) =>
-    activeSteps
-      .filter((step) => daysFromDue(charge.dueAt, now, settings.timezone) === step.offsetDays)
-      .map((step) => ({ charge, step })),
+    selectStepsForCharge(daysFromDue(charge.dueAt, now, settings.timezone), activeSteps).map((step) => ({ charge, step })),
   );
 
   if (chargeStepPairs.length === 0) {

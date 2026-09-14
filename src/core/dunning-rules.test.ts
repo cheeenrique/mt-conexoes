@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { daysFromDue, consolidate, type PendingStep } from './dunning-rules';
+import { daysFromDue, consolidate, selectStepsForCharge, type PendingStep } from './dunning-rules';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -108,5 +108,69 @@ describe('consolidate', () => {
     expect(result[0].extraCount).toBe(1);
     // base = maior offsetDays (3, "ultimo_aviso") — o template do passo extra some, igual o corpo dele já somia antes.
     expect(result[0].templateName).toBe('ultimo_aviso');
+  });
+});
+
+describe('selectStepsForCharge', () => {
+  // A escada real da base: avisa 5 e 2 dias antes, no dia, +1, +3, e suspende no +5.
+  const STEPS = [
+    { offsetDays: -5, action: 'SEND_MESSAGE' },
+    { offsetDays: -2, action: 'SEND_MESSAGE' },
+    { offsetDays: 0, action: 'SEND_MESSAGE' },
+    { offsetDays: 1, action: 'SEND_MESSAGE' },
+    { offsetDays: 3, action: 'SEND_MESSAGE' },
+    { offsetDays: 5, action: 'SUSPEND' },
+  ];
+
+  const offsets = (days: number) => selectStepsForCharge(days, STEPS).map((s) => s.offsetDays);
+
+  it('degrau comum casa só no dia exato', () => {
+    expect(offsets(-5)).toEqual([-5]);
+    expect(offsets(-2)).toEqual([-2]);
+    expect(offsets(0)).toEqual([0]);
+    expect(offsets(1)).toEqual([1]);
+  });
+
+  it('dia que não é degrau nenhum não casa nada', () => {
+    expect(offsets(-4)).toEqual([]);
+    expect(offsets(-1)).toEqual([]);
+    expect(offsets(2)).toEqual([]);
+  });
+
+  // O ponto do exercício: a cobrança que passou por baixo da escada enquanto o envio
+  // estava pausado. Antes disto, `daysFromDue === offsetDays` deixava 8 cobranças
+  // vencidas sem nenhuma mensagem, para sempre.
+  it('último degrau de mensagem pega quem já passou dele', () => {
+    expect(offsets(3)).toEqual([3]);
+    expect(offsets(4)).toEqual([3]);
+    expect(offsets(6)).toEqual([3]);
+    expect(offsets(30)).toEqual([3]);
+  });
+
+  it('no dia 5 pega o último degrau de mensagem E o SUSPEND', () => {
+    expect(offsets(5)).toEqual([3, 5]);
+  });
+
+  // ⚠️ SUSPEND continua casando por dia exato de propósito: "a partir de" ali
+  // suspenderia de uma vez toda a base atrasada que passou do dia 5.
+  it('SUSPEND nunca é o degrau de recuperação, mesmo sendo o de maior offset', () => {
+    expect(offsets(6)).not.toContain(5);
+    expect(offsets(30)).not.toContain(5);
+  });
+
+  it('régua com um único degrau de mensagem: ele é o de recuperação', () => {
+    const single = [{ offsetDays: 0, action: 'SEND_MESSAGE' }];
+    expect(selectStepsForCharge(9, single).map((s) => s.offsetDays)).toEqual([0]);
+    expect(selectStepsForCharge(-1, single)).toEqual([]);
+  });
+
+  it('régua só com SUSPEND não ganha degrau de recuperação', () => {
+    const onlySuspend = [{ offsetDays: 5, action: 'SUSPEND' }];
+    expect(selectStepsForCharge(9, onlySuspend)).toEqual([]);
+    expect(selectStepsForCharge(5, onlySuspend).map((s) => s.offsetDays)).toEqual([5]);
+  });
+
+  it('régua sem degrau nenhum não explode', () => {
+    expect(selectStepsForCharge(3, [])).toEqual([]);
   });
 });

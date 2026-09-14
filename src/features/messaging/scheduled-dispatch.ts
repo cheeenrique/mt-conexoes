@@ -107,7 +107,21 @@ async function processMessage(
   channelHealthy: boolean,
 ): Promise<ProcessOutcome> {
   if (now.getTime() - msg.createdAt.getTime() > STALE_MS) {
-    await db.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'stale' } });
+    // A execução do passo some junto, na mesma transação. `DunningExecution` afirma
+    // "este passo já foi processado para esta cobrança", e o `UNIQUE(chargeId, stepId)`
+    // faz a régua acreditar. Uma mensagem que morreu stale nunca tocou o provider: o
+    // passo foi *planejado*, não executado, e manter a linha é a régua mentindo para
+    // si mesma — aquele par nunca mais é reavaliado e o cliente nunca recebe nada.
+    //
+    // Na prática isso só tem efeito no degrau de recuperação (`selectStepsForCharge`),
+    // que casa por "a partir de": os degraus de dia exato já passaram do dia deles e
+    // não voltariam a casar de qualquer forma.
+    //
+    // ⚠️ Envio bem-sucedido nunca passa por aqui — histórico de envio não se apaga.
+    await db.$transaction(async (tx) => {
+      await tx.dunningExecution.deleteMany({ where: { messageId: msg.id } });
+      await tx.message.update({ where: { id: msg.id }, data: { status: 'CANCELLED', cancelReason: 'stale' } });
+    });
     return { outcome: 'cancelledStale', calledProvider: false };
   }
 

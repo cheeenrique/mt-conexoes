@@ -572,3 +572,51 @@ describe('dispatchPendingMessages', () => {
     });
   });
 });
+
+/**
+ * Mensagem que morre por `stale` (T8) nunca tocou o provider — o passo da régua que
+ * a produziu **não** foi executado, só planejado. Deixar a `DunningExecution` de pé
+ * faz o `UNIQUE(chargeId, stepId)` mentir para a régua: "este passo já saiu", quando
+ * não saiu nada.
+ *
+ * ⚠️ Sem isto o conserto do degrau de recuperação não entrega: ele dispara uma vez,
+ * a mensagem morre stale durante uma pausa longa, a execução fica, e aquela cobrança
+ * nunca mais recebe nada — exatamente o buraco que o degrau veio tapar.
+ */
+describe('stale devolve o passo para a régua', () => {
+  it('cancelar por stale apaga a DunningExecution que não virou envio', async () => {
+    await seedActiveDefaultChannel();
+    const customer = await seedCustomer();
+    const msg = await seedPendingMessage(customer.id, {
+      createdAt: new Date(IN_HOURS_NOW.getTime() - 25 * 60 * 60 * 1000),
+    });
+    const charge = await seedChargeWithExecution(customer.id, msg.id, 'OPEN', 901);
+    const step = await db.dunningStep.findFirstOrThrow({ where: { rule: { isDefault: true } } });
+
+    const result = await dispatchPendingMessages(IN_HOURS_NOW, () => 0.5, async () => {});
+
+    expect(result.cancelledStale).toBe(1);
+    const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+    expect(reloaded?.status).toBe('CANCELLED');
+    expect(reloaded?.cancelReason).toBe('stale');
+    // O par (cobrança, passo) volta a estar livre: a régua pode reavaliá-lo.
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id, stepId: step.id } });
+    expect(executions).toHaveLength(0);
+  });
+
+  it('mensagem enviada com sucesso mantém a execução — histórico de envio não se apaga', async () => {
+    await seedActiveDefaultChannel();
+    const customer = await seedCustomer();
+    const msg = await seedPendingMessage(customer.id);
+    const charge = await seedChargeWithExecution(customer.id, msg.id, 'OPEN', 902);
+    const step = await db.dunningStep.findFirstOrThrow({ where: { rule: { isDefault: true } } });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ key: { id: 'wamid-keep' } }) }));
+
+    await dispatchPendingMessages(IN_HOURS_NOW, () => 0.5, async () => {});
+
+    const reloaded = await db.message.findUnique({ where: { id: msg.id } });
+    expect(reloaded?.status).toBe('SENT');
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id, stepId: step.id } });
+    expect(executions).toHaveLength(1);
+  });
+});

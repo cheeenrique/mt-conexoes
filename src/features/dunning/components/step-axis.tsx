@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Bell, Mail, Pause, Plus } from 'lucide-react';
-import { stepLabel } from '../step-offset';
+import { catchUpOffset, stepLabel } from '../step-offset';
 import { StepDrawer } from './step-drawer';
 import type { DunningStepDTO, PreviewChargeDTO } from '../queries';
 
@@ -39,6 +39,10 @@ export function StepAxis({
   // correção do diálogo de pagamento (103e83d): o conteúdo continua montado
   // durante a animação de fechamento, então trocar de chave é o que reinicia.
   const [openCount, setOpenCount] = useState(0);
+  // O motor casa este degrau por "a partir de" (`selectStepsForCharge`). Sem dizer
+  // isso no eixo, "D+3" lia como "só no terceiro dia" num degrau que também pega
+  // quem está há trinta dias vencido.
+  const catchUp = catchUpOffset(steps.filter((step) => step.isActive));
 
   function open(step: DunningStepDTO | null) {
     setEditing(step);
@@ -82,10 +86,20 @@ export function StepAxis({
                 </span>
                 <span className="font-mono text-[13px] font-semibold tabular-mono text-foreground">
                   {stepLabel(step.offsetDays)}
+                  {step.isActive && step.offsetDays === catchUp && (
+                    <span className="ml-0.5 text-brand-light" title="Pega também quem já passou deste dia">
+                      +
+                    </span>
+                  )}
                 </span>
                 <span className="line-clamp-3 w-full break-words text-xs leading-snug text-foreground-muted">
                   {describe(step)}
                 </span>
+                {step.isActive && step.offsetDays === catchUp && (
+                  <span className="text-[11px] leading-snug text-foreground-muted">
+                    Pega também quem já passou deste dia
+                  </span>
+                )}
                 <span className="text-[11px] font-bold text-brand-light">Editar passo</span>
                 {!step.isActive && <span className="sr-only">Passo inativo</span>}
               </button>

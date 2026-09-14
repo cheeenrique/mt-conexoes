@@ -6,7 +6,7 @@ import { evaluateDunningRule } from './evaluate';
 const NOW = new Date('2026-08-10T12:00:00-03:00');
 
 async function seedFixture(
-  overrides: { optedOut?: boolean; phone?: string | null; anonymizedAt?: Date; deletedAt?: Date } = {},
+  overrides: { optedOut?: boolean; phone?: string | null; anonymizedAt?: Date; deletedAt?: Date; dueAt?: Date } = {},
 ) {
   const supplier = await db.supplier.create({ data: { name: 'Fornecedor Teste', unitCostCents: 1000n } });
   const plan = await db.plan.create({ data: { name: 'Plano Teste', priceCents: 6000n, costCents: 1000n, cycle: 'MONTHLY' } });
@@ -25,7 +25,7 @@ async function seedFixture(
   });
   // vence hoje (offsetDays 0 no seed padrão)
   const charge = await db.charge.create({
-    data: { subscriptionId: subscription.id, customerId: customer.id, supplierId: supplier.id, principalCents: 6000n, periodStart: NOW, periodEnd: NOW, dueAt: new Date('2026-08-10T23:59:59-03:00'), status: 'OPEN' },
+    data: { subscriptionId: subscription.id, customerId: customer.id, supplierId: supplier.id, principalCents: 6000n, periodStart: NOW, periodEnd: NOW, dueAt: overrides.dueAt ?? new Date('2026-08-10T23:59:59-03:00'), status: 'OPEN' },
   });
   return { customer, subscription, charge };
 }
@@ -279,9 +279,9 @@ describe('evaluateDunningRule', () => {
     expect(executionsCharge2[0].messageId).toBe(messages[0].id);
   });
 
-  it('passo SUSPEND transiciona Subscription.status, sem Message', async () => {
+  it('passo SUSPEND transiciona Subscription.status e não produz Message própria', async () => {
     await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
-    const { customer, subscription, charge } = await seedFixture();
+    const { subscription, charge } = await seedFixture();
     await db.charge.update({ where: { id: charge.id }, data: { dueAt: new Date('2026-08-05T23:59:59-03:00') } });
 
     await evaluateDunningRule(new Date('2026-08-10T12:00:00-03:00'), false);
@@ -292,8 +292,34 @@ describe('evaluateDunningRule', () => {
     // A suspensão manual (`statusPatch`) sempre datou; a da régua não datava,
     // então o relatório mostrava suspensa sem data de corte.
     expect(refreshedSub.suspendedAt?.toISOString()).toBe('2026-08-10T15:00:00.000Z');
+
+    // A execução do passo SUSPEND não aponta pra mensagem nenhuma — suspender é
+    // mudança de estado, não aviso.
+    const suspendExecution = await db.dunningExecution.findFirstOrThrow({
+      where: { chargeId: charge.id, step: { action: 'SUSPEND' } },
+    });
+    expect(suspendExecution.messageId).toBeNull();
+  });
+
+  // ⚠️ Esta cobrança pula direto pro dia 5 sem nenhuma passada nos dias 3 e 4 — cron
+  // que falhou, envio pausado, canal caído. O degrau de recuperação (+3, "a partir
+  // de") entra na mesma passada da suspensão, e é o desenho certo: cortar acesso de
+  // quem nunca recebeu o último aviso é o pior resultado possível pro cliente final.
+  it('quem chega no dia da suspensão sem nunca ter recebido o último aviso, recebe junto', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { customer, charge } = await seedFixture();
+    await db.charge.update({ where: { id: charge.id }, data: { dueAt: new Date('2026-08-05T23:59:59-03:00') } });
+
+    await evaluateDunningRule(new Date('2026-08-10T12:00:00-03:00'), false);
+
     const messages = await db.message.findMany({ where: { customerId: customer.id } });
-    expect(messages).toHaveLength(0);
+    expect(messages).toHaveLength(1);
+    const messageExecution = await db.dunningExecution.findFirstOrThrow({
+      where: { chargeId: charge.id, step: { action: 'SEND_MESSAGE' } },
+      include: { step: { select: { offsetDays: true } } },
+    });
+    expect(messageExecution.step.offsetDays).toBe(3);
+    expect(messageExecution.messageId).toBe(messages[0].id);
   });
 
   it('T7: customer já mensageado hoje — passo novo vira DunningExecution SKIPPED reason=daily_dedupe', async () => {
@@ -380,5 +406,91 @@ describe('carimbo da passada (lastRunAt)', () => {
     expect(rule.lastRunAt).toEqual(NOW);
     // segunda passada não encontra passo novo (já executado) — mensagem zero na segunda leitura.
     expect(rule.lastRunMessagesSent).toBe(0);
+  });
+});
+
+/**
+ * O degrau de recuperação — o último `SEND_MESSAGE` da escada casando por "a partir
+ * de" em vez de dia exato (`selectStepsForCharge`). A régua padrão do seed tem
+ * mensagens em -5, -2, 0, +1, +3 e SUSPEND em +5, então o degrau de recuperação é o
+ * +3.
+ *
+ * ⚠️ O que estes testes protegem não é o disparo, é o **não** disparo repetido: um
+ * degrau "a partir de" casa todo dia dali em diante, e sem o `UNIQUE(chargeId,
+ * stepId)` segurando, a mesma cobrança receberia a mesma mensagem todo santo dia até
+ * ser paga. Testar isso contra Postgres de verdade é o ponto — índice único não
+ * existe em mock.
+ */
+describe('degrau de recuperação (último SEND_MESSAGE casa por "a partir de")', () => {
+  // 20/08: 10 dias depois do vencimento de 10/08, muito além do degrau +3.
+  const LATE_NOW = new Date('2026-08-20T12:00:00-03:00');
+
+  it('cobrança que passou por baixo da escada ainda recebe o último aviso', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { customer, charge } = await seedFixture();
+
+    const result = await evaluateDunningRule(LATE_NOW, false);
+
+    expect(result.queued).toBe(1);
+    const executions = await db.dunningExecution.findMany({
+      where: { chargeId: charge.id },
+      include: { step: { select: { offsetDays: true } } },
+    });
+    expect(executions).toHaveLength(1);
+    expect(executions[0].step.offsetDays).toBe(3);
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(1);
+  });
+
+  it('não repete no dia seguinte, nem no outro — uma cobrança, um último aviso', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { customer, charge } = await seedFixture();
+
+    await evaluateDunningRule(LATE_NOW, false);
+    const second = await evaluateDunningRule(new Date('2026-08-21T12:00:00-03:00'), false);
+    const third = await evaluateDunningRule(new Date('2026-08-22T12:00:00-03:00'), false);
+
+    expect(second.queued).toBe(0);
+    expect(third.queued).toBe(0);
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+    expect(executions).toHaveLength(1);
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(1);
+  });
+
+  it('duas passadas no mesmo dia não duplicam — idempotência do cron', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { customer } = await seedFixture();
+
+    await evaluateDunningRule(LATE_NOW, false);
+    const again = await evaluateDunningRule(LATE_NOW, false);
+
+    expect(again.queued).toBe(0);
+    const messages = await db.message.findMany({ where: { customerId: customer.id } });
+    expect(messages).toHaveLength(1);
+  });
+
+  // ⚠️ A trava que mais importa: "a partir de" não pode vazar pro SUSPEND. Se vazasse,
+  // esta cobrança (10 dias vencida, muito além do degrau +5) seria suspensa aqui.
+  it('SUSPEND não pega quem passou do dia dele — assinatura segue ACTIVE', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { subscription } = await seedFixture();
+
+    const result = await evaluateDunningRule(LATE_NOW, false);
+
+    expect(result.suspended).toBe(0);
+    const reloaded = await db.subscription.findUnique({ where: { id: subscription.id } });
+    expect(reloaded?.status).toBe('ACTIVE');
+  });
+
+  it('antes do degrau de recuperação, nada muda: dia 2 não casa nenhum degrau', async () => {
+    await db.dunningRule.updateMany({ where: { isDefault: true }, data: { status: 'ACTIVE' } });
+    const { charge } = await seedFixture();
+
+    const result = await evaluateDunningRule(new Date('2026-08-12T12:00:00-03:00'), false);
+
+    expect(result.queued).toBe(0);
+    const executions = await db.dunningExecution.findMany({ where: { chargeId: charge.id } });
+    expect(executions).toHaveLength(0);
   });
 });

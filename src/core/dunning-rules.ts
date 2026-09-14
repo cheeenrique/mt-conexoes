@@ -9,6 +9,41 @@ export function daysFromDue(dueAt: Date, now: Date, timezone: string): number {
   return Math.round(diffMs / (1000 * 60 * 60 * 24));
 }
 
+/**
+ * Quais degraus da régua uma cobrança pega hoje, dado quantos dias ela está do
+ * vencimento (`daysFromDue`).
+ *
+ * Degrau comum casa por **dia exato** — é o que faz a escada ser escada: avisa 5
+ * dias antes, 2 dias antes, no dia. O **último degrau de mensagem** é a exceção e
+ * casa por "a partir de": pega também a cobrança que já passou dele.
+ *
+ * ⚠️ Sem essa exceção, cobrança que passa por baixo da escada nunca mais é tocada.
+ * Aconteceu na base real: o envio ficou pausado, a escada correu por baixo, e 8
+ * cobranças vencidas — uma delas há 30 dias — ficaram sem nenhuma mensagem, para
+ * sempre, porque `daysFromDue === offsetDays` nunca mais ia bater. Não é caso de
+ * borda: acontece em toda pausa, toda queda de canal, todo dia em que o cron falha.
+ *
+ * Dispara uma vez só por cobrança — quem garante é o `UNIQUE(chargeId, stepId)` em
+ * `dunning_executions`, não esta função. Ela é pura e não sabe o que já saiu.
+ *
+ * ⚠️ `SUSPEND` **nunca** é o degrau de recuperação, mesmo sendo o de maior offset:
+ * "a partir de" ali suspenderia de uma vez toda a base atrasada que já passou do
+ * dia da suspensão. Cortar acesso em lote é decisão do operador, não efeito colateral.
+ */
+export function selectStepsForCharge<T extends { offsetDays: number; action: string }>(
+  daysFromDue: number,
+  steps: T[],
+): T[] {
+  const messageOffsets = steps.filter((s) => s.action === 'SEND_MESSAGE').map((s) => s.offsetDays);
+  const catchUpOffset = messageOffsets.length > 0 ? Math.max(...messageOffsets) : null;
+
+  return steps.filter((step) =>
+    step.action === 'SEND_MESSAGE' && step.offsetDays === catchUpOffset
+      ? daysFromDue >= step.offsetDays
+      : daysFromDue === step.offsetDays,
+  );
+}
+
 export type PendingStep = {
   customerId: string;
   toPhone: string;

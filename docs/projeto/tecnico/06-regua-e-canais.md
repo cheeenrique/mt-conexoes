@@ -73,7 +73,9 @@ Para cada cobrança OPEN | OVERDUE | PARTIALLY_PAID:
    │
    └─ Para cada passo ativo da régua:
         │
-        ├─ diasDoVencimento ≠ step.offsetDays ......... pula
+        ├─ é o último passo SEND_MESSAGE ativo da régua?
+        │    sim → diasDoVencimento < offsetDays ....... pula   ⚠ "a partir de"
+        │    não → diasDoVencimento ≠ offsetDays ....... pula
         │
         ├─ já existe DunningExecution(chargeId, stepId)? ... pula   ⚠ idempotência
         │
@@ -107,6 +109,30 @@ A escrita das execuções e das mensagens acontece **em uma transação por cust
 
 Job `messages-dispatch`, a cada 15 minutos dentro da janela de quiet hours de
 Ajustes (hoje 09:00–20:00 local).
+
+### Degrau de recuperação
+
+O **último passo `SEND_MESSAGE` ativo** da régua casa por "a partir de": pega também
+a cobrança que já passou do dia dele. Todos os outros casam por dia exato.
+
+Existe porque igualdade exata perde cobrança para sempre. Na base real o envio ficou
+pausado, a escada correu por baixo, e 8 cobranças vencidas — uma há 30 dias — ficaram
+sem nenhuma mensagem, sem caminho de volta: `daysFromDue === offsetDays` nunca mais ia
+bater. Não é caso de borda, acontece em toda pausa, toda queda de canal, todo cron que
+falha.
+
+Dispara **uma vez** por cobrança. Quem garante é o `UNIQUE(chargeId, stepId)` em
+`dunning_executions`, não um `if` — um passo "a partir de" casa todo dia dali em
+diante, e sem o índice a mesma cobrança receberia a mesma mensagem diariamente.
+
+⚠️ `SUSPEND` nunca é o degrau de recuperação, mesmo tendo o maior offset: "a partir
+de" ali cortaria o acesso de toda a base atrasada de uma vez. Cortar acesso em lote é
+decisão do operador, não efeito colateral de uma correção de régua.
+
+⚠️ O par volta a ficar livre quando a mensagem morre por `stale` (T8): o cancelamento
+apaga a `DunningExecution` na mesma transação. Sem isso o degrau dispara uma vez, a
+mensagem morre numa pausa longa, e a cobrança fica órfã de novo — com o `UNIQUE`
+segurando a porta. Envio bem-sucedido nunca passa por esse caminho.
 
 ⚠️ **Ritmo dentro da passada não é o que o provider aguenta — é o que o WhatsApp
 tolera.** O adapter Evolution declara `rateLimitPerMinute: 1`, e daí sai tudo:
@@ -310,6 +336,9 @@ Toda execução aparece na ficha:
 Travas e idempotência são áreas de TDD.
 
 - [ ] Passo com `offsetDays = -5` dispara exatamente cinco dias antes do vencimento, no fuso local
+- [ ] Cobrança vencida há 30 dias recebe o **último** passo de mensagem, e recebe **uma vez só** (degrau de recuperação)
+- [ ] `SUSPEND` não pega quem passou do dia dele — suspender em lote é decisão do operador
+- [ ] Mensagem cancelada por `stale` apaga a `DunningExecution`; mensagem `SENT` mantém a dela
 - [ ] `dunning-evaluate` rodando três vezes no mesmo dia cria **uma** execução por `(charge, step)`
 - [ ] Cliente com três cobranças vencidas e passos coincidentes recebe **uma** mensagem, com o total correto (T7)
 - [ ] Duas mensagens `DUNNING` para o mesmo cliente no mesmo dia local violam o índice único

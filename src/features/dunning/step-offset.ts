@@ -30,3 +30,20 @@ export function stepLabel(offsetDays: number): string {
   if (offsetDays === 0) return 'D0';
   return offsetDays < 0 ? `D${offsetDays}` : `D+${offsetDays}`;
 }
+
+/**
+ * Offset do degrau de recuperação — o último `SEND_MESSAGE` da escada, que o motor
+ * casa por "a partir de" em vez de dia exato (`core/dunning-rules.ts`,
+ * `selectStepsForCharge`). `null` numa régua sem degrau de mensagem.
+ *
+ * Existe para a tela poder dizer a verdade: o eixo mostrando "D+3" num degrau que na
+ * prática pega quem está há 30 dias vencido é a tela mentindo sobre o motor — e é
+ * exatamente o tipo de divergência que este módulo foi criado para evitar.
+ *
+ * A regra de quem é o degrau vive em `core/`; aqui só se repete o critério de
+ * seleção para a apresentação, sem duplicar a decisão de casamento.
+ */
+export function catchUpOffset(steps: { offsetDays: number; action: string }[]): number | null {
+  const messageOffsets = steps.filter((s) => s.action === 'SEND_MESSAGE').map((s) => s.offsetDays);
+  return messageOffsets.length > 0 ? Math.max(...messageOffsets) : null;
+}

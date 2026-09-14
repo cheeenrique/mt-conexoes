@@ -76,3 +76,31 @@ describe('StepAxis — a gaveta de passo não guarda estado entre aberturas', ()
     expect(screen.getByLabelText(/texto da mensagem/i)).toHaveValue('');
   });
 });
+
+describe('StepAxis — degrau de recuperação', () => {
+  const SETTINGS = { timezone: 'America/Sao_Paulo', pixKey: '123', businessName: 'MT Conexões' };
+  const makeStep = (over: Partial<DunningStepDTO>): DunningStepDTO => ({ ...STEP, ...over });
+  const MARK = 'Pega também quem já passou deste dia';
+
+  it('marca o último degrau de mensagem, não o SUSPEND de maior offset', () => {
+    const steps = [
+      makeStep({ id: 's1', offsetDays: -2, action: 'SEND_MESSAGE' }),
+      makeStep({ id: 's2', offsetDays: 3, action: 'SEND_MESSAGE' }),
+      makeStep({ id: 's3', offsetDays: 5, action: 'SUSPEND', templateBody: null }),
+    ];
+    render(<StepAxis ruleId="r1" steps={steps} charges={[]} settings={SETTINGS} />);
+
+    // Uma marca só na escada inteira, e ela não está no SUSPEND.
+    expect(screen.getAllByText(MARK)).toHaveLength(1);
+  });
+
+  it('degrau inativo não vira o de recuperação', () => {
+    const steps = [
+      makeStep({ id: 's1', offsetDays: 0, action: 'SEND_MESSAGE' }),
+      makeStep({ id: 's2', offsetDays: 3, action: 'SEND_MESSAGE', isActive: false }),
+    ];
+    render(<StepAxis ruleId="r1" steps={steps} charges={[]} settings={SETTINGS} />);
+
+    expect(screen.getAllByText(MARK)).toHaveLength(1);
+  });
+});
