@@ -64,6 +64,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await db.payment.deleteMany({ where: { charge: { subscriptionId } } });
+  await db.message.deleteMany({ where: { charge: { subscriptionId } } });
   await db.charge.deleteMany({ where: { subscriptionId } });
   await db.subscription.deleteMany({ where: { id: subscriptionId } });
   await db.customer.deleteMany({ where: { id: customerId } });
@@ -370,6 +371,52 @@ describe('realignChargeToSubscription — trazer o valor do plano para a cobran�
   it('cobrança paga ou cancelada é recusada', async () => {
     await cancelCharge(chargeId, 'cliente desistiu');
     await expect(realignChargeToSubscription(chargeId)).rejects.toThrow(ChargeNotFoundError);
+  });
+
+  // A régua congela o valor no corpo da mensagem na avaliação e o despacho
+  // nunca recalcula (`message-build.ts`). Sem cancelar aqui, realinhar a
+  // cobrança para R$ 30,00 ainda manda R$ 100,00 no WhatsApp horas depois —
+  // mesma razão de `alignOpenChargeDueAt` cancelar quando o vencimento muda.
+  it('cancela a mensagem pendente da cobrança — o valor velho está congelado no corpo', async () => {
+    const message = await db.message.create({
+      data: {
+        customerId,
+        chargeId,
+        toPhone: '+5511999998888',
+        body: 'Sua mensalidade de R$ 100,00 vence hoje.',
+        scheduledFor: FUTURE_DUE_AT,
+        scheduledDate: new Date('2026-08-31T00:00:00.000Z'),
+      },
+    });
+    await db.subscription.update({ where: { id: subscriptionId }, data: { priceCents: 3000n } });
+
+    await realignChargeToSubscription(chargeId);
+
+    const updated = await db.message.findUniqueOrThrow({ where: { id: message.id } });
+    expect(updated.status).toBe('CANCELLED');
+    expect(updated.cancelReason).toBe('amount_changed');
+  });
+
+  it('mensagem já enviada não é tocada — histórico de envio não se reescreve', async () => {
+    const message = await db.message.create({
+      data: {
+        customerId,
+        chargeId,
+        status: 'SENT',
+        sentAt: new Date(),
+        toPhone: '+5511999998888',
+        body: 'Sua mensalidade de R$ 100,00 vence hoje.',
+        scheduledFor: FUTURE_DUE_AT,
+        scheduledDate: new Date('2026-08-31T00:00:00.000Z'),
+      },
+    });
+    await db.subscription.update({ where: { id: subscriptionId }, data: { priceCents: 3000n } });
+
+    await realignChargeToSubscription(chargeId);
+
+    const updated = await db.message.findUniqueOrThrow({ where: { id: message.id } });
+    expect(updated.status).toBe('SENT');
+    expect(updated.cancelReason).toBeNull();
   });
 });
 

@@ -155,6 +155,16 @@ export async function realignChargeToSubscription(chargeId: string): Promise<voi
         }),
       },
     });
+
+    // A régua congela o valor no corpo da mensagem na avaliação e o despacho
+    // nunca recalcula (`dunning/message-build.ts`). Sem isto, a cobrança
+    // realinhada para R$ 30,00 ainda sairia por R$ 100,00 no WhatsApp horas
+    // depois — mesmo motivo de `alignOpenChargeDueAt` cancelar quando o
+    // vencimento muda. Mesmo commit: cancelar depois deixa a janela aberta.
+    await tx.message.updateMany({
+      where: { chargeId, status: 'PENDING' },
+      data: { status: 'CANCELLED', cancelReason: 'amount_changed' },
+    });
   });
 }
 
