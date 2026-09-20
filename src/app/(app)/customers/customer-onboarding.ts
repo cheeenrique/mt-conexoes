@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { getSettings } from '@/lib/settings';
 import { insertCustomer, patchCustomer } from '@/features/customers/service';
 import { insertSubscriptionWithFirstCharge, patchSubscription } from '@/features/subscriptions/service';
+import { findOpenChargeWithOldPlanAmount } from '@/features/subscriptions/open-charge';
+import type { StaleOpenCharge } from '@/features/subscriptions/open-charge';
 import type { CustomerFichaFormValues } from '@/features/customers/ficha-schema';
 
 /**
@@ -25,6 +27,13 @@ import type { CustomerFichaFormValues } from '@/features/customers/ficha-schema'
 export interface SaveCustomerResult {
   customerId: string;
   subscriptionId: string | null;
+  /**
+   * Cobrança em aberto que ficou com o valor do plano anterior — preenchida só
+   * quando **o plano** mudou nesta gravação. A tela pergunta se aplica; a
+   * gravação não decide sozinha, porque reajuste combinado para o próximo
+   * ciclo também mexe em `priceCents` e ali a cobrança corrente está certa.
+   */
+  staleOpenCharge: StaleOpenCharge | null;
 }
 
 export interface SaveCustomerParams {
@@ -85,6 +94,12 @@ export async function saveCustomerWithSubscription(params: SaveCustomerParams): 
       ? await patchCustomer(tx, params.customerId, customerInput)
       : await insertCustomer(tx, customerInput);
 
+    // Lido antes do patch: depois dele o plano já é o novo, e "o operador
+    // trocou de plano" é justamente a diferença entre os dois.
+    const planIdBefore = params.subscriptionId
+      ? (await tx.subscription.findUnique({ where: { id: params.subscriptionId }, select: { planId: true } }))?.planId ?? null
+      : null;
+
     const subscription = params.subscriptionId
       ? await patchSubscription(tx, {
           id: params.subscriptionId,
@@ -102,6 +117,16 @@ export async function saveCustomerWithSubscription(params: SaveCustomerParams): 
 
     await params.alsoInTransaction?.(tx, customer.id);
 
-    return { customerId: customer.id, subscriptionId: subscription.id };
+    // Assinatura recém-criada nasce com a cobrança no valor certo — só a
+    // edição pode ter deixado uma cobrança para trás.
+    const staleOpenCharge =
+      params.subscriptionId && planIdBefore !== subscription.planId
+        ? await findOpenChargeWithOldPlanAmount(tx, {
+            subscriptionId: subscription.id,
+            priceCents: subscription.priceCents,
+          })
+        : null;
+
+    return { customerId: customer.id, subscriptionId: subscription.id, staleOpenCharge };
   });
 }

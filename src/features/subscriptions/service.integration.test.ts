@@ -164,7 +164,7 @@ describe('changeSubscriptionPlan — troca rápida de plano na tabela de Cliente
       data: { customerId: customer.id, priceCents: 1000n, costCents: 500n, cycle: 'MONTHLY', nextDueAt: new Date() },
     });
 
-    const updated = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
+    const { subscription: updated } = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
 
     expect(updated.planId).toBe(plan.id);
     expect(updated.priceCents.toString()).toBe('5000');
@@ -200,7 +200,7 @@ describe('changeSubscriptionPlan — troca rápida de plano na tabela de Cliente
       },
     });
 
-    const updated = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
+    const { subscription: updated } = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
 
     expect(updated.screens).toBe(3);
     expect(updated.discountType).toBe('PERCENT');
@@ -221,7 +221,7 @@ describe('changeSubscriptionPlan — troca rápida de plano na tabela de Cliente
       data: { customerId: customer.id, priceCents: 1000n, costCents: 500n, cycle: 'MONTHLY', nextDueAt: new Date(), supplierId: supplier.id },
     });
 
-    const updated = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
+    const { subscription: updated } = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
 
     expect(updated.supplierId).toBe(supplier.id);
 
@@ -245,6 +245,47 @@ describe('changeSubscriptionPlan — troca rápida de plano na tabela de Cliente
     await db.plan.delete({ where: { id: plan.id } });
     await db.customer.delete({ where: { id: customer.id } });
     await db.customer.delete({ where: { id: other.id } });
+  });
+
+  // Mesmo buraco da ficha, num caminho ainda mais silencioso: a troca rápida
+  // não mostra valor nenhum na tela. Sem este sinal, o operador troca o plano
+  // pela coluna e a cobrança em aberto continua no valor do plano anterior —
+  // que é o valor que a régua manda no WhatsApp.
+  it('devolve a cobrança em aberto que ficou com o valor do plano anterior', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Troca Cobranca Velha' } });
+    const plan = await db.plan.create({
+      data: { name: `Plano Troca Cobranca ${randomUUID()}`, priceCents: 3500n, costCents: 1000n, cycle: 'MONTHLY' },
+    });
+    const subscription = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 9000n, costCents: 3000n, cycle: 'QUARTERLY', nextDueAt: new Date() },
+    });
+    const charge = await db.charge.create({
+      data: {
+        subscriptionId: subscription.id,
+        customerId: customer.id,
+        principalCents: 9000n,
+        discountCents: 0n,
+        costCents: 3000n,
+        periodStart: new Date('2026-06-27T00:00:00.000Z'),
+        periodEnd: new Date('2026-09-25T00:00:00.000Z'),
+        dueAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    try {
+      const { staleOpenCharge } = await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
+
+      expect(staleOpenCharge).toEqual({ chargeId: charge.id, fromCents: '9000', toCents: '3500' });
+    } finally {
+      // `finally` e não limpeza solta no fim: este é o único teste do arquivo
+      // que cria `Charge`, e cobrança órfã de uma passada que falhou entra nas
+      // contagens globais de `mark-overdue` e `getDueDateOverview`, que
+      // afirmam totais do banco inteiro.
+      await db.charge.delete({ where: { id: charge.id } });
+      await db.subscription.delete({ where: { id: subscription.id } });
+      await db.plan.delete({ where: { id: plan.id } });
+      await db.customer.delete({ where: { id: customer.id } });
+    }
   });
 
   it('plano inexistente recusa a troca', async () => {

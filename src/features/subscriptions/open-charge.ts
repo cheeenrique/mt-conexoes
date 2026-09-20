@@ -54,3 +54,48 @@ export async function alignOpenChargeDueAt(
     data: { status: 'CANCELLED', cancelReason: 'due_date_changed' },
   });
 }
+
+/**
+ * A cobrança em aberto que ficou com o valor do plano anterior.
+ *
+ * `Charge.principalCents` é congelado na emissão e trocar de plano não o
+ * reescreve (CLAUDE.md §Dinheiro) — é o certo para reajuste, e era o buraco
+ * para troca de plano: a assinatura passava a R$ 35,00 e a cobrança seguia
+ * cobrando R$ 90,00 na lista, no diálogo de pagamento e no WhatsApp.
+ *
+ * Não corrige nada: devolve o que ficou para trás para a tela perguntar, e
+ * quem aplica é `realignChargeToSubscription`. Automático seria pior — o
+ * reajuste combinado para o próximo ciclo também mexe em `priceCents`, e ali
+ * a cobrança corrente está certa. Por isso os chamadores só consultam quando
+ * o **plano** muda.
+ *
+ * ⚠️ Cobrança com pagamento registrado não entra: documento com dinheiro não
+ * se reescreve, e `realignChargeToSubscription` a recusaria. Oferecer ali
+ * seria oferecer um botão que o service nega — o caminho é a baixa do
+ * restante.
+ */
+export interface StaleOpenCharge {
+  chargeId: string;
+  /** Valor congelado na emissão, em centavos. */
+  fromCents: string;
+  /** O que a assinatura diz hoje, em centavos. */
+  toCents: string;
+}
+
+export async function findOpenChargeWithOldPlanAmount(
+  tx: Prisma.TransactionClient,
+  params: { subscriptionId: string; priceCents: bigint },
+): Promise<StaleOpenCharge | null> {
+  const charge = await tx.charge.findFirst({
+    where: { subscriptionId: params.subscriptionId, status: { in: [...OPEN_CHARGE_STATUSES] } },
+    select: { id: true, principalCents: true, payments: { select: { id: true } } },
+  });
+  if (!charge || charge.payments.length > 0) return null;
+  if (charge.principalCents === params.priceCents) return null;
+
+  return {
+    chargeId: charge.id,
+    fromCents: charge.principalCents.toString(),
+    toCents: params.priceCents.toString(),
+  };
+}

@@ -11,8 +11,9 @@ import { useCustomerRowActions } from '../use-customer-row-actions';
 import { CustomerEmptyState } from './customer-empty-state';
 import { CustomerPlanCell } from './customer-plan-cell';
 import { CustomerRowActions } from './customer-row-actions';
+import { StaleOpenChargeDialog } from './stale-open-charge-dialog';
 import type { CustomerListRowDTO } from '../queries';
-import type { ChangePlan, FichaPlanOption, FindCustomerByPhone, SaveCustomerFicha } from '../ficha-types';
+import type { ChangePlan, FichaPlanOption, FindCustomerByPhone, RealignCharge, SaveCustomerFicha } from '../ficha-types';
 import type { PerPage } from '@/components/ui/data-table-paging';
 
 export function CustomerTable({
@@ -29,6 +30,7 @@ export function CustomerTable({
   softDeleteCustomer,
   restoreCustomer,
   changePlan,
+  realignCharge,
 }: {
   rows: CustomerListRowDTO[];
   total: number;
@@ -48,6 +50,9 @@ export function CustomerTable({
   restoreCustomer?: (customerId: string) => Promise<{ ok: true } | { error: { code: string; message: string } }>;
   /** Ação rápida: clicar na célula "Plano" vira select. Ausente = coluna some (só texto). */
   changePlan?: ChangePlan;
+  /** Traz a cobrança em aberto para o valor do plano novo, depois da troca
+   *  rápida. Ausente = troca sem oferecer nada, como antes. */
+  realignCharge?: RealignCharge;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -58,6 +63,8 @@ export function CustomerTable({
     editingPlanRowId,
     setEditingPlanRowId,
     savingPlanRowId,
+    staleOpenCharge,
+    clearStaleOpenCharge,
     handleConfirmRemove,
     handleRestore,
     handleChangePlan,
@@ -160,6 +167,14 @@ export function CustomerTable({
         confirmLabel="Remover"
         onConfirm={handleConfirmRemove}
       />
+      {realignCharge && staleOpenCharge && (
+        <StaleOpenChargeDialog
+          stale={staleOpenCharge.charge}
+          customerId={staleOpenCharge.customerId}
+          realignCharge={realignCharge}
+          onClose={clearStaleOpenCharge}
+        />
+      )}
     </>
   );
 }

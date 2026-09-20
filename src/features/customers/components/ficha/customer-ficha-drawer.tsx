@@ -14,13 +14,16 @@ import { CustomerFicha } from './customer-ficha';
 import { FichaForm } from './ficha-form';
 import { fichaFormValues } from './ficha-form-values';
 import { fichaSubtitle } from './ficha-subtitle';
+import { StaleOpenChargeDialog } from '../stale-open-charge-dialog';
 import type {
   AnonymizeCustomer,
   FindCustomerByPhone,
   LoadCustomerFicha,
+  RealignCharge,
   ResumeMessaging,
   RevealAccessPassword,
   SaveCustomerFicha,
+  StaleOpenChargeDTO,
 } from '../../ficha-types';
 
 type Loaded = { key: string; result: Awaited<ReturnType<LoadCustomerFicha>> };
@@ -41,6 +44,7 @@ export function CustomerFichaDrawer({
   checkPhone,
   anonymizeCustomer,
   resumeMessaging,
+  realignCharge,
 }: {
   loadFicha: LoadCustomerFicha;
   revealPassword: RevealAccessPassword;
@@ -49,12 +53,16 @@ export function CustomerFichaDrawer({
   anonymizeCustomer?: AnonymizeCustomer;
   /** Desfaz o opt-out (T5). Ausente = o aviso aparece sem o botão. */
   resumeMessaging?: ResumeMessaging;
+  /** Traz a cobrança em aberto para o valor do plano novo. Ausente = a gaveta
+   *  salva sem oferecer nada, como antes. */
+  realignCharge?: RealignCharge;
 }) {
   const { customerId, closeCustomer } = useCustomerParam();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [editing, setEditing] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
+  const [staleOpenCharge, setStaleOpenCharge] = useState<StaleOpenChargeDTO | null>(null);
   const [shownCustomerId, setShownCustomerId] = useState(customerId);
 
   // `customerId` vira nulo antes da animação de saída do painel terminar
@@ -73,6 +81,7 @@ export function CustomerFichaDrawer({
     setShownCustomerId(customerId);
     setEditing(false);
     setSavedBanner(null);
+    setStaleOpenCharge(null);
   }
 
   useEffect(() => {
@@ -116,10 +125,13 @@ export function CustomerFichaDrawer({
                 checkPhone={checkPhone}
                 submitLabel="Salvar alterações"
                 onCancel={() => setEditing(false)}
-                onSaved={() => {
+                onSaved={(result) => {
                   setEditing(false);
                   setSavedBanner('Alterações salvas. Valor e custo novos valem da próxima cobrança; o vencimento move também a cobrança em aberto.');
                   setReloadToken((n) => n + 1);
+                  // Só vem preenchido quando o plano mudou e a cobrança em
+                  // aberto ficou com o valor anterior.
+                  setStaleOpenCharge(result.staleOpenCharge ?? null);
                 }}
               />
             ) : (
@@ -164,6 +176,14 @@ export function CustomerFichaDrawer({
           </>
         )}
       </DrawerContent>
+      {realignCharge && displayCustomerId && (
+        <StaleOpenChargeDialog
+          stale={staleOpenCharge}
+          customerId={displayCustomerId}
+          realignCharge={realignCharge}
+          onClose={() => setStaleOpenCharge(null)}
+        />
+      )}
     </Drawer>
   );
 }

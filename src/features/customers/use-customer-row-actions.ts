@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toastError, toastSuccess } from '@/lib/toast';
 import type { CustomerListRowDTO } from './queries';
-import type { ChangePlan } from './ficha-types';
+import type { ChangePlan, StaleOpenChargeDTO } from './ficha-types';
 
 type ActionResult = { ok: true } | { error: { code: string; message: string } };
 type CustomerAction = (customerId: string) => Promise<ActionResult>;
@@ -29,6 +29,9 @@ export function useCustomerRowActions(params: {
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   const [editingPlanRowId, setEditingPlanRowId] = useState<string | null>(null);
   const [savingPlanRowId, setSavingPlanRowId] = useState<string | null>(null);
+  // Cobrança em aberto que ficou com o valor do plano anterior, junto do
+  // cliente dela — a troca rápida não tem gaveta aberta para herdar o id.
+  const [staleOpenCharge, setStaleOpenCharge] = useState<{ customerId: string; charge: StaleOpenChargeDTO } | null>(null);
 
   const pendingRemove = params.rows.find((row) => row.id === pendingRemoveId) ?? null;
 
@@ -60,6 +63,7 @@ export function useCustomerRowActions(params: {
     if ('error' in result) return toastError(result.error);
     toastSuccess('Plano atualizado.');
     router.refresh();
+    if (result.staleOpenCharge) setStaleOpenCharge({ customerId: row.id, charge: result.staleOpenCharge });
   }
 
   return {
@@ -68,6 +72,8 @@ export function useCustomerRowActions(params: {
     editingPlanRowId,
     setEditingPlanRowId,
     savingPlanRowId,
+    staleOpenCharge,
+    clearStaleOpenCharge: () => setStaleOpenCharge(null),
     handleConfirmRemove,
     handleRestore,
     handleChangePlan,

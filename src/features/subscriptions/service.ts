@@ -4,7 +4,7 @@ import { SubscriptionNotFoundError, SubscriptionCancelledError, PlanNotFoundErro
 import { encrypt } from '@/lib/crypto';
 import { firstDueDate, endOfLocalDay, localDateOnly } from '@/core/dates';
 import { computeChargeDiscount, isCourtesySubscription } from '@/core/billing';
-import { alignOpenChargeDueAt } from './open-charge';
+import { alignOpenChargeDueAt, findOpenChargeWithOldPlanAmount } from './open-charge';
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
 import type { subscriptionSchema } from './schema';
@@ -212,15 +212,28 @@ export async function changeSubscriptionPlan(id: string, customerId: string, pla
   if (!plan) throw new PlanNotFoundError();
   if (existing.status === 'CANCELLED') throw new SubscriptionCancelledError();
 
-  return db.subscription.update({
-    where: { id },
-    data: {
-      planId: plan.id,
+  return db.$transaction(async (tx) => {
+    const subscription = await tx.subscription.update({
+      where: { id },
+      data: {
+        planId: plan.id,
+        priceCents: plan.priceCents,
+        costCents: plan.costCents,
+        cycle: plan.cycle,
+        ...(plan.supplierId ? { supplierId: plan.supplierId } : {}),
+      },
+      omit: { accessPasswordEnc: true },
+    });
+
+    // A cobrança em aberto não acompanha — e este caminho é o mais silencioso
+    // dos dois, porque a coluna "Plano" não mostra valor nenhum na tela.
+    // Devolvido para a tela perguntar; aplicar sozinho cobraria retroativo um
+    // preço que o operador pode ter combinado só para o próximo ciclo.
+    const staleOpenCharge = await findOpenChargeWithOldPlanAmount(tx, {
+      subscriptionId: id,
       priceCents: plan.priceCents,
-      costCents: plan.costCents,
-      cycle: plan.cycle,
-      ...(plan.supplierId ? { supplierId: plan.supplierId } : {}),
-    },
-    omit: { accessPasswordEnc: true },
+    });
+
+    return { subscription, staleOpenCharge };
   });
 }

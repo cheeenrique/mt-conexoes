@@ -16,6 +16,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = 'Cancelar',
   onConfirm,
 }: {
   open: boolean;
@@ -23,6 +24,10 @@ export function ConfirmDialog({
   title: string;
   description: string;
   confirmLabel: string;
+  /** Recusar nem sempre é "cancelar": em "atualizar a cobrança?" a recusa é
+   *  deixar como está, e chamar isso de cancelar sugere desfazer o que já
+   *  foi salvo. */
+  cancelLabel?: string;
   onConfirm: () => void;
 }) {
   return (
@@ -34,7 +39,7 @@ export function ConfirmDialog({
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
+            {cancelLabel}
           </Button>
           <Button onClick={onConfirm}>
             {confirmLabel}

@@ -101,11 +101,33 @@ export type AnonymizeCustomer = (
   customerId: string,
 ) => Promise<{ ok: true } | { error: { code: string; message: string } }>;
 
+/**
+ * Cobrança em aberto que ficou com o valor do plano anterior. Devolvida pela
+ * gravação quando **o plano** mudou, para a tela oferecer o realinhamento —
+ * nunca aplicada sozinha: reajuste combinado para o próximo ciclo também mexe
+ * no preço, e ali a cobrança corrente está certa.
+ *
+ * Centavos como string: nenhum componente cliente recebe `BigInt`.
+ */
+export interface StaleOpenChargeDTO {
+  chargeId: string;
+  fromCents: string;
+  toCents: string;
+}
+
 /** Troca rápida de plano — clique na coluna "Plano" da tabela de Clientes. */
 export type ChangePlan = (
   subscriptionId: string,
   customerId: string,
   planId: string,
+) => Promise<
+  { ok: true; staleOpenCharge: StaleOpenChargeDTO | null } | { error: { code: string; message: string } }
+>;
+
+/** Traz a cobrança em aberto para o valor que a assinatura diz hoje. */
+export type RealignCharge = (
+  chargeId: string,
+  customerId: string,
 ) => Promise<{ ok: true } | { error: { code: string; message: string } }>;
 
 /** Ids que a gravação precisa e que não são campo de formulário. */
@@ -125,6 +147,8 @@ export interface SaveCustomerOk {
   /** `true` quando o WhatsApp já pertencia a um cliente e nada novo foi criado. */
   reusedExistingCustomer?: boolean;
   customerName?: string;
+  /** Preenchida quando a gravação trocou o plano e deixou a cobrança em aberto para trás. */
+  staleOpenCharge?: StaleOpenChargeDTO | null;
 }
 
 export type SaveCustomerFicha = (

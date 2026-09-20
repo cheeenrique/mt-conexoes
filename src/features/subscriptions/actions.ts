@@ -11,6 +11,9 @@ import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';
 
 type ActionResult = { ok: true } | { error: { code: string; message: string } };
+type ChangePlanResult =
+  | { ok: true; staleOpenCharge: { chargeId: string; fromCents: string; toCents: string } | null }
+  | { error: { code: string; message: string } };
 type RevealResult = { ok: true; value: string } | { error: { code: string; message: string } };
 
 export async function createSubscriptionAction(customerId: string, input: unknown): Promise<ActionResult> {
@@ -50,7 +53,7 @@ export async function updateSubscriptionAction(id: string, customerId: string, i
 }
 
 /** Ação rápida da coluna "Plano" na tabela de Clientes — clica na linha, troca, salva. */
-export async function changePlanAction(subscriptionId: string, customerId: string, planId: unknown): Promise<ActionResult> {
+export async function changePlanAction(subscriptionId: string, customerId: string, planId: unknown): Promise<ChangePlanResult> {
   try {
     await requireSession();
     const parsed = changeSubscriptionPlanSchema.safeParse({ planId });
@@ -58,10 +61,10 @@ export async function changePlanAction(subscriptionId: string, customerId: strin
       return { error: { code: 'VALIDATION', message: parsed.error.issues[0]?.message ?? messages.common.invalidInput } };
     }
 
-    await changeSubscriptionPlan(subscriptionId, customerId, parsed.data.planId);
+    const { staleOpenCharge } = await changeSubscriptionPlan(subscriptionId, customerId, parsed.data.planId);
     revalidatePath('/customers');
     revalidatePath(`/customers/${customerId}`);
-    return { ok: true as const };
+    return { ok: true as const, staleOpenCharge };
   } catch (err) {
     if (err instanceof DomainError) return { error: { code: err.code, message: err.message } };
     logger.error({ route: 'subscriptions.changePlan', error: String(err), stack: err instanceof Error ? err.stack : undefined });

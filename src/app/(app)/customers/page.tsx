@@ -20,6 +20,7 @@ import {
   softDeleteCustomerAction,
 } from './customer-actions';
 import { changePlanAction } from '@/features/subscriptions/actions';
+import { realignChargeAction } from '@/features/charges/actions';
 import { parseCustomersSearchParams, type CustomersSearchParams } from './search-params';
 
 export default async function CustomersPage({ searchParams }: { searchParams: Promise<CustomersSearchParams> }) {
@@ -81,6 +82,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         softDeleteCustomer={softDeleteCustomerAction}
         restoreCustomer={restoreCustomerAction}
         changePlan={changePlanAction}
+        realignCharge={realignChargeAction}
       />
       <CustomerFichaDrawer
         loadFicha={loadCustomerFichaAction}
@@ -89,6 +91,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         checkPhone={findCustomerByPhoneAction}
         anonymizeCustomer={anonymizeCustomerAction}
         resumeMessaging={resumeMessagingAction}
+        realignCharge={realignChargeAction}
       />
     </AppShell>
   );
