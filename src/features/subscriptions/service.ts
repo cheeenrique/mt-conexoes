@@ -8,6 +8,8 @@ import { alignOpenChargeDueAt, findOpenChargeWithOldPlanAmount } from './open-ch
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
 import type { subscriptionSchema } from './schema';
+import { recordFinancialEvent } from '@/lib/financial-events';
+import { diffSubscriptionForEvents, type SubscriptionSnapshot } from '@/core/subscription-events';
 
 export type SubscriptionInput = z.infer<typeof subscriptionSchema>;
 
@@ -153,6 +155,24 @@ export async function createSubscription(customerId: string, input: Subscription
   );
 }
 
+/** Retrato achatado da assinatura para o histórico. Data vira 'YYYY-MM-DD' no
+ *  fuso do negócio: vencimento é conceito local, e comparar ISO em UTC acusaria
+ *  mudança onde só houve conversão. */
+function snapshotSubscription(
+  sub: { planId: string | null; priceCents: bigint; costCents: bigint; cycle: string; nextDueAt: Date; status: string },
+  timezone: string,
+): SubscriptionSnapshot {
+  const local = localDateOnly(sub.nextDueAt, timezone);
+  return {
+    planId: sub.planId,
+    priceCents: sub.priceCents.toString(),
+    costCents: sub.costCents.toString(),
+    cycle: sub.cycle,
+    nextDueAt: local.toISOString().slice(0, 10),
+    status: sub.status,
+  };
+}
+
 /**
  * Edição da assinatura dentro de uma transação em curso. `customerId` é
  * conferido em vez de assumido: o id da assinatura chega do formulário, e a
@@ -183,6 +203,25 @@ export async function patchSubscription(
     omit: { accessPasswordEnc: true },
   });
 
+  const events = diffSubscriptionForEvents(
+    snapshotSubscription(existing, timezone),
+    snapshotSubscription(updated, timezone),
+  );
+  // ⚠️ `await` dentro de `for` é N+1 e normalmente não passa em review
+  // (`.claude/rules/03-dados.md`). Aqui o N é no máximo 4, vem de campos de um
+  // formulário — não de linhas do banco — e a ordem das linhas importa para a
+  // leitura da ficha.
+  for (const event of events) {
+    await recordFinancialEvent(tx, {
+      customerId: existing.customerId,
+      entityType: 'SUBSCRIPTION',
+      entityId: id,
+      kind: event.kind,
+      before: event.before,
+      after: event.after,
+    });
+  }
+
   if (nextDueAt) await alignOpenChargeDueAt(tx, { subscriptionId: id, dueAt: nextDueAt, timezone, now });
 
   return updated;
@@ -205,7 +244,10 @@ export async function updateSubscription(id: string, input: SubscriptionInput) {
  */
 export async function changeSubscriptionPlan(id: string, customerId: string, planId: string) {
   const [existing, plan] = await Promise.all([
-    db.subscription.findUnique({ where: { id }, select: { customerId: true, status: true } }),
+    db.subscription.findUnique({
+      where: { id },
+      select: { customerId: true, status: true, planId: true, priceCents: true, costCents: true, cycle: true },
+    }),
     db.plan.findUnique({ where: { id: planId } }),
   ]);
   if (!existing || existing.customerId !== customerId) throw new SubscriptionNotFoundError();
@@ -223,6 +265,25 @@ export async function changeSubscriptionPlan(id: string, customerId: string, pla
         ...(plan.supplierId ? { supplierId: plan.supplierId } : {}),
       },
       omit: { accessPasswordEnc: true },
+    });
+
+    await recordFinancialEvent(tx, {
+      customerId,
+      entityType: 'SUBSCRIPTION',
+      entityId: id,
+      kind: 'SUBSCRIPTION_PLAN_CHANGED',
+      before: {
+        planId: existing.planId,
+        priceCents: existing.priceCents.toString(),
+        costCents: existing.costCents.toString(),
+        cycle: existing.cycle,
+      },
+      after: {
+        planId: plan.id,
+        priceCents: plan.priceCents.toString(),
+        costCents: plan.costCents.toString(),
+        cycle: plan.cycle,
+      },
     });
 
     // A cobrança em aberto não acompanha — e este caminho é o mais silencioso

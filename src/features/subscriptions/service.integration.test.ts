@@ -7,6 +7,8 @@ import { revealCredential } from './credentials';
 import { SubscriptionNotFoundError, SubscriptionCancelledError, PlanNotFoundError } from './errors';
 import type { subscriptionSchema } from './schema';
 import type { z } from 'zod';
+import { recordFinancialEvent } from '@/lib/financial-events';
+import type { SubscriptionEventKind } from '@/core/subscription-events';
 
 const CUSTOMER_PHONE = '+5511999990001';
 
@@ -429,5 +431,64 @@ describe('updateSubscription — vencimento editado na ficha', () => {
 
     const charge = await openCharge();
     expect(charge.dueAt.toISOString()).toBe('2026-06-19T02:59:59.999Z');
+  });
+});
+
+describe('histórico financeiro da assinatura', () => {
+  it('troca rápida de plano grava um SUBSCRIPTION_PLAN_CHANGED só', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Log Assinatura' } });
+    const plan = await db.plan.create({
+      data: { name: `Plano Log ${randomUUID()}`, priceCents: 3500n, costCents: 1000n, cycle: 'MONTHLY' },
+    });
+    const subscription = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 9000n, costCents: 3000n, cycle: 'QUARTERLY', nextDueAt: new Date() },
+    });
+
+    try {
+      await changeSubscriptionPlan(subscription.id, customer.id, plan.id);
+
+      const events = await db.financialEvent.findMany({ where: { customerId: customer.id } });
+      expect(events).toHaveLength(1);
+      expect(events[0].kind).toBe('SUBSCRIPTION_PLAN_CHANGED');
+      expect((events[0].before as Record<string, string>).priceCents).toBe('9000');
+      expect((events[0].after as Record<string, string>).priceCents).toBe('3500');
+    } finally {
+      await db.financialEvent.deleteMany({ where: { customerId: customer.id } });
+      await db.subscription.delete({ where: { id: subscription.id } });
+      await db.plan.delete({ where: { id: plan.id } });
+      await db.customer.delete({ where: { id: customer.id } });
+    }
+  });
+
+  // Guarda da união de `core/` contra o enum do Postgres: se alguém acrescentar
+  // um kind em core/subscription-events.ts e esquecer da migration, o insert
+  // estoura em produção, não aqui. Este teste traz a falha para o CI.
+  it('todo kind de core/subscription-events existe no enum do banco', async () => {
+    const customer = await db.customer.create({ data: { name: 'Cliente Log Enum' } });
+    const kinds: SubscriptionEventKind[] = [
+      'SUBSCRIPTION_PLAN_CHANGED',
+      'SUBSCRIPTION_PRICE_EDITED',
+      'SUBSCRIPTION_CYCLE_CHANGED',
+      'SUBSCRIPTION_DUE_DATE_EDITED',
+      'SUBSCRIPTION_STATUS_CHANGED',
+    ];
+
+    try {
+      for (const kind of kinds) {
+        await db.$transaction((tx) =>
+          recordFinancialEvent(tx, {
+            customerId: customer.id,
+            entityType: 'SUBSCRIPTION',
+            entityId: 'assinatura-qualquer',
+            kind,
+          }),
+        );
+      }
+
+      expect(await db.financialEvent.count({ where: { customerId: customer.id } })).toBe(kinds.length);
+    } finally {
+      await db.financialEvent.deleteMany({ where: { customerId: customer.id } });
+      await db.customer.delete({ where: { id: customer.id } });
+    }
   });
 });
