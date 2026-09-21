@@ -127,6 +127,26 @@ enum PaymentSource {
   WEBHOOK
 }
 
+enum FinancialEventEntity {
+  SUBSCRIPTION
+  CHARGE
+  PAYMENT
+}
+
+enum FinancialEventKind {
+  SUBSCRIPTION_PLAN_CHANGED
+  SUBSCRIPTION_PRICE_EDITED
+  SUBSCRIPTION_CYCLE_CHANGED
+  SUBSCRIPTION_DUE_DATE_EDITED
+  SUBSCRIPTION_STATUS_CHANGED
+  CHARGE_AMOUNT_EDITED
+  CHARGE_REALIGNED
+  CHARGE_CANCELLED
+  CHARGE_WRITTEN_OFF
+  PAYMENT_REGISTERED
+  PAYMENT_REMOVED
+}
+
 model Customer {
   id             String    @id @default(uuid(7))
   name           String
@@ -228,6 +248,31 @@ model CredentialReveal {
 
   @@index([subscriptionId, revealedAt])
   @@map("credential_reveals")
+}
+
+/// Rastro de toda mutação financeira, por cliente. Segue CredentialReveal:
+/// nenhuma FK, ids como string solta. Não é enfeite de consistência — o
+/// pagamento removido é APAGADO de `payments`, e uma FK ou faria a remoção
+/// falhar (restrict) ou levaria junto o evento (cascade), que é o único lugar
+/// onde aquele pagamento continua existindo. Não "consertar" isto depois.
+model FinancialEvent {
+  id         String               @id @default(uuid(7))
+  customerId String
+  entityType FinancialEventEntity
+  entityId   String
+  kind       FinancialEventKind
+  /// Centavos como string. ⚠️ Nada lê este payload para calcular dinheiro —
+  /// é registro, não saldo. Total sai sempre de SUM sobre payments/charges.
+  before     Json?
+  after      Json?
+  /// Texto livre do operador. ⚠️ Pode conter nome de pessoa — a anonimização
+  /// (LGPD) limpa este campo e preserva os valores.
+  reason     String?
+  userId     String?
+  at         DateTime             @default(now())
+
+  @@index([customerId, at])
+  @@map("financial_events")
 }
 
 model Charge {
