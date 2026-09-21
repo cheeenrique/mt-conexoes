@@ -63,6 +63,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await db.financialEvent.deleteMany({ where: { customerId } });
   await db.payment.deleteMany({ where: { charge: { subscriptionId } } });
   await db.message.deleteMany({ where: { charge: { subscriptionId } } });
   await db.charge.deleteMany({ where: { subscriptionId } });
@@ -500,5 +501,55 @@ describe('registerPayment — âncora do próximo vencimento', () => {
     await registerPayment(anchorChargeId, paymentInput({ amountCents: '3000', paidAt: '2026-08-05', nextDueAt: '' }));
 
     expect(await nextChargeDueAt()).toBe('2026-09-11T02:59:59.999Z');
+  });
+});
+
+describe('histórico financeiro das cobranças', () => {
+  it('registrar pagamento grava PAYMENT_REGISTERED com o valor', async () => {
+    await registerPayment(chargeId, paymentInput({ amountCents: '3000' }));
+
+    const events = await db.financialEvent.findMany({ where: { customerId } });
+    const registered = events.find((event) => event.kind === 'PAYMENT_REGISTERED');
+    expect(registered).toBeTruthy();
+    expect(registered?.entityType).toBe('PAYMENT');
+    expect((registered?.after as Record<string, string>).amountCents).toBe('3000');
+  });
+
+  it('cancelar grava CHARGE_CANCELLED com o motivo digitado', async () => {
+    await cancelCharge(chargeId, 'cliente desistiu');
+
+    const event = await db.financialEvent.findFirstOrThrow({ where: { customerId, kind: 'CHARGE_CANCELLED' } });
+    expect(event.entityType).toBe('CHARGE');
+    expect(event.entityId).toBe(chargeId);
+    expect(event.reason).toBe('cliente desistiu');
+  });
+
+  it('baixa do restante grava CHARGE_WRITTEN_OFF com o desconto aplicado', async () => {
+    await registerPayment(chargeId, paymentInput({ amountCents: '3000' }));
+    await writeOffRemaining(chargeId);
+
+    const event = await db.financialEvent.findFirstOrThrow({ where: { customerId, kind: 'CHARGE_WRITTEN_OFF' } });
+    expect((event.before as Record<string, string>).discountCents).toBe('0');
+    expect((event.after as Record<string, string>).discountCents).toBe('7000');
+  });
+
+  it('realinhar grava CHARGE_REALIGNED com o antes e o depois do valor', async () => {
+    await db.subscription.update({ where: { id: subscriptionId }, data: { priceCents: 3000n, costCents: 900n } });
+
+    await realignChargeToSubscription(chargeId);
+
+    const event = await db.financialEvent.findFirstOrThrow({ where: { customerId, kind: 'CHARGE_REALIGNED' } });
+    expect((event.before as Record<string, string>).principalCents).toBe('10000');
+    expect((event.after as Record<string, string>).principalCents).toBe('3000');
+  });
+
+  // O log é registro, não saldo — e essa separação só vale se ninguém for
+  // tentado a somar por ele.
+  it('não grava evento quando a mutação é recusada', async () => {
+    await cancelCharge(chargeId, 'cliente desistiu');
+    await expect(realignChargeToSubscription(chargeId)).rejects.toThrow(ChargeNotFoundError);
+
+    const realigned = await db.financialEvent.findMany({ where: { customerId, kind: 'CHARGE_REALIGNED' } });
+    expect(realigned).toHaveLength(0);
   });
 });

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { DomainError } from '@/lib/errors';
+import { recordFinancialEvent } from '@/lib/financial-events';
 import { computeChargeDiscount, deriveChargeStatus, isCourtesySubscription } from '@/core/billing';
 import { nextDueDate, endOfLocalDay, localDateOnly, localDayStartFromIso } from '@/core/dates';
 import { getSettings } from '@/lib/settings';
@@ -69,6 +70,20 @@ export async function registerPayment(chargeId: string, input: RegisterPaymentIn
 
     await tx.charge.update({ where: { id: chargeId }, data: { status: newStatus, paidAt: newStatus === 'PAID' ? paidAt : charge.paidAt } });
 
+    await recordFinancialEvent(tx, {
+      customerId: charge.customerId,
+      entityType: 'PAYMENT',
+      entityId: chargeId,
+      kind: 'PAYMENT_REGISTERED',
+      after: {
+        amountCents: amountCents.toString(),
+        method: input.method,
+        paidAt: paidAt.toISOString(),
+        chargeStatus: newStatus,
+      },
+      reason: input.note || null,
+    });
+
     if (newStatus === 'PAID') {
       await openNextCycle(tx, charge, paidAt, settings.timezone, input.nextDueAt || undefined);
     }
@@ -111,6 +126,16 @@ export async function writeOffRemaining(chargeId: string): Promise<{ chargeId: s
       where: { id: chargeId },
       data: { discountCents: charge.principalCents - paidCents, status: 'PAID', paidAt },
     });
+
+    await recordFinancialEvent(tx, {
+      customerId: charge.customerId,
+      entityType: 'CHARGE',
+      entityId: chargeId,
+      kind: 'CHARGE_WRITTEN_OFF',
+      before: { status: charge.status, discountCents: charge.discountCents.toString() },
+      after: { status: 'PAID', discountCents: (charge.principalCents - paidCents).toString() },
+    });
+
     await openNextCycle(tx, charge, paidAt, settings.timezone);
 
     return { chargeId, status: 'PAID' as const };
@@ -153,6 +178,23 @@ export async function realignChargeToSubscription(chargeId: string): Promise<voi
           dueAt: charge.dueAt,
           now,
         }),
+      },
+    });
+
+    await recordFinancialEvent(tx, {
+      customerId: charge.customerId,
+      entityType: 'CHARGE',
+      entityId: chargeId,
+      kind: 'CHARGE_REALIGNED',
+      before: {
+        principalCents: charge.principalCents.toString(),
+        costCents: charge.costCents.toString(),
+        discountCents: charge.discountCents.toString(),
+      },
+      after: {
+        principalCents: charge.subscription.priceCents.toString(),
+        costCents: charge.subscription.costCents.toString(),
+        discountCents: discountCents.toString(),
       },
     });
 
@@ -241,6 +283,16 @@ export async function cancelCharge(chargeId: string, reason: string): Promise<vo
     if (charge.payments.length > 0) throw new ChargeHasPaymentError();
 
     await tx.charge.update({ where: { id: chargeId }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: reason } });
+
+    await recordFinancialEvent(tx, {
+      customerId: charge.customerId,
+      entityType: 'CHARGE',
+      entityId: chargeId,
+      kind: 'CHARGE_CANCELLED',
+      before: { status: charge.status },
+      after: { status: 'CANCELLED' },
+      reason,
+    });
   });
 }
 
