@@ -145,6 +145,15 @@ Mesma trava de piso. Hoje ela recusa qualquer cobrança com pagamento
 (`ChargeHasPaymentError`); passa a recusar só quando o valor da assinatura ficaria
 abaixo do já pago.
 
+⚠️ **Ao relaxar esse guard, `costCents` para de acompanhar.** Hoje o realinhamento
+traz preço **e** custo, e isso é correto justamente porque a função só toca cobrança
+não paga: no modelo pré-pago, cobrança sem pagamento é orçamento de um ciclo que
+ninguém usou, e recotá-la inteira é honesto. Cobrança com pagamento parcial é outra
+coisa — há período parcialmente entregue, e reescrever o custo dela muda a margem de
+algo já consumido, que é exatamente o que `CLAUDE.md` §Dinheiro proíbe. Nesse caminho
+o realinhamento atualiza `principalCents` e `discountCents` e **preserva**
+`costCents`.
+
 ### Recorte de período na troca de ciclo
 
 Trocar trimestral por mensal deixa `periodStart`/`periodEnd` com o recorte do
