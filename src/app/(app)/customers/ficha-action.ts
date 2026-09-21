@@ -13,7 +13,7 @@ import { getSettings } from '@/lib/settings';
 import { logger } from '@/lib/logger';
 import { messages } from '@/lib/messages';
 import { listFinancialEvents } from '@/lib/financial-events';
-import { formatCents } from '@/lib/format';
+import { eventSummary } from './event-summary';
 import type {
   CustomerFichaData,
   FichaPaymentDTO,
@@ -27,35 +27,6 @@ const STATUS_RANK: Record<string, number> = { ACTIVE: 0, SUSPENDED: 1, CANCELLED
 function pickSubscription(subscriptions: SubscriptionDTO[]): SubscriptionDTO | null {
   if (subscriptions.length === 0) return null;
   return [...subscriptions].sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9))[0];
-}
-
-/** Resumo legível de um evento. Mora em `app/` com o resto da composição da
- *  ficha: é apresentação, não regra — e é aqui que o payload achatado volta a
- *  virar frase em pt-BR. */
-function eventSummary(event: { kind: string; before: Record<string, string | null> | null; after: Record<string, string | null> | null }): string {
-  const before = event.before ?? {};
-  const after = event.after ?? {};
-
-  const money = (from: string | null | undefined, to: string | null | undefined) =>
-    from && to ? `${formatCents(from)} → ${formatCents(to)}` : '';
-
-  switch (event.kind) {
-    case 'SUBSCRIPTION_PLAN_CHANGED':
-    case 'SUBSCRIPTION_PRICE_EDITED':
-    case 'CHARGE_AMOUNT_EDITED':
-      return money(before.priceCents ?? before.principalCents, after.priceCents ?? after.principalCents);
-    case 'CHARGE_REALIGNED':
-      return money(before.principalCents, after.principalCents);
-    case 'CHARGE_WRITTEN_OFF':
-      return money(before.discountCents, after.discountCents);
-    case 'PAYMENT_REGISTERED':
-    case 'PAYMENT_REMOVED':
-      return after.amountCents ? formatCents(after.amountCents) : formatCents(before.amountCents ?? '0');
-    case 'SUBSCRIPTION_DUE_DATE_EDITED':
-      return `${before.nextDueAt ?? ''} → ${after.nextDueAt ?? ''}`;
-    default:
-      return `${before.cycle ?? before.status ?? ''} → ${after.cycle ?? after.status ?? ''}`;
-  }
 }
 
 /**

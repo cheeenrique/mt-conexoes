@@ -52,10 +52,12 @@ export async function registerPayment(chargeId: string, input: RegisterPaymentIn
     const paidSoFar = charge.payments.reduce((sum, p) => sum + p.amountCents, 0n);
     if (paidSoFar + amountCents > netCents) throw new PaymentExceedsBalanceError();
 
+    let paymentId: string;
     try {
-      await tx.payment.create({
+      const payment = await tx.payment.create({
         data: { chargeId, amountCents, method: input.method, paidAt, note: input.note || null, idempotencyKey: input.idempotencyKey },
       });
+      paymentId = payment.id;
     } catch (err) {
       // Segunda tentativa com a mesma idempotencyKey — unique constraint recusa,
       // trata como sucesso silencioso (a primeira já aplicou o pagamento).
@@ -73,15 +75,15 @@ export async function registerPayment(chargeId: string, input: RegisterPaymentIn
     await recordFinancialEvent(tx, {
       customerId: charge.customerId,
       entityType: 'PAYMENT',
-      entityId: chargeId,
+      entityId: paymentId,
       kind: 'PAYMENT_REGISTERED',
       after: {
         amountCents: amountCents.toString(),
         method: input.method,
         paidAt: paidAt.toISOString(),
         chargeStatus: newStatus,
+        note: input.note || null,
       },
-      reason: input.note || null,
     });
 
     if (newStatus === 'PAID') {
@@ -203,10 +205,25 @@ export async function realignChargeToSubscription(chargeId: string): Promise<voi
     // realinhada para R$ 30,00 ainda sairia por R$ 100,00 no WhatsApp horas
     // depois — mesmo motivo de `alignOpenChargeDueAt` cancelar quando o
     // vencimento muda. Mesmo commit: cancelar depois deixa a janela aberta.
+    const cancelledMessages = await tx.message.findMany({
+      where: { chargeId, status: 'PENDING' },
+      select: { id: true },
+    });
     await tx.message.updateMany({
       where: { chargeId, status: 'PENDING' },
       data: { status: 'CANCELLED', cancelReason: 'amount_changed' },
     });
+    // A execução da régua some junto (mesmo motivo do stale T8 em
+    // `messaging/scheduled-dispatch.ts`): `DunningExecution` afirma "este
+    // passo já foi processado para esta cobrança", e o `UNIQUE(chargeId,
+    // stepId)` faz a régua acreditar. Uma mensagem cancelada aqui nunca
+    // chegou a sair pelo WhatsApp — o passo foi planejado, não executado.
+    // Deixar a linha em pé bloqueia a reavaliação daquele par para sempre.
+    if (cancelledMessages.length > 0) {
+      await tx.dunningExecution.deleteMany({
+        where: { messageId: { in: cancelledMessages.map((m) => m.id) } },
+      });
+    }
   });
 }
 

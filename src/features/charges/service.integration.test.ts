@@ -398,6 +398,33 @@ describe('realignChargeToSubscription — trazer o valor do plano para a cobran�
     expect(updated.cancelReason).toBe('amount_changed');
   });
 
+  // A régua grava uma `DunningExecution` quando avalia o passo, antes de a
+  // mensagem existir de verdade no WhatsApp (mesma razão do stale T8 em
+  // `messaging/scheduled-dispatch.ts`). Cancelar a mensagem sem apagar a
+  // execução faz o `UNIQUE(chargeId, stepId)` mentir "este passo já saiu"
+  // para um passo que nunca chegou a sair — aquele degrau nunca mais é
+  // reavaliado para esta cobrança.
+  it('cancelar a mensagem pendente também apaga a DunningExecution — senão o passo nunca mais roda', async () => {
+    const step = await db.dunningStep.findFirstOrThrow({ where: { rule: { isDefault: true } } });
+    const message = await db.message.create({
+      data: {
+        customerId,
+        chargeId,
+        toPhone: '+5511999998888',
+        body: 'Sua mensalidade de R$ 100,00 vence hoje.',
+        scheduledFor: FUTURE_DUE_AT,
+        scheduledDate: new Date('2026-08-31T00:00:00.000Z'),
+      },
+    });
+    await db.dunningExecution.create({ data: { chargeId, stepId: step.id, outcome: 'QUEUED', messageId: message.id } });
+    await db.subscription.update({ where: { id: subscriptionId }, data: { priceCents: 3000n } });
+
+    await realignChargeToSubscription(chargeId);
+
+    const executions = await db.dunningExecution.findMany({ where: { chargeId, stepId: step.id } });
+    expect(executions).toHaveLength(0);
+  });
+
   it('mensagem já enviada não é tocada — histórico de envio não se reescreve', async () => {
     const message = await db.message.create({
       data: {
@@ -505,14 +532,25 @@ describe('registerPayment — âncora do próximo vencimento', () => {
 });
 
 describe('histórico financeiro das cobranças', () => {
-  it('registrar pagamento grava PAYMENT_REGISTERED com o valor', async () => {
+  it('registrar pagamento grava PAYMENT_REGISTERED com o id do pagamento, não da cobrança', async () => {
     await registerPayment(chargeId, paymentInput({ amountCents: '3000' }));
 
     const events = await db.financialEvent.findMany({ where: { customerId } });
     const registered = events.find((event) => event.kind === 'PAYMENT_REGISTERED');
     expect(registered).toBeTruthy();
     expect(registered?.entityType).toBe('PAYMENT');
+    expect(registered?.entityId).not.toBe(chargeId);
+    const payment = await db.payment.findFirstOrThrow({ where: { chargeId } });
+    expect(registered?.entityId).toBe(payment.id);
     expect((registered?.after as Record<string, string>).amountCents).toBe('3000');
+  });
+
+  it('registrar pagamento com nota grava a nota em after.note, não em reason', async () => {
+    await registerPayment(chargeId, paymentInput({ amountCents: '3000', note: 'pagou parcelado com o dono' }));
+
+    const event = await db.financialEvent.findFirstOrThrow({ where: { customerId, kind: 'PAYMENT_REGISTERED' } });
+    expect((event.after as Record<string, string>).note).toBe('pagou parcelado com o dono');
+    expect(event.reason).toBeNull();
   });
 
   it('cancelar grava CHARGE_CANCELLED com o motivo digitado', async () => {
