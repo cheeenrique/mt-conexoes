@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import { decrypt, encrypt } from '@/lib/crypto';
+import { recordFinancialEvent } from '@/lib/financial-events';
 import {
   anonymizeCustomer,
   CustomerNotAnonymizableError,
@@ -20,6 +21,7 @@ const createdCustomerIds: string[] = [];
 
 async function purge() {
   const customer = { OR: [{ name: { startsWith: NAME_PREFIX } }, { id: { in: createdCustomerIds } }] };
+  await db.financialEvent.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
   await db.message.deleteMany({ where: { customer } });
   // O lead convertido também é anonimizado (vira "Lead anonimizado"), e
   // `leads_converted_has_customer_check` recusa deixá-lo apontando pra nada —
@@ -211,5 +213,31 @@ describe('anonymizeCustomer', () => {
 
   it('cliente inexistente recusa com CustomerNotFoundError', async () => {
     await expect(anonymizeCustomer(randomUUID(), userId, new Date())).rejects.toThrow(CustomerNotFoundError);
+  });
+
+  // `reason` é o único campo do log com risco de dado pessoal — o operador
+  // escreve livre e pode digitar o nome de quem pediu. O fato econômico fica:
+  // eliminar o valor destruiria o histórico financeiro que a LGPD preserva.
+  it('anonimizar limpa o motivo dos eventos e preserva os valores', async () => {
+    const { customer } = await buildAnonymizableCustomer('9');
+    const customerId = customer.id;
+
+    await db.$transaction((tx) =>
+      recordFinancialEvent(tx, {
+        customerId,
+        entityType: 'SUBSCRIPTION',
+        entityId: 'assinatura-1',
+        kind: 'SUBSCRIPTION_PRICE_EDITED',
+        before: { priceCents: '9000', costCents: '3000' },
+        after: { priceCents: '3500', costCents: '1000' },
+        reason: 'combinado com a Maria por telefone',
+      }),
+    );
+
+    await anonymizeCustomer(customerId, userId, new Date());
+
+    const event = await db.financialEvent.findFirstOrThrow({ where: { customerId } });
+    expect(event.reason).toBeNull();
+    expect((event.after as Record<string, string>).priceCents).toBe('3500');
   });
 });

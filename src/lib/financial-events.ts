@@ -60,6 +60,19 @@ export async function recordFinancialEvent(
   });
 }
 
+/**
+ * Direito de eliminação (LGPD): `reason` é o único campo do log com risco de
+ * dado pessoal — o operador escreve livre e pode citar nome de gente. Valor,
+ * data e ids ficam: é o mesmo critério que preserva cobrança e pagamento, o
+ * fato econômico sobrevive à eliminação da pessoa.
+ */
+export async function scrubFinancialEventReasons(
+  tx: Prisma.TransactionClient,
+  customerId: string,
+): Promise<void> {
+  await tx.financialEvent.updateMany({ where: { customerId }, data: { reason: null } });
+}
+
 /** Mais recente primeiro — é a ordem em que a ficha lê. */
 export async function listFinancialEvents(customerId: string): Promise<FinancialEventRow[]> {
   const rows = await db.financialEvent.findMany({

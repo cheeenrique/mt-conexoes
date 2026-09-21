@@ -472,6 +472,34 @@ model CredentialReveal {
 
 ---
 
+## Histórico financeiro
+
+```prisma
+model FinancialEvent {
+  id         String               @id @default(uuid(7))
+  customerId String
+  entityType FinancialEventEntity
+  entityId   String
+  kind       FinancialEventKind
+  before     Json?                // centavos como string — registro, não saldo
+  after      Json?
+  reason     String?              // texto livre do operador
+  userId     String?
+  at         DateTime             @default(now())
+
+  @@index([customerId, at])
+  @@map("financial_events")
+}
+```
+
+Alimenta a seção **Alterações** da ficha do cliente (`listFinancialEvents`, `src/lib/financial-events.ts`). `recordFinancialEvent` grava dentro da mesma transação da mutação que descreve — assinatura, cobrança e pagamento — nunca abre a sua própria, senão um rollback deixaria o log afirmando algo que não aconteceu.
+
+⚠️ **`customerId` é sem FK de propósito.** É registro de auditoria, não relação de domínio: sobrevive à mutação que descreve e não deve travar nem ser travado por ela. Consequência prática — não existe `include`/`where: { customer }` aninhado a partir daqui; todo filtro é por `customerId` direto, inclusive na limpeza de teste (`purge()`) e na anonimização.
+
+⚠️ `reason` é o único campo do log com risco de dado pessoal — texto livre do operador, pode citar nome de gente. `anonymizeCustomer` chama `scrubFinancialEventReasons` na mesma transação das outras quatro limpezas e zera esse campo; `before`/`after`/`at`/ids ficam — é o mesmo critério que preserva `Charge` e `Payment` na anonimização.
+
+---
+
 ## Migrations
 
 - Migration aplicada é imutável. Corrigir é migration nova.

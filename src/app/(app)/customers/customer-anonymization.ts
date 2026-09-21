@@ -5,6 +5,7 @@ import { anonymizeCustomerRow } from '@/features/customers/service';
 import { scrubSubscriptionAccess } from '@/features/subscriptions/credentials';
 import { scrubCustomerMessages } from '@/features/messaging/service';
 import { scrubLeadsOfCustomer } from '@/features/leads/service';
+import { scrubFinancialEventReasons } from '@/lib/financial-events';
 
 export class CustomerNotFoundError extends DomainError {
   constructor(cause?: unknown) {
@@ -59,5 +60,6 @@ export async function anonymizeCustomer(customerId: string, userId: string, now:
     await scrubSubscriptionAccess(tx, customerId);
     await scrubCustomerMessages(tx, customerId);
     await scrubLeadsOfCustomer(tx, customerId);
+    await scrubFinancialEventReasons(tx, customerId);
   });
 }
