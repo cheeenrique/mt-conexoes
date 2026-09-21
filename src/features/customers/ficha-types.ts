@@ -34,6 +34,16 @@ export interface FichaPaymentDTO {
   chargeStatus: string;
 }
 
+/** Uma linha da seção "Alterações". `summary` já vem montado do servidor —
+ *  o componente não conhece o formato do payload de cada `kind`. */
+export interface FichaEventDTO {
+  id: string;
+  kind: string;
+  summary: string;
+  reason: string | null;
+  at: string;
+}
+
 export interface FichaMessageDTO {
   id: string;
   status: string;
@@ -83,6 +93,7 @@ export interface CustomerFichaData {
   subscription: FichaSubscriptionDTO | null;
   payments: FichaPaymentDTO[];
   messages: FichaMessageDTO[];
+  events: FichaEventDTO[];
   /** Opções dos selects do modo edição — viajam com a ficha para a gaveta não depender da rota que a montou. */
   plans: FichaPlanOption[];
   suppliers: { id: string; name: string }[];

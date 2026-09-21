@@ -6,6 +6,7 @@ import { FichaSubscription } from './ficha-subscription';
 import { FichaAccess } from './ficha-access';
 import { FichaPayments } from './ficha-payments';
 import { FichaMessages } from './ficha-messages';
+import { FichaEvents } from './ficha-events';
 import { FichaOptOut } from './ficha-opt-out';
 import { CustomerAnonymizeSection } from './customer-anonymize-section';
 import type { AnonymizeCustomer, CustomerFichaData, ResumeMessaging, RevealAccessPassword } from '../../ficha-types';
@@ -64,6 +65,7 @@ export function CustomerFicha({
       )}
       <FichaPayments payments={data.payments} timezone={data.timezone} />
       <FichaMessages messages={data.messages} timezone={data.timezone} />
+      <FichaEvents events={data.events} timezone={data.timezone} />
       {data.notes && (
         <section className="rounded border border-border bg-surface p-4">
           <p className="mb-2 text-xs font-bold uppercase tracking-[.08em] text-foreground-muted">Observações</p>

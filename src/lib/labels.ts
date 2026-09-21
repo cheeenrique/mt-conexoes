@@ -74,6 +74,20 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = Object.fromEntries(
   PAYMENT_METHOD_OPTIONS.map((opt) => [opt.value, opt.label]),
 );
 
+export const FINANCIAL_EVENT_LABELS: Record<string, string> = {
+  SUBSCRIPTION_PLAN_CHANGED: 'Plano trocado',
+  SUBSCRIPTION_PRICE_EDITED: 'Valor alterado',
+  SUBSCRIPTION_CYCLE_CHANGED: 'Ciclo alterado',
+  SUBSCRIPTION_DUE_DATE_EDITED: 'Vencimento alterado',
+  SUBSCRIPTION_STATUS_CHANGED: 'Situação alterada',
+  CHARGE_AMOUNT_EDITED: 'Valor da cobrança corrigido',
+  CHARGE_REALIGNED: 'Cobrança atualizada pelo plano',
+  CHARGE_CANCELLED: 'Cobrança cancelada',
+  CHARGE_WRITTEN_OFF: 'Baixa do restante',
+  PAYMENT_REGISTERED: 'Pagamento registrado',
+  PAYMENT_REMOVED: 'Pagamento removido',
+};
+
 export const CUSTOMER_SITUATION_LABELS: Record<CustomerSituation, string> = {
   UP_TO_DATE: 'Em dia',
   DUE_SOON: 'Vence em breve',
