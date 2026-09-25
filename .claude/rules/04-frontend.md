@@ -81,5 +81,5 @@ Toda lista trata os três: **carregando, erro e vazio**.
 ## Performance
 
 - Code splitting é o padrão do App Router. Não importar tela pesada no layout.
-- Tabela grande: paginação por cursor do servidor. Virtualização só quando medida.
+- Tabela grande: paginação do servidor, com `page`/`perPage` na URL (ver [03-dados](./03-dados.md)). Virtualização só quando medida.
 - ❌ `useMemo` / `useCallback` por antecipação. Só com medição.

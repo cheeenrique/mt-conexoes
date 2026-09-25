@@ -45,7 +45,7 @@ Estas moram no banco porque `if` no código não sobrevive a duas execuções co
 - Toda query nova de lista ou relatório: conferir `EXPLAIN` antes de mesclar. Seq scan em `charges` ou `messages` é bloqueio.
 - Índice acompanha o filtro real: `@@index([status, dueAt])` porque a query filtra nessa ordem.
 - **N+1 não passa.** `await` de query dentro de `for`/`map` é o padrão a caçar em review — resolver com `in`, `include` ou uma query agregada.
-- Paginação por **cursor** nas listas de cobrança e mensagem. `skip` grande degrada e pula linha quando o dado muda durante a navegação.
+- Listas paginam por página (`page`/`perPage` na URL, `skip` no banco) e usam a mesma `DataTable` — Cobranças inclusive, desde 25/09/2026, para ter a tabela de Clientes. Medido com 24 mil cobranças: ~1 ms na página e no `count`, porque o recorte padrão de 30 dias e a busca por cliente caem em `(status, dueAt)` e `(customerId, dueAt)`. O custo aceito: linha que muda durante a navegação pode pular de página. Se um dia pesar, o caminho é cursor dentro da `DataTable`, não tabela à mão.
 - Lote de importação processa em blocos de ~500 linhas, cada bloco em transação própria.
 
 Na escala do projeto (até 1.000 assinantes) quase nada disso vira gargalo. A disciplina existe porque N+1 e seq scan aparecem quando a base cresce, e aí o custo de encontrar é alto.

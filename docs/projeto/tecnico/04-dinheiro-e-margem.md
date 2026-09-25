@@ -194,7 +194,7 @@ Na escala do projeto (até 1.000 assinantes, ~1.000 cobranças/mês, ~12.000/ano
 
 - **N+1 não passa.** `await` de query dentro de `for`/`map` é o padrão a caçar. Resolver com `in`, `include` ou agregação.
 - Lista de cobranças e mensagens usa os índices declarados em [`02-modelo-de-dados.md`](./02-modelo-de-dados.md). `EXPLAIN` conferido antes de mesclar qualquer query de lista nova.
-- Paginação por cursor nas listas de cobrança e mensagem. `skip` grande degrada e pula linha quando o dado muda durante a navegação.
+- Listas paginam por página (`page`/`perPage` na URL, `skip` no banco) e usam a mesma `DataTable` — Cobranças inclusive, desde 25/09/2026, para ter a tabela de Clientes. Medido com 24 mil cobranças: ~1 ms na página e no `count`, porque o recorte padrão de 30 dias e a busca por cliente caem em `(status, dueAt)` e `(customerId, dueAt)`. O custo aceito: linha que muda durante a navegação pode pular de página. Se um dia pesar, o caminho é cursor dentro da `DataTable`, não tabela à mão.
 
 ---
 

@@ -7,15 +7,8 @@ import { getSettings } from '@/lib/settings';
 import { ChargeFilters } from '@/features/charges/components/charge-filters';
 import { ChargeTable } from '@/features/charges/components/charge-table';
 import { SendMessageButton } from '@/features/messaging/components/send-message-button';
-import { startOfLocalDay, endOfLocalDay, defaultDateRangeLocal } from '@/core/dates';
-
-/** Converte 'YYYY-MM-DD' em limite de dia local, sem cair na armadilha do fuso do navegador. */
-function parseLocalDateBoundary(value: string | undefined, timezone: string, boundary: 'start' | 'end') {
-  if (!value) return undefined;
-  const [year, month, day] = value.split('-').map(Number);
-  const fn = boundary === 'start' ? startOfLocalDay : endOfLocalDay;
-  return fn(year, month - 1, day, timezone);
-}
+import { defaultDateRangeLocal } from '@/core/dates';
+import { parseChargesSearchParams, type ChargesSearchParams } from './search-params';
 
 /** Deduplica por customerId — usado tanto na página quanto na lista completa de destinatários. */
 function uniqueRecipientsFrom(rows: { customerId: string; customerName: string }[]) {
@@ -25,18 +18,7 @@ function uniqueRecipientsFrom(rows: { customerId: string; customerName: string }
 // Acima de qualquer base realista do projeto (CLAUDE.md: "até 1.000 assinantes").
 const RECIPIENTS_FETCH_PER_PAGE = 2000;
 
-export default async function ChargesPage({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    status?: string;
-    customerId?: string;
-    supplierId?: string;
-    cursor?: string;
-    dueFrom?: string;
-    dueTo?: string;
-  }>;
-}) {
+export default async function ChargesPage({ searchParams }: { searchParams: Promise<ChargesSearchParams> }) {
   const params = await searchParams;
   const settings = await getSettings();
 
@@ -47,30 +29,18 @@ export default async function ChargesPage({
   if (params.dueFrom === undefined && params.dueTo === undefined) {
     const { from, to } = defaultDateRangeLocal(new Date(), settings.timezone);
     const canonical = new URLSearchParams();
-    if (params.status) canonical.set('status', params.status);
-    if (params.customerId) canonical.set('customerId', params.customerId);
-    if (params.supplierId) canonical.set('supplierId', params.supplierId);
+    for (const key of ['q', 'status', 'supplierId', 'perPage'] as const) {
+      if (params[key]) canonical.set(key, params[key]);
+    }
     canonical.set('dueFrom', from);
     canonical.set('dueTo', to);
     redirect(`/charges?${canonical.toString()}`);
   }
 
-  const status = params.status ?? '';
-  const customerId = params.customerId ?? '';
-  const supplierId = params.supplierId ?? '';
-  const dueFrom = params.dueFrom ?? '';
-  const dueTo = params.dueTo ?? '';
-
-  const filters = {
-    status: status || undefined,
-    customerId: customerId || undefined,
-    supplierId: supplierId || undefined,
-    dueFrom: parseLocalDateBoundary(dueFrom, settings.timezone, 'start'),
-    dueTo: parseLocalDateBoundary(dueTo, settings.timezone, 'end'),
-  };
-  const [{ rows, nextCursor }, { rows: allFilteredRows }, suppliers] = await Promise.all([
-    listCharges({ ...filters, cursor: params.cursor || undefined }),
-    listCharges({ ...filters, perPage: RECIPIENTS_FETCH_PER_PAGE }),
+  const { page, perPage, raw, filters, filtered } = parseChargesSearchParams(params, settings.timezone);
+  const [{ rows, total }, { rows: allFilteredRows }, suppliers] = await Promise.all([
+    listCharges({ ...filters, page, perPage }),
+    listCharges({ ...filters, page: 1, perPage: RECIPIENTS_FETCH_PER_PAGE }),
     listActiveSuppliersForSelect(),
   ]);
 
@@ -80,18 +50,20 @@ export default async function ChargesPage({
 
   return (
     <AppShell title="Cobranças" icon={<Receipt size={22} />}>
-      <div className="flex items-center justify-between gap-4">
-        <ChargeFilters
-          status={status}
-          customerId={customerId}
-          supplierId={supplierId}
-          dueFrom={dueFrom}
-          dueTo={dueTo}
-          suppliers={suppliers}
-        />
-        <SendMessageButton recipients={uniqueRecipients} />
+      <div className="flex flex-wrap items-center justify-between gap-x-4">
+        <ChargeFilters {...raw} suppliers={suppliers} />
+        <div className="mb-4">
+          <SendMessageButton recipients={uniqueRecipients} />
+        </div>
       </div>
-      <ChargeTable rows={rows} nextCursor={nextCursor} timezone={settings.timezone} />
+      <ChargeTable
+        rows={rows}
+        total={total}
+        page={page}
+        perPage={perPage}
+        filtered={filtered}
+        timezone={settings.timezone}
+      />
     </AppShell>
   );
 }

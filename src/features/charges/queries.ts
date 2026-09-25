@@ -1,4 +1,6 @@
+import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
+import { phoneSearchDigits } from '@/core/phone';
 import { monthBoundsUtc } from '@/core/dates';
 import { resolveDueDateBucket, DUE_DATE_BUCKETS, type DueDateBucket } from '@/core/due-date-buckets';
 import { DUE_DATE_BUCKET_LABELS } from '@/lib/labels';
@@ -76,30 +78,42 @@ const CHARGE_INCLUDE = {
   payments: { select: { id: true, amountCents: true, method: true, paidAt: true, note: true } },
 } as const;
 
-export async function listCharges(filters: {
-  status?: string; customerId?: string; supplierId?: string; cursor?: string; perPage?: number;
-  dueFrom?: Date; dueTo?: Date;
-}): Promise<{ rows: ChargeDTO[]; nextCursor: string | null }> {
-  const perPage = filters.perPage ?? 20;
-  const rows = await db.charge.findMany({
-    where: {
-      status: filters.status ? (filters.status as never) : undefined,
-      customerId: filters.customerId || undefined,
-      supplierId: filters.supplierId || undefined,
-      dueAt:
-        filters.dueFrom || filters.dueTo
-          ? { gte: filters.dueFrom, lte: filters.dueTo }
-          : undefined,
-    },
-    include: CHARGE_INCLUDE,
-    orderBy: [{ dueAt: 'desc' }, { id: 'desc' }],
-    take: perPage + 1,
-    ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
-  });
+/** Busca livre da lista: nome do cliente ou telefone. O telefone é guardado em
+ *  E.164 (`+5562998133401`), então o termo com máscara vira dígitos antes. */
+function customerSearchWhere(q: string): Prisma.ChargeWhereInput {
+  const digits = phoneSearchDigits(q);
+  const or: Prisma.CustomerWhereInput[] = [{ name: { contains: q, mode: 'insensitive' } }];
+  if (digits) or.push({ phone: { contains: digits } });
+  return { customer: { OR: or } };
+}
 
-  const hasMore = rows.length > perPage;
-  const page = hasMore ? rows.slice(0, perPage) : rows;
-  return { rows: page.map(toChargeDTO), nextCursor: hasMore ? page[page.length - 1].id : null };
+export async function listCharges(filters: {
+  q?: string; status?: string; supplierId?: string; dueFrom?: Date; dueTo?: Date;
+  page: number; perPage: number;
+}): Promise<{ rows: ChargeDTO[]; total: number }> {
+  const q = filters.q?.trim();
+  const where: Prisma.ChargeWhereInput = {
+    ...(q ? customerSearchWhere(q) : {}),
+    status: filters.status ? (filters.status as never) : undefined,
+    supplierId: filters.supplierId || undefined,
+    dueAt:
+      filters.dueFrom || filters.dueTo
+        ? { gte: filters.dueFrom, lte: filters.dueTo }
+        : undefined,
+  };
+
+  const [rows, total] = await Promise.all([
+    db.charge.findMany({
+      where,
+      include: CHARGE_INCLUDE,
+      orderBy: [{ dueAt: 'desc' }, { id: 'desc' }],
+      skip: (filters.page - 1) * filters.perPage,
+      take: filters.perPage,
+    }),
+    db.charge.count({ where }),
+  ]);
+
+  return { rows: rows.map(toChargeDTO), total };
 }
 
 export async function getChargesForCustomer(customerId: string): Promise<ChargeDTO[]> {

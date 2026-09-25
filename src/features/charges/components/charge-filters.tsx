@@ -1,21 +1,29 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DateRangeInput } from '@/components/ui/date-range-input';
 import { Select } from '@/components/ui/select';
 import { CHARGE_STATUS_OPTIONS } from '@/lib/labels';
 
+const DEBOUNCE_MS = 300;
+
+/**
+ * Filtros de Cobranças. A busca é pelo nome ou telefone do cliente — o campo
+ * antigo pedia o id, que o operador não tem à mão — e espera 300 ms antes de
+ * navegar, como a de Clientes: sem isso cada tecla vira uma navegação e uma query.
+ */
 export function ChargeFilters({
+  q,
   status,
-  customerId,
   supplierId,
   dueFrom,
   dueTo,
   suppliers,
 }: {
+  q: string;
   status: string;
-  customerId: string;
   supplierId: string;
   dueFrom: string;
   dueTo: string;
@@ -23,42 +31,63 @@ export function ChargeFilters({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Filtro novo volta para a página 1.
+  function push(mutate: (params: URLSearchParams) => void) {
+    const params = new URLSearchParams(searchParams);
+    mutate(params);
+    params.delete('page');
+    router.push(`/charges?${params.toString()}`);
+  }
 
   function setParam(key: string, value: string) {
-    const params = new URLSearchParams(searchParams);
-    if (value) params.set(key, value);
-    else params.delete(key);
-    params.delete('cursor');
-    router.push(`/charges?${params.toString()}`);
+    push((params) => (value ? params.set(key, value) : params.delete(key)));
+  }
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  // Sincroniza o campo com a URL quando ela muda por fora da digitação (botão
+  // Voltar, link colado), só com o campo sem foco, para não roubar o cursor.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (input && document.activeElement !== input && input.value !== q) input.value = q;
+  }, [q]);
+
+  function handleSearch(value: string) {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setParam('q', value.trim()), DEBOUNCE_MS);
   }
 
   // `dueFrom`/`dueTo` nunca somem da URL, mesmo vazios — sumir faria a página
   // reaplicar o padrão de 30 dias no próximo load (ver `ChargesPage`), o que
   // reverteria em silêncio um "ver tudo" que o operador pediu de propósito.
   function setDateParam(key: 'dueFrom' | 'dueTo', value: string) {
-    const params = new URLSearchParams(searchParams);
-    params.set(key, value);
-    params.delete('cursor');
-    router.push(`/charges?${params.toString()}`);
+    push((params) => params.set(key, value));
   }
 
   function clearDateRange() {
-    const params = new URLSearchParams(searchParams);
-    params.set('dueFrom', '');
-    params.set('dueTo', '');
-    params.delete('cursor');
-    router.push(`/charges?${params.toString()}`);
+    push((params) => {
+      params.set('dueFrom', '');
+      params.set('dueTo', '');
+    });
   }
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
-      <div className="flex h-11 items-center gap-2 rounded-sm border border-border bg-surface-elevated px-3">
-        <Search size={16} className="text-foreground-muted" />
+      <div className="flex h-10 w-64 items-center gap-2 rounded-badge border border-border bg-surface-elevated px-3">
+        <Search size={16} className="text-foreground-muted" aria-hidden />
+        <label htmlFor="charge-search" className="sr-only">
+          Buscar cliente
+        </label>
         <input
-          defaultValue={customerId}
-          onChange={(e) => setParam('customerId', e.target.value)}
-          placeholder="ID do cliente"
-          className="h-full w-40 bg-transparent text-sm text-foreground outline-none placeholder:text-foreground-muted"
+          ref={inputRef}
+          id="charge-search"
+          defaultValue={q}
+          onChange={(event) => handleSearch(event.target.value)}
+          placeholder="Nome ou telefone do cliente"
+          className="h-full w-full bg-transparent text-sm text-foreground outline-none placeholder:text-foreground-muted"
         />
       </div>
       <Select

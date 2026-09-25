@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
-import { getDueDateOverview } from './queries';
+import { getDueDateOverview, listCharges } from './queries';
 
 const TZ = 'America/Sao_Paulo';
 const NOW = new Date('2026-08-15T15:00:00.000Z');
@@ -92,5 +92,52 @@ describe('getDueDateOverview', () => {
     const overview = await getDueDateOverview(NOW, TZ);
     expect(overview.buckets.map((b) => b.key)).toEqual(['D-5', 'D-2', 'D0', 'D+1', 'D+3', 'D+5']);
     expect(overview.buckets.every((b) => b.count === 0)).toBe(true);
+  });
+});
+
+describe('listCharges', () => {
+  // O nome da fixture carrega um uuid: buscar por um pedaço dele isola as
+  // cobranças deste teste no banco compartilhado, e o total pode ser absoluto.
+  async function fixtureSearchTerm() {
+    const customer = await db.customer.findUniqueOrThrow({ where: { id: customerId } });
+    return customer.name.slice(-12);
+  }
+
+  it('busca pelo nome do cliente, sem diferenciar maiúscula de minúscula', async () => {
+    await createCharge(new Date('2026-08-10T23:59:59.000Z'));
+    await createCharge(new Date('2026-08-20T23:59:59.000Z'));
+
+    const { rows, total } = await listCharges({ q: (await fixtureSearchTerm()).toUpperCase(), page: 1, perPage: 20 });
+
+    expect(total).toBe(2);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.customerId === customerId)).toBe(true);
+  });
+
+  it('busca pelo telefone digitado com máscara', async () => {
+    const phone = `+55629${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
+    await db.customer.update({ where: { id: customerId }, data: { phone } });
+    await createCharge(new Date('2026-08-10T23:59:59.000Z'));
+
+    const typed = `(62) 9${phone.slice(6, 10)}-${phone.slice(10)}`;
+    const { rows, total } = await listCharges({ q: typed, page: 1, perPage: 20 });
+
+    expect(total).toBe(1);
+    expect(rows[0].customerId).toBe(customerId);
+  });
+
+  it('pagina por página e devolve o total do filtro inteiro', async () => {
+    await createCharge(new Date('2026-08-10T23:59:59.000Z'));
+    await createCharge(new Date('2026-08-12T23:59:59.000Z'));
+    const oldest = await createCharge(new Date('2026-08-01T23:59:59.000Z'));
+    const q = await fixtureSearchTerm();
+
+    const first = await listCharges({ q, page: 1, perPage: 2 });
+    const second = await listCharges({ q, page: 2, perPage: 2 });
+
+    expect(first.total).toBe(3);
+    expect(first.rows).toHaveLength(2);
+    expect(second.total).toBe(3);
+    expect(second.rows.map((row) => row.id)).toEqual([oldest.id]);
   });
 });
