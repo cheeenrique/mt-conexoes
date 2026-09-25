@@ -1,3 +1,4 @@
+import { hasOldPlanAmount } from '@/core/billing';
 import type { ChargeDTO } from '../queries';
 
 /** Por que o botão de registrar pagamento está travado — nunca junta os dois
@@ -31,5 +32,8 @@ export function canCancel(charge: ChargeDTO): boolean {
  *  e é essa cobrança que a régua manda por WhatsApp. */
 export function isStaleAmount(charge: ChargeDTO): boolean {
   if (!canCancel(charge)) return false;
-  return charge.principalCents !== charge.subscriptionPriceCents;
+  return hasOldPlanAmount({
+    chargePrincipalCents: BigInt(charge.principalCents),
+    planPriceCents: BigInt(charge.subscriptionPriceCents),
+  });
 }

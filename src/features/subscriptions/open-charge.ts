@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { deriveChargeStatus } from '@/core/billing';
+import { deriveChargeStatus, hasOldPlanAmount } from '@/core/billing';
 import { localDateOnly } from '@/core/dates';
 
 /** Cobrança que ainda pesa no cliente — o mesmo recorte de `features/customers/list-filters.ts`. */
@@ -91,7 +91,7 @@ export async function findOpenChargeWithOldPlanAmount(
     select: { id: true, principalCents: true, payments: { select: { id: true } } },
   });
   if (!charge || charge.payments.length > 0) return null;
-  if (charge.principalCents === params.priceCents) return null;
+  if (!hasOldPlanAmount({ chargePrincipalCents: charge.principalCents, planPriceCents: params.priceCents })) return null;
 
   return {
     chargeId: charge.id,

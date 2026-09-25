@@ -26,12 +26,13 @@ const charge: ChargeDTO = {
   issuedAt: '2026-08-01T03:00:00.000Z',
   subscriptionPriceCents: '10000',
   subscriptionCostCents: '3000',
+  subscriptionNetCents: '10000',
   subscriptionCycle: 'MONTHLY',
   payments: [],
 };
 
-function renderDialog() {
-  return render(<RegisterPaymentDialog charge={charge} open onOpenChange={() => {}} timezone={TZ} />);
+function renderDialog(target: ChargeDTO = charge) {
+  return render(<RegisterPaymentDialog charge={target} open onOpenChange={() => {}} timezone={TZ} />);
 }
 
 function dateField(): HTMLElement {
@@ -122,5 +123,109 @@ describe('RegisterPaymentDialog', () => {
 
     expect(await screen.findByText('Data do pagamento inválida.')).toBeInTheDocument();
     expect(registerPaymentAction).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Relatado em 25/09/2026: o cliente mensal de R$ 35,00 virou trimestral de
+ * R$ 75,00, e a cobrança em aberto ficou com o valor do mensal. O diálogo
+ * preenchia R$ 35,00 e recusava os R$ 75,00 que o cliente pagou. Nenhuma das
+ * duas leituras é óbvia — reajuste combinado para o próximo ciclo também deixa
+ * a cobrança com o valor anterior —, então o diálogo pergunta e não escolhe.
+ */
+describe('RegisterPaymentDialog — cobrança com valor de um plano anterior', () => {
+  const staleCharge: ChargeDTO = {
+    ...charge,
+    principalCents: '3500',
+    netCents: '3500',
+    subscriptionPriceCents: '7500',
+    subscriptionNetCents: '7500',
+    subscriptionCycle: 'QUARTERLY',
+  };
+
+  function amountField(): HTMLElement {
+    return screen.getByLabelText('Valor');
+  }
+
+  it('mostra as duas opções, sem nenhuma marcada', () => {
+    renderDialog(staleCharge);
+
+    const current = screen.getByRole('radio', { name: /Valor desta cobrança.*R\$ 35,00/ });
+    const plan = screen.getByRole('radio', { name: /Valor do plano atual.*R\$ 75,00.*Trimestral/ });
+    expect(current).not.toBeChecked();
+    expect(plan).not.toBeChecked();
+  });
+
+  it('enviar sem escolher mostra o erro e não registra nada', async () => {
+    const user = userEvent.setup();
+    renderDialog(staleCharge);
+
+    await user.click(screen.getByRole('button', { name: 'Registrar pagamento' }));
+
+    expect(await screen.findByText('Escolha qual valor vale para esta cobrança.')).toBeInTheDocument();
+    expect(registerPaymentAction).not.toHaveBeenCalled();
+  });
+
+  it('escolher o plano atual preenche R$ 75,00 e pede o realinhamento', async () => {
+    const user = userEvent.setup();
+    renderDialog(staleCharge);
+
+    await user.click(screen.getByRole('radio', { name: /Valor do plano atual/ }));
+    expect(amountField()).toHaveValue('R$ 75,00');
+    await user.click(screen.getByRole('button', { name: 'Registrar pagamento' }));
+
+    expect(registerPaymentAction).toHaveBeenCalledTimes(1);
+    expect(registerPaymentAction.mock.calls[0][2]).toMatchObject({ amountCents: '7500', realignToSubscription: true });
+  });
+
+  it('com desconto vigente, o plano atual preenche o preço menos o desconto', async () => {
+    const user = userEvent.setup();
+    renderDialog({ ...staleCharge, subscriptionNetCents: '6750' });
+
+    await user.click(screen.getByRole('radio', { name: /Valor do plano atual.*R\$ 67,50/ }));
+    expect(amountField()).toHaveValue('R$ 67,50');
+  });
+
+  it('escolher o valor da cobrança preenche R$ 35,00 e não realinha', async () => {
+    const user = userEvent.setup();
+    renderDialog(staleCharge);
+
+    await user.click(screen.getByRole('radio', { name: /Valor desta cobrança/ }));
+    expect(amountField()).toHaveValue('R$ 35,00');
+    await user.click(screen.getByRole('button', { name: 'Registrar pagamento' }));
+
+    expect(registerPaymentAction.mock.calls[0][2]).toMatchObject({ amountCents: '3500', realignToSubscription: false });
+  });
+
+  it('o valor escolhido continua editável para pagamento parcial', async () => {
+    const user = userEvent.setup();
+    renderDialog(staleCharge);
+
+    await user.click(screen.getByRole('radio', { name: /Valor do plano atual/ }));
+    await user.clear(amountField());
+    await user.type(amountField(), '4000');
+    await user.click(screen.getByRole('button', { name: 'Registrar pagamento' }));
+
+    expect(registerPaymentAction.mock.calls[0][2]).toMatchObject({ amountCents: '4000', realignToSubscription: true });
+  });
+
+  // Aceitar os R$ 35,00 abre o próximo ciclo com o ciclo do plano de hoje — três
+  // meses de acesso pelo preço do mensal, se o operador não perceber.
+  it('avisa que o próximo vencimento conta o ciclo do plano atual', () => {
+    renderDialog(staleCharge);
+
+    expect(screen.getByText(/ciclo trimestral, o do plano atual/)).toBeInTheDocument();
+  });
+
+  it('cobrança com o valor do plano não pergunta nada', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    expect(screen.queryByText(/o do plano atual/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Registrar pagamento' }));
+
+    expect(registerPaymentAction.mock.calls[0][2]).toMatchObject({ amountCents: '10000' });
+    expect(registerPaymentAction.mock.calls[0][2]).not.toHaveProperty('realignToSubscription');
   });
 });

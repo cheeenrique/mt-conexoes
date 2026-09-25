@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { phoneSearchDigits } from '@/core/phone';
 import { monthBoundsUtc } from '@/core/dates';
+import { computeChargeDiscount } from '@/core/billing';
 import { resolveDueDateBucket, DUE_DATE_BUCKETS, type DueDateBucket } from '@/core/due-date-buckets';
 import { DUE_DATE_BUCKET_LABELS } from '@/lib/labels';
 
@@ -31,6 +32,9 @@ export interface ChargeDTO {
    *  ficou com o valor velho", que a tela oferece corrigir. */
   subscriptionPriceCents: string;
   subscriptionCostCents: string;
+  /** Quanto a cobrança passa a valer se for realinhada ao plano: preço de hoje
+   *  menos o desconto vigente no período, pela mesma conta do realinhamento. */
+  subscriptionNetCents: string;
   /** Ciclo da assinatura — a prévia do próximo vencimento no diálogo de pagamento. */
   subscriptionCycle: string;
   payments: PaymentDTO[];
@@ -38,9 +42,12 @@ export interface ChargeDTO {
 
 function toChargeDTO(row: {
   id: string; customerId: string; principalCents: bigint; discountCents: bigint; costCents: bigint;
-  status: string; dueAt: Date; issuedAt: Date;
+  status: string; dueAt: Date; issuedAt: Date; periodStart: Date;
   customer: { name: string; phone: string | null }; supplier: { name: string } | null;
-  subscription: { priceCents: bigint; costCents: bigint; cycle: string };
+  subscription: {
+    priceCents: bigint; costCents: bigint; cycle: string;
+    discountType: string | null; discountValue: unknown; discountUntil: Date | null;
+  };
   payments: { id: string; amountCents: bigint; method: string; paidAt: Date; note: string | null }[];
 }): ChargeDTO {
   const netCents = row.principalCents - row.discountCents;
@@ -60,6 +67,7 @@ function toChargeDTO(row: {
     issuedAt: row.issuedAt.toISOString(),
     subscriptionPriceCents: row.subscription.priceCents.toString(),
     subscriptionCostCents: row.subscription.costCents.toString(),
+    subscriptionNetCents: (row.subscription.priceCents - computeChargeDiscount(row.subscription, row.periodStart)).toString(),
     subscriptionCycle: row.subscription.cycle,
     payments: row.payments.map((p) => ({
       id: p.id,
@@ -74,7 +82,9 @@ function toChargeDTO(row: {
 const CHARGE_INCLUDE = {
   customer: { select: { name: true, phone: true } },
   supplier: { select: { name: true } },
-  subscription: { select: { priceCents: true, costCents: true, cycle: true } },
+  subscription: {
+    select: { priceCents: true, costCents: true, cycle: true, discountType: true, discountValue: true, discountUntil: true },
+  },
   payments: { select: { id: true, amountCents: true, method: true, paidAt: true, note: true } },
 } as const;
 

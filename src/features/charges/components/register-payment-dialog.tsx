@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { localDateOnly, type BillingCycle } from '@/core/dates';
 import { PaymentFields } from './register-payment-fields';
 import { suggestNextDueAt } from './next-due-preview';
+import { isStaleAmount } from './charge-row-policy';
+import { StaleAmountChoice, StaleCycleNote, type AmountChoice } from './stale-amount-choice';
 import { formatLocalDate } from '@/lib/format';
 import { toastError } from '@/lib/toast';
 import { registerPaymentSchema } from '../schema';
@@ -39,6 +41,10 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
   // editá-lo. Depois disso a escolha é dele: recalcular por cima apagaria o
   // prazo que ele acabou de combinar com o cliente.
   const [dueTouched, setDueTouched] = useState(false);
+  // Cobrança com o valor de um plano anterior: o operador escolhe qual vale, e
+  // nada vem marcado. Até a escolha o "Valor" fica vazio e escondido.
+  const stale = isStaleAmount(charge);
+  const [amountChoice, setAmountChoice] = useState<AmountChoice | null>(null);
   const todayIso = todayLocalIso(timezone);
   const remainingCents = (BigInt(charge.netCents) - BigInt(charge.paidCents)).toString();
 
@@ -47,11 +53,13 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
     register,
     handleSubmit,
     setError,
+    setValue,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(registerPaymentSchema),
     defaultValues: {
-      amountCents: remainingCents,
+      amountCents: stale ? '' : remainingCents,
       method: 'PIX',
       paidAt: todayIso,
       nextDueAt: '',
@@ -70,7 +78,23 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
     timezone,
   });
 
+  // Sem pagamento registrado (`isStaleAmount` exige), o restante é o valor inteiro.
+  function chooseAmount(choice: AmountChoice) {
+    setAmountChoice(choice);
+    setValue('amountCents', choice === 'plan' ? charge.subscriptionNetCents : remainingCents);
+    clearErrors(['amountCents', 'realignToSubscription']);
+  }
+
+  // Roda nas duas saídas do submit: com o "Valor" ainda vazio o Zod barra antes
+  // do `onSubmit`, e o erro que interessa ao operador é o da escolha.
+  function requireAmountChoice(): boolean {
+    if (!stale || amountChoice) return true;
+    setError('realignToSubscription', { message: 'Escolha qual valor vale para esta cobrança.' });
+    return false;
+  }
+
   async function onSubmit(values: FormValues) {
+    if (!requireAmountChoice()) return;
     // Teto de hoje: comparação de ISO é lexicográfica e basta. O servidor
     // repete a checagem no fuso do negócio — aqui é só para o erro aparecer
     // no campo, não num toast.
@@ -91,7 +115,8 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
       }) ||
       '';
 
-    const result = await registerPaymentAction(charge.id, charge.customerId, { ...values, nextDueAt });
+    const realign = stale ? { realignToSubscription: amountChoice === 'plan' } : {};
+    const result = await registerPaymentAction(charge.id, charge.customerId, { ...values, nextDueAt, ...realign });
     if ('error' in result) {
       toastError(result.error);
       return;
@@ -108,8 +133,18 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
           {charge.customerName} · vencimento {formatLocalDate(charge.dueAt, timezone)}
         </p>
       </DialogHeader>
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+      <form onSubmit={handleSubmit(onSubmit, requireAmountChoice)} className="flex flex-col gap-4">
         <input type="hidden" {...register('idempotencyKey')} />
+        {stale && (
+          <StaleAmountChoice
+            chargeCents={remainingCents}
+            planCents={charge.subscriptionNetCents}
+            cycle={charge.subscriptionCycle}
+            value={amountChoice}
+            onChange={chooseAmount}
+            error={errors.realignToSubscription?.message}
+          />
+        )}
           <PaymentFields
             control={control}
             register={register}
@@ -118,6 +153,8 @@ function RegisterPaymentForm({ charge, timezone, onDone }: { charge: ChargeDTO; 
             dueTouched={dueTouched}
             onDueTouched={() => setDueTouched(true)}
             timezone={timezone}
+            showAmount={!stale || amountChoice !== null}
+            dueNote={stale ? <StaleCycleNote cycle={charge.subscriptionCycle} choice={amountChoice} /> : undefined}
           />
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onDone}>

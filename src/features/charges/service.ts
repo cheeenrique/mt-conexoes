@@ -1,33 +1,22 @@
 import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
-import { DomainError } from '@/lib/errors';
 import { recordFinancialEvent } from '@/lib/financial-events';
-import { computeChargeDiscount, deriveChargeStatus, isCourtesySubscription } from '@/core/billing';
+import { deriveChargeStatus, hasOldPlanAmount, isCourtesySubscription } from '@/core/billing';
 import { nextDueDate, endOfLocalDay, localDateOnly, localDayStartFromIso } from '@/core/dates';
 import { getSettings } from '@/lib/settings';
 import type { z } from 'zod';
 import type { registerPaymentSchema } from './schema';
+import {
+  ChargeAlreadyPaidError,
+  ChargeHasPaymentError,
+  ChargeNotFoundError,
+  ChargeWithoutPaymentError,
+  PaymentDateInFutureError,
+  PaymentExceedsBalanceError,
+} from './errors';
+import { realignChargeWithinTx } from './realign';
 
 type RegisterPaymentInput = z.infer<typeof registerPaymentSchema>;
-
-export class ChargeNotFoundError extends DomainError {
-  constructor(cause?: unknown) { super('Cobrança não encontrada.', 'CHARGE_NOT_FOUND', { cause }); }
-}
-export class ChargeAlreadyPaidError extends DomainError {
-  constructor(cause?: unknown) { super('Esta cobrança já foi paga.', 'CHARGE_ALREADY_PAID', { cause }); }
-}
-export class PaymentExceedsBalanceError extends DomainError {
-  constructor(cause?: unknown) { super('Valor do pagamento é maior que o saldo devedor.', 'PAYMENT_EXCEEDS_BALANCE', { cause }); }
-}
-export class ChargeHasPaymentError extends DomainError {
-  constructor(cause?: unknown) { super('Cobrança com pagamento registrado não pode ser cancelada.', 'CHARGE_HAS_PAYMENT', { cause }); }
-}
-export class PaymentDateInFutureError extends DomainError {
-  constructor(cause?: unknown) { super('A data do pagamento não pode ser no futuro.', 'PAYMENT_DATE_IN_FUTURE', { cause }); }
-}
-export class ChargeWithoutPaymentError extends DomainError {
-  constructor(cause?: unknown) { super('Esta cobrança não tem pagamento registrado — cancele em vez de dar baixa.', 'CHARGE_WITHOUT_PAYMENT', { cause }); }
-}
 
 export async function registerPayment(chargeId: string, input: RegisterPaymentInput) {
   const settings = await getSettings();
@@ -43,10 +32,18 @@ export async function registerPayment(chargeId: string, input: RegisterPaymentIn
   }
 
   return db.$transaction(async (tx) => {
-    const charge = await tx.charge.findUnique({ where: { id: chargeId }, include: { payments: true, subscription: true } });
-    if (!charge) throw new ChargeNotFoundError();
-    if (charge.status === 'PAID') throw new ChargeAlreadyPaidError();
-    if (charge.status === 'CANCELLED') throw new ChargeNotFoundError();
+    const found = await tx.charge.findUnique({ where: { id: chargeId }, include: { payments: true, subscription: true } });
+    if (!found) throw new ChargeNotFoundError();
+    if (found.status === 'PAID') throw new ChargeAlreadyPaidError();
+    if (found.status === 'CANCELLED') throw new ChargeNotFoundError();
+
+    // O operador escolheu no diálogo o valor do plano atual para esta cobrança
+    // (cliente mensal que virou trimestral). Realinha no mesmo commit, antes da
+    // conta do saldo: o pagamento é conferido contra o valor novo, e continua
+    // recusado se passar dele. Cobrança que já tem o valor do plano não muda.
+    const realign = input.realignToSubscription &&
+      hasOldPlanAmount({ chargePrincipalCents: found.principalCents, planPriceCents: found.subscription.priceCents });
+    const charge = realign ? await realignChargeWithinTx(tx, found, now) : found;
 
     const netCents = charge.principalCents - charge.discountCents;
     const paidSoFar = charge.payments.reduce((sum, p) => sum + p.amountCents, 0n);
@@ -141,89 +138,6 @@ export async function writeOffRemaining(chargeId: string): Promise<{ chargeId: s
     await openNextCycle(tx, charge, paidAt, settings.timezone);
 
     return { chargeId, status: 'PAID' as const };
-  });
-}
-
-/**
- * Reemite a cobrança em aberto com o que a assinatura diz hoje: preço, custo e
- * desconto vigente. É a saída para "troquei o plano e a cobrança continua com o
- * valor velho" — é essa cobrança que a régua manda por WhatsApp.
- *
- * Ação explícita, nunca efeito colateral de salvar a ficha: reajuste combinado
- * para o próximo ciclo também mexe em `priceCents`, e ali a cobrança corrente
- * está certa. Só o operador sabe qual dos dois casos é o dele.
- *
- * ⚠️ Recusa cobrança com pagamento registrado (documento com dinheiro não se
- * reescreve — CLAUDE.md §Dinheiro). Nesse caso o caminho é a baixa do restante.
- */
-export async function realignChargeToSubscription(chargeId: string): Promise<void> {
-  const now = new Date();
-
-  await db.$transaction(async (tx) => {
-    const charge = await tx.charge.findUnique({ where: { id: chargeId }, include: { payments: true, subscription: true } });
-    if (!charge) throw new ChargeNotFoundError();
-    if (charge.status === 'PAID') throw new ChargeAlreadyPaidError();
-    if (charge.status === 'CANCELLED') throw new ChargeNotFoundError();
-    if (charge.payments.length > 0) throw new ChargeHasPaymentError();
-
-    const discountCents = computeChargeDiscount(charge.subscription, charge.periodStart);
-
-    await tx.charge.update({
-      where: { id: chargeId },
-      data: {
-        principalCents: charge.subscription.priceCents,
-        costCents: charge.subscription.costCents,
-        discountCents,
-        status: deriveChargeStatus({
-          netCents: charge.subscription.priceCents - discountCents,
-          paidCents: 0n,
-          dueAt: charge.dueAt,
-          now,
-        }),
-      },
-    });
-
-    await recordFinancialEvent(tx, {
-      customerId: charge.customerId,
-      entityType: 'CHARGE',
-      entityId: chargeId,
-      kind: 'CHARGE_REALIGNED',
-      before: {
-        principalCents: charge.principalCents.toString(),
-        costCents: charge.costCents.toString(),
-        discountCents: charge.discountCents.toString(),
-      },
-      after: {
-        principalCents: charge.subscription.priceCents.toString(),
-        costCents: charge.subscription.costCents.toString(),
-        discountCents: discountCents.toString(),
-      },
-    });
-
-    // A régua congela o valor no corpo da mensagem na avaliação e o despacho
-    // nunca recalcula (`dunning/message-build.ts`). Sem isto, a cobrança
-    // realinhada para R$ 30,00 ainda sairia por R$ 100,00 no WhatsApp horas
-    // depois — mesmo motivo de `alignOpenChargeDueAt` cancelar quando o
-    // vencimento muda. Mesmo commit: cancelar depois deixa a janela aberta.
-    const cancelledMessages = await tx.message.findMany({
-      where: { chargeId, status: 'PENDING' },
-      select: { id: true },
-    });
-    await tx.message.updateMany({
-      where: { chargeId, status: 'PENDING' },
-      data: { status: 'CANCELLED', cancelReason: 'amount_changed' },
-    });
-    // A execução da régua some junto (mesmo motivo do stale T8 em
-    // `messaging/scheduled-dispatch.ts`): `DunningExecution` afirma "este
-    // passo já foi processado para esta cobrança", e o `UNIQUE(chargeId,
-    // stepId)` faz a régua acreditar. Uma mensagem cancelada aqui nunca
-    // chegou a sair pelo WhatsApp — o passo foi planejado, não executado.
-    // Deixar a linha em pé bloqueia a reavaliação daquele par para sempre.
-    if (cancelledMessages.length > 0) {
-      await tx.dunningExecution.deleteMany({
-        where: { messageId: { in: cancelledMessages.map((m) => m.id) } },
-      });
-    }
   });
 }
 

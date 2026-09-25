@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { findPriceSuspicions, findStaleCharges } from '@/features/subscriptions/price-audit';
-import { realignChargeToSubscription, writeOffRemaining } from '@/features/charges/service';
+import { writeOffRemaining } from '@/features/charges/service';
+import { realignChargeToSubscription } from '@/features/charges/realign';
 
 /**
  * Corrige em lote as assinaturas que ficaram com preço muito acima do que o

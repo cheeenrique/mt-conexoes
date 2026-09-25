@@ -2,7 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { registerPaymentSchema, cancelChargeSchema } from './schema';
-import { registerPayment, cancelCharge, writeOffRemaining, realignChargeToSubscription } from './service';
+import { registerPayment, cancelCharge, writeOffRemaining } from './service';
+import { realignChargeToSubscription } from './realign';
 import { requireSession } from '@/lib/auth';
 import { DomainError } from '@/lib/errors';
 import { logger } from '@/lib/logger';

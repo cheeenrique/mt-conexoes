@@ -1,11 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
+import { registerPayment, writeOffRemaining, cancelCharge } from './service';
+import { realignChargeToSubscription } from './realign';
 import {
-  registerPayment,
-  writeOffRemaining,
-  realignChargeToSubscription,
-  cancelCharge,
   ChargeHasPaymentError as _ChargeHasPaymentError,
   ChargeWithoutPaymentError,
   ChargeAlreadyPaidError,
@@ -13,7 +11,7 @@ import {
   ChargeNotFoundError,
   PaymentDateInFutureError,
   PaymentExceedsBalanceError,
-} from './service';
+} from './errors';
 import type { z } from 'zod';
 import { registerPaymentSchema } from './schema';
 
@@ -589,5 +587,187 @@ describe('histórico financeiro das cobranças', () => {
 
     const realigned = await db.financialEvent.findMany({ where: { customerId, kind: 'CHARGE_REALIGNED' } });
     expect(realigned).toHaveLength(0);
+  });
+});
+
+/**
+ * Relatado em 25/09/2026: "o cliente era mensal e decidiu virar trimestral e o
+ * sistema não deixou fazer isso". A cobrança em aberto seguiu com o valor do
+ * mensal (R$ 35,00, custo R$ 9,00) e o diálogo recusava os R$ 75,00 do
+ * trimestral com "maior que o saldo devedor" — beco sem saída. Aceitar os
+ * R$ 35,00 era pior: quitava e abria o próximo ciclo trimestral, três meses de
+ * acesso pelo preço do mensal.
+ *
+ * O diálogo pergunta qual valor vale, e escolher o do plano atual realinha a
+ * cobrança **no mesmo commit** do pagamento: realinhar e pagar em duas
+ * transações deixa, num crash entre as duas, a cobrança com o valor novo e
+ * sem o pagamento que o operador acabou de digitar.
+ */
+describe('registerPayment — escolher o valor do plano atual na hora de pagar', () => {
+  const PREFIX = 'Cliente Troca de Plano (charges.service) ';
+  let planChangeCustomerId: string;
+  let planChangeSubscriptionId: string;
+  let staleChargeId: string;
+  let pendingMessageId: string;
+
+  // 13/08 → 13/09, vencendo 14/09 23:59:59 local: o caso real, fixo no passado.
+  const STALE_DUE_AT = new Date('2026-09-15T02:59:59.999Z');
+
+  async function purgePlanChange() {
+    const customers = await db.customer.findMany({ where: { name: { startsWith: PREFIX } }, select: { id: true } });
+    const ids = customers.map((customer) => customer.id);
+    if (ids.length === 0) return;
+    await db.dunningExecution.deleteMany({ where: { charge: { customerId: { in: ids } } } });
+    await db.message.deleteMany({ where: { customerId: { in: ids } } });
+    await db.financialEvent.deleteMany({ where: { customerId: { in: ids } } });
+    await db.payment.deleteMany({ where: { charge: { customerId: { in: ids } } } });
+    await db.charge.deleteMany({ where: { customerId: { in: ids } } });
+    await db.subscription.deleteMany({ where: { customerId: { in: ids } } });
+    await db.customer.deleteMany({ where: { id: { in: ids } } });
+  }
+
+  beforeAll(purgePlanChange);
+  afterAll(purgePlanChange);
+  afterEach(purgePlanChange);
+
+  beforeEach(async () => {
+    const customer = await db.customer.create({ data: { name: `${PREFIX}${randomUUID()}` } });
+    planChangeCustomerId = customer.id;
+    // A assinatura já é trimestral; a cobrança ficou com o valor do mensal.
+    const subscription = await db.subscription.create({
+      data: { customerId: customer.id, priceCents: 7500n, costCents: 3000n, cycle: 'QUARTERLY', nextDueAt: STALE_DUE_AT },
+    });
+    planChangeSubscriptionId = subscription.id;
+    const charge = await db.charge.create({
+      data: {
+        subscriptionId: subscription.id,
+        customerId: customer.id,
+        principalCents: 3500n,
+        discountCents: 0n,
+        costCents: 900n,
+        status: 'OVERDUE',
+        periodStart: new Date('2026-08-13T00:00:00.000Z'),
+        periodEnd: new Date('2026-09-13T00:00:00.000Z'),
+        dueAt: STALE_DUE_AT,
+      },
+    });
+    staleChargeId = charge.id;
+    const message = await db.message.create({
+      data: {
+        customerId: customer.id,
+        chargeId: charge.id,
+        toPhone: '+5511999997777',
+        body: 'Sua mensalidade de R$ 35,00 está em aberto.',
+        scheduledFor: new Date('2026-09-26T12:00:00.000Z'),
+        scheduledDate: new Date('2026-09-26T00:00:00.000Z'),
+      },
+    });
+    pendingMessageId = message.id;
+  });
+
+  async function eventKinds(): Promise<string[]> {
+    const events = await db.financialEvent.findMany({ where: { customerId: planChangeCustomerId }, orderBy: { at: 'asc' } });
+    return events.map((event) => event.kind);
+  }
+
+  it('realinha e quita no mesmo commit: cobrança paga com preço e custo do plano, próximo ciclo trimestral', async () => {
+    const result = await registerPayment(
+      staleChargeId,
+      paymentInput({ amountCents: '7500', paidAt: '2026-09-20', realignToSubscription: true }),
+    );
+
+    expect(result.status).toBe('PAID');
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: staleChargeId } });
+    expect(charge.status).toBe('PAID');
+    expect(charge.principalCents.toString()).toBe('7500');
+    expect(charge.costCents.toString()).toBe('3000');
+
+    const next = await db.charge.findFirstOrThrow({ where: { subscriptionId: planChangeSubscriptionId, id: { not: staleChargeId } } });
+    expect(next.principalCents.toString()).toBe('7500');
+    expect(next.costCents.toString()).toBe('3000');
+    // Pagou 20/09, depois do vencimento de 14/09: conta do pagamento, três meses.
+    expect(next.dueAt.toISOString()).toBe('2026-12-21T02:59:59.999Z'); // 20/12 23:59:59 local
+    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: planChangeSubscriptionId } });
+    expect(subscription.nextDueAt.toISOString()).toBe('2026-12-21T02:59:59.999Z');
+
+    expect(await eventKinds()).toEqual(['CHARGE_REALIGNED', 'PAYMENT_REGISTERED']);
+    // O corpo pendente carrega "R$ 35,00" congelado — não pode sair depois do realinhamento.
+    const message = await db.message.findUniqueOrThrow({ where: { id: pendingMessageId } });
+    expect(message.status).toBe('CANCELLED');
+    expect(message.cancelReason).toBe('amount_changed');
+  });
+
+  it('pagou antes do vencimento: o ciclo trimestral conta do vencimento, não do pagamento', async () => {
+    await registerPayment(
+      staleChargeId,
+      paymentInput({ amountCents: '7500', paidAt: '2026-09-10', realignToSubscription: true }),
+    );
+
+    const subscription = await db.subscription.findUniqueOrThrow({ where: { id: planChangeSubscriptionId } });
+    expect(subscription.nextDueAt.toISOString()).toBe('2026-12-15T02:59:59.999Z'); // 14/12 23:59:59 local
+  });
+
+  it('sem escolher o plano atual, os R$ 75,00 continuam recusados e nada muda', async () => {
+    await expect(
+      registerPayment(staleChargeId, paymentInput({ amountCents: '7500', paidAt: '2026-09-20' })),
+    ).rejects.toThrow(PaymentExceedsBalanceError);
+
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: staleChargeId } });
+    expect(charge.principalCents.toString()).toBe('3500');
+    expect(charge.costCents.toString()).toBe('900');
+    expect(await db.payment.count({ where: { chargeId: staleChargeId } })).toBe(0);
+    expect(await eventKinds()).toEqual([]);
+    const message = await db.message.findUniqueOrThrow({ where: { id: pendingMessageId } });
+    expect(message.status).toBe('PENDING');
+  });
+
+  it('valor acima do plano atual continua recusado, mesmo escolhendo realinhar', async () => {
+    await expect(
+      registerPayment(staleChargeId, paymentInput({ amountCents: '7501', paidAt: '2026-09-20', realignToSubscription: true })),
+    ).rejects.toThrow(PaymentExceedsBalanceError);
+
+    // O realinhamento e o pagamento são um commit só: recusado o pagamento, o
+    // valor da cobrança não pode ter mudado sozinho.
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: staleChargeId } });
+    expect(charge.principalCents.toString()).toBe('3500');
+    expect(await eventKinds()).toEqual([]);
+  });
+
+  it('pagamento parcial depois de escolher o plano atual fica devendo o restante do plano', async () => {
+    const result = await registerPayment(
+      staleChargeId,
+      paymentInput({ amountCents: '4000', paidAt: '2026-09-20', realignToSubscription: true }),
+    );
+
+    expect(result.status).toBe('OVERDUE');
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: staleChargeId } });
+    expect(charge.principalCents.toString()).toBe('7500');
+    expect(await db.charge.count({ where: { subscriptionId: planChangeSubscriptionId } })).toBe(1);
+  });
+
+  it('cobrança que já tem pagamento recusa o realinhamento e não grava nada', async () => {
+    await registerPayment(staleChargeId, paymentInput({ amountCents: '1000', paidAt: '2026-09-20' }));
+
+    await expect(
+      registerPayment(staleChargeId, paymentInput({ amountCents: '2500', paidAt: '2026-09-21', realignToSubscription: true })),
+    ).rejects.toThrow(ChargeHasPaymentError);
+
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: staleChargeId } });
+    expect(charge.principalCents.toString()).toBe('3500');
+    expect(charge.costCents.toString()).toBe('900');
+    expect(await db.payment.count({ where: { chargeId: staleChargeId } })).toBe(1);
+    expect(await eventKinds()).toEqual(['PAYMENT_REGISTERED']);
+  });
+
+  it('escolher o plano atual numa cobrança que já tem o valor do plano não realinha nada', async () => {
+    await db.charge.update({ where: { id: staleChargeId }, data: { principalCents: 7500n, costCents: 2800n } });
+
+    await registerPayment(staleChargeId, paymentInput({ amountCents: '7500', paidAt: '2026-09-20', realignToSubscription: true }));
+
+    const charge = await db.charge.findUniqueOrThrow({ where: { id: staleChargeId } });
+    expect(charge.status).toBe('PAID');
+    // Custo congelado na emissão: sem valor para trás, não há o que recotar.
+    expect(charge.costCents.toString()).toBe('2800');
+    expect(await eventKinds()).toEqual(['PAYMENT_REGISTERED']);
   });
 });

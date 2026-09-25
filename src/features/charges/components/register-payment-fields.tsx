@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Controller, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form';
 import type { z } from 'zod';
 import { Label } from '@/components/ui/label';
@@ -21,6 +22,10 @@ type FormValues = z.input<typeof registerPaymentSchema>;
  * mais tarde entre o vencimento em aberto e o pagamento). Ele preenche o campo
  * **até** o operador encostar nele — daí em diante a escolha é dele, e
  * recalcular por cima apagaria o prazo que ele acabou de combinar.
+ *
+ * `showAmount` falso esconde o "Valor" enquanto o operador não escolheu qual
+ * valor vale para uma cobrança que ficou com o de um plano anterior — o campo
+ * aparece preenchido com a escolha. `dueNote` vai logo abaixo do vencimento.
  */
 export function PaymentFields({
   control,
@@ -30,6 +35,8 @@ export function PaymentFields({
   dueTouched,
   onDueTouched,
   timezone,
+  showAmount = true,
+  dueNote,
 }: {
   control: Control<FormValues>;
   register: UseFormRegister<FormValues>;
@@ -38,18 +45,22 @@ export function PaymentFields({
   dueTouched: boolean;
   onDueTouched: () => void;
   timezone: string;
+  showAmount?: boolean;
+  dueNote?: ReactNode;
 }) {
   return (
     <>
-          <div className="space-y-1.5">
-            <Label htmlFor="amountCents">Valor</Label>
-            <Controller
-              control={control}
-              name="amountCents"
-              render={({ field }) => <CurrencyInput id="amountCents" value={field.value} onValueChange={field.onChange} />}
-            />
-            {errors.amountCents && <p className="mt-1 text-sm text-danger">{errors.amountCents.message}</p>}
-          </div>
+          {showAmount && (
+            <div className="space-y-1.5">
+              <Label htmlFor="amountCents">Valor</Label>
+              <Controller
+                control={control}
+                name="amountCents"
+                render={({ field }) => <CurrencyInput id="amountCents" value={field.value} onValueChange={field.onChange} />}
+              />
+              {errors.amountCents && <p className="mt-1 text-sm text-danger">{errors.amountCents.message}</p>}
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="paidAt">Data</Label>
             <Controller
@@ -85,6 +96,7 @@ export function PaymentFields({
                     ) : (
                       <NextDueHint nextDueAt={shown} timezone={timezone} />
                     )}
+                    {dueNote}
                   </>
                 );
               }}

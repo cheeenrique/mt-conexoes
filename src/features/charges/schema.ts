@@ -22,6 +22,10 @@ export const registerPaymentSchema = z.object({
     .or(z.literal('')),
   note: z.string().optional(),
   idempotencyKey: z.string().min(1, 'Identificador de envio ausente.'),
+  // A cobrança ficou com o valor de um plano anterior e o operador escolheu o
+  // do plano atual: o service realinha no mesmo commit do pagamento. Ausente =
+  // vale o valor da cobrança, como sempre foi.
+  realignToSubscription: z.boolean().optional(),
 });
 
 export const cancelChargeSchema = z.object({

@@ -32,6 +32,7 @@ const CHARGE: ChargeDTO = {
   issuedAt: '2026-08-01T03:00:00.000Z',
   subscriptionPriceCents: '9000',
   subscriptionCostCents: '3000',
+  subscriptionNetCents: '9000',
   subscriptionCycle: 'MONTHLY',
   payments: [],
 };

@@ -40,6 +40,20 @@ export function isCourtesySubscription(subscription: { priceCents: bigint }): bo
 }
 
 /**
+ * A cobrança carrega um valor que o plano de hoje não tem mais — troca de plano
+ * ou reajuste depois da emissão. `principalCents` é congelado na emissão e nada
+ * o reescreve sozinho (CLAUDE.md §Dinheiro); esta função só diz que ficou para
+ * trás, e quem decide se o valor novo vale para esta cobrança é o operador.
+ *
+ * Um lugar só porque três pontos perguntam a mesma coisa: a tela que oferece a
+ * escolha, o service que a aplica e a troca de plano na ficha. Tela e service
+ * divergindo é oferecer um realinhamento que o service ignora.
+ */
+export function hasOldPlanAmount(params: { chargePrincipalCents: bigint; planPriceCents: bigint }): boolean {
+  return params.chargePrincipalCents !== params.planPriceCents;
+}
+
+/**
  * Desconto vigente na emissão de uma cobrança, em centavos. `discountUntil`
  * precisa cobrir o início do período — desconto vencido não entra na cobrança
  * nova.
